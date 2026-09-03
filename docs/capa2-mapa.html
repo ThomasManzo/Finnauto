@@ -1,0 +1,246 @@
+<title>Mapa de la Capa 2</title>
+<meta name="description" content="Dónde vive hoy cada dato del sistema MAGA+, sus fragilidades, y el contrato de datos propuesto para convertirlo en software.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap">
+<style>
+  :root{
+    --paper:#FFFFFF; --ground:#F4F8F5; --ink:#16241D; --muted:#55655D; --faint:#8A988F;
+    --green:#17915C; --green-deep:#0E6E44; --green-soft:#E7F4EC; --green-line:#CFE6D9;
+    --orange:#E8720C; --orange-soft:#FCEEDD;
+    --amber:#C98A12; --amber-soft:#FBF1DA;
+    --red:#CB4231; --red-soft:#FBE9E6; --red-line:#F0CFC9;
+    --line:#E4EBE7; --shadow:0 1px 2px rgba(16,36,29,.04),0 6px 22px rgba(16,36,29,.06); --radius:16px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--ink);
+    font-family:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:15.5px;line-height:1.6;-webkit-font-smoothing:antialiased}
+  h1,h2,h3{font-family:"Bricolage Grotesque","Inter",sans-serif;margin:0;line-height:1.12;letter-spacing:-.015em}
+  .mono,code{font-family:"IBM Plex Mono",ui-monospace,monospace}
+  code{font-size:.88em;background:var(--green-soft);color:var(--green-deep);padding:1px 5px;border-radius:5px}
+  .wrap{max-width:880px;margin:0 auto;padding:0 20px 64px}
+
+  header.top{background:linear-gradient(135deg,#0E6E44,#17915C 60%,#0B5A38);color:#fff;padding:46px 0 40px;margin-bottom:26px}
+  header.top .in{max-width:880px;margin:0 auto;padding:0 20px}
+  .eyebrow{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#A9DcC4;margin-bottom:10px}
+  header.top h1{font-size:clamp(28px,5vw,40px);font-weight:800;color:#fff}
+  header.top p{color:#DCEFE5;margin:12px 0 0;max-width:60ch;font-size:16px}
+
+  section{margin-top:34px}
+  .lbl{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--orange);font-weight:600;margin-bottom:7px}
+  h2{font-size:23px;font-weight:800}
+  .lead{color:var(--muted);margin:9px 0 0;max-width:66ch}
+
+  .card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:20px 22px;margin-top:16px}
+
+  .tscroll{overflow-x:auto;background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);margin-top:16px}
+  table{border-collapse:collapse;width:100%;min-width:640px;font-size:14px}
+  th{text-align:left;font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
+    color:var(--faint);font-weight:600;background:var(--ground);padding:10px 14px;border-bottom:1px solid var(--line)}
+  td{padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  td .d{font-weight:600}
+  td .w{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--muted)}
+  .chip{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:2px 8px;border-radius:20px;white-space:nowrap}
+  .chip.bot{background:var(--green-soft);color:var(--green-deep)}
+  .chip.cls{background:var(--amber-soft);color:#8a5e08}
+  .chip.man{background:var(--orange-soft);color:#a4520a}
+
+  .frag{border-left:3px solid var(--red);background:var(--paper);border:1px solid var(--line);border-left-width:3px;
+    border-radius:12px;padding:15px 18px;margin-top:12px;box-shadow:var(--shadow)}
+  .frag h3{font-size:16px;font-weight:700;color:var(--red);margin-bottom:5px}
+  .frag p{margin:0;font-size:14px;color:var(--muted)}
+  .frag .ej{margin-top:9px;font-family:"IBM Plex Mono",monospace;font-size:12px;background:var(--ground);
+    border:1px solid var(--line);border-radius:8px;padding:8px 11px;color:var(--ink)}
+
+  .ent{border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-top:11px;background:var(--paper)}
+  .ent .n{font-family:"IBM Plex Mono",monospace;font-weight:600;font-size:14px;color:var(--green-deep);
+    background:var(--green-soft);display:inline-block;padding:2px 9px;border-radius:6px}
+  .ent .q{font-size:13.5px;color:var(--muted);margin:7px 0 8px}
+  .ent .f{font-family:"IBM Plex Mono",monospace;font-size:12.5px;color:var(--ink);line-height:1.8}
+  .ent .f b{color:var(--orange);font-weight:600}
+
+  .steps{counter-reset:s;margin-top:16px}
+  .step{display:grid;grid-template-columns:34px 1fr;gap:14px;background:var(--paper);border:1px solid var(--line);
+    border-radius:12px;padding:14px 16px;margin-bottom:10px;box-shadow:var(--shadow)}
+  .step .n{width:27px;height:27px;border-radius:9px;background:var(--green);color:#fff;display:grid;place-items:center;
+    font-family:"Bricolage Grotesque";font-weight:700;font-size:14px}
+  .step h3{font-size:15.5px;font-weight:700;margin-bottom:3px}
+  .step p{margin:0;font-size:14px;color:var(--muted)}
+
+  .key{background:var(--green-soft);border:1px solid var(--green-line);border-radius:var(--radius);padding:18px 22px;margin-top:18px}
+  .key h3{font-size:16px;color:var(--green-deep);margin-bottom:6px}
+  .key p{margin:0;font-size:14.5px;color:#1c4a37}
+
+  ul.unlock{margin:14px 0 0;padding-left:0;list-style:none}
+  ul.unlock li{padding:9px 0 9px 26px;border-top:1px solid var(--line);position:relative;font-size:14.5px;color:var(--muted)}
+  ul.unlock li:first-child{border-top:none}
+  ul.unlock li::before{content:"→";position:absolute;left:0;color:var(--green);font-weight:700}
+  ul.unlock li b{color:var(--ink)}
+</style>
+
+<header class="top">
+  <div class="in">
+    <div class="eyebrow">finauto · Capa 2 — los datos</div>
+    <h1>Mapa de la Capa 2</h1>
+    <p>Dónde vive hoy cada dato del sistema, por qué todavía no es software, y el contrato que lo convierte en uno — sin tirar nada de lo que ya funciona.</p>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <section>
+    <div class="lbl">Por qué importa</div>
+    <h2>La Capa 2 es el verdadero activo</h2>
+    <p class="lead">La Capa 1 (bots) y la Capa 3 (dashboards) son reemplazables. Lo difícil —y lo que nadie puede copiar rápido— son <b>las reglas y la estructura del dato</b>: cómo se clasifica cada movimiento, cómo se reparte el efectivo con feriados, qué es deuda vencida y qué es a vencer. Eso vive en la Capa 2.</p>
+  </section>
+
+  <section>
+    <div class="lbl">Inventario</div>
+    <h2>Qué dato existe hoy, y dónde vive</h2>
+    <p class="lead">Relevado leyendo el código real del clasificador, la carga al Cash, la carga de saldos y la calculadora.</p>
+    <div class="tscroll">
+      <table>
+        <thead><tr><th>Dato</th><th>Dónde vive</th><th>Quién lo escribe</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><div class="d">Saldos por farmacia × banco</div></td>
+            <td><span class="w">Cash → solapa <b>SALDOS</b><br>fila = farmacia, columna = banco</span></td>
+            <td><span class="chip bot">Bot → Cargasaldos</span></td>
+          </tr>
+          <tr>
+            <td><div class="d">Caja de hoy (banco + efectivo)</div></td>
+            <td><span class="w">Cash → <b>SALDOS!C26</b><br>(una sola celda)</span></td>
+            <td><span class="chip man">Fórmula / manual</span></td>
+          </tr>
+          <tr>
+            <td><div class="d">Movimientos clasificados</div></td>
+            <td><span class="w">Cash → Egresos, INGRESOS BANCOS,<br>INGRESOS EFECTIVO, Cobros OS,<br>INGRESOS SPEED, FIMA</span></td>
+            <td><span class="chip cls">Clasificador (Carga Cash)</span></td>
+          </tr>
+          <tr>
+            <td><div class="d">Cashflow proyectado</div></td>
+            <td><span class="w">Solapas <b>“cash flow speed”</b> y<br><b>“cash flow maga”</b> — matriz<br>concepto (fila) × FECHA (columna)</span></td>
+            <td><span class="chip man">Carga manual</span></td>
+          </tr>
+          <tr>
+            <td><div class="d">Deuda droguerías<br>(vencida / a vencer)</div></td>
+            <td><span class="w">Filas 58-60 (Speed) y 52-54 (MAGA)<br>partidas por fecha ≤ hoy o &gt; hoy</span></td>
+            <td><span class="chip man">Carga manual</span></td>
+          </tr>
+          <tr>
+            <td><div class="d">Cheques en cartera · sueldos ·<br>egresos · NCR</div></td>
+            <td><span class="w">Filas fijas de esas mismas solapas<br>(14, 27-39, 56-58, …)</span></td>
+            <td><span class="chip man">Carga manual</span></td>
+          </tr>
+          <tr>
+            <td><div class="d">Reglas de clasificación</div></td>
+            <td><span class="w">Clasificador → solapa <b>REGLAS</b><br>(palabra clave → categoría)</span></td>
+            <td><span class="chip man">Editable a mano</span></td>
+          </tr>
+          <tr>
+            <td><div class="d">Cobranzas (droguerías)</div></td>
+            <td><span class="w">Recibos de <b>RAL</b> → carpeta Drive<br>→ conciliación</span></td>
+            <td><span class="chip cls">Cobranzas.gs</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="lbl">El diagnóstico</div>
+    <h2>Las 3 fragilidades que hay que resolver</h2>
+    <p class="lead">Ninguna es un error: son consecuencias lógicas de haberlo construido en planillas. Pero son exactamente lo que impide venderlo a 50 farmacias.</p>
+
+    <div class="frag">
+      <h3>1 · El dato vive en la POSICIÓN, no en un campo</h3>
+      <p>La calculadora lee <b>números de fila fijos</b>. Si alguien inserta una fila en el cashflow, el cálculo pasa a leer otra cosa — y sigue dando un número, sin avisar que está mal.</p>
+      <div class="ej">cartera → fila 14 · mercCheques → fila 36 · deudaDrog → filas 58, 59, 60<br>egresos → rango 27 a 39 (excluyendo la 36)</div>
+    </div>
+
+    <div class="frag">
+      <h3>2 · Las fechas son columnas, no un campo</h3>
+      <p>En las solapas de cashflow, cada columna es una fecha y cada fila un concepto. Para saber “qué vence el jueves” hay que <b>buscar la columna correcta</b>. Por eso el sistema hoy suma bloques ("todo / futuro / vencido") en vez de poder mostrar un timeline día por día.</p>
+      <div class="ej">fila 1 = 03/09 · 04/09 · 05/09 · … · TOTAL MES (se excluye porque no es fecha)</div>
+    </div>
+
+    <div class="frag">
+      <h3>3 · Las farmacias no tienen ID</h3>
+      <p>Se matchean por <b>palabra clave</b> sobre el nombre. Funciona bien hoy, pero cualquier nombre nuevo o mal tipeado queda afuera en silencio.</p>
+      <div class="ej">"Maga Shop Varela Scs" → VARELA · "Crucecita" ≈ "Crucesita" · "Tu Farmacia I Scs" → TU FARMACIA</div>
+    </div>
+
+    <div class="key">
+      <h3>La consecuencia práctica</h3>
+      <p>Hoy <b>la herramienta visual no puede existir sin la planilla</b>: para dibujar cualquier cosa hay que saber que la deuda está en la fila 58. Ese es, técnicamente, el motivo por el que esto todavía es "un conjunto de Excels" y no software.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="lbl">La solución</div>
+    <h2>El contrato: 6 entidades con campos, no posiciones</h2>
+    <p class="lead">La idea es simple: que cada dato lleve <b>su fecha, su categoría y su dueño como campo propio</b>. Con esto, cualquier herramienta puede preguntar “¿qué vence entre el 3 y el 10?” sin saber nada de filas ni columnas.</p>
+
+    <div class="ent">
+      <span class="n">farmacia</span>
+      <div class="q">Cada boca / unidad de negocio. Le da identidad estable a todo lo demás.</div>
+      <div class="f"><b>id</b> · nombre · cuit · unidad (MAGA | SPEED) · activa</div>
+    </div>
+    <div class="ent">
+      <span class="n">saldo</span>
+      <div class="q">La foto de la plata. Lo escribe el bot, una fila por farmacia/banco/día.</div>
+      <div class="f"><b>fecha</b> · farmacia_id · banco · saldo_actual · saldo_disponible · origen</div>
+    </div>
+    <div class="ent">
+      <span class="n">movimiento</span>
+      <div class="q">Lo que YA pasó (del extracto, ya clasificado).</div>
+      <div class="f"><b>fecha</b> · farmacia_id · banco · categoria · concepto · importe · signo · estado (REAL) · huella</div>
+    </div>
+    <div class="ent">
+      <span class="n">obligacion</span>
+      <div class="q">Lo que hay que pagar. El campo clave para el simulador es <code>intocable</code>.</div>
+      <div class="f"><b>fecha_vencimiento</b> · tipo (sueldo | cheque | drogueria | impuesto | alquiler | refinanciacion) · contraparte · importe · <b>intocable</b> (true/false) · estado</div>
+    </div>
+    <div class="ent">
+      <span class="n">cobro_previsto</span>
+      <div class="q">Lo que se espera cobrar. Acá vive tu distinción fijo/variable.</div>
+      <div class="f"><b>fecha_esperada</b> · farmacia_id · tipo (venta_diaria | cartera_cheques | obra_social | drogueria) · importe · <b>naturaleza</b> (FIJO | VARIABLE) · confianza (%)</div>
+    </div>
+    <div class="ent">
+      <span class="n">supuesto</span>
+      <div class="q">Las "bases variables" del cálculo que querés poder editar y guardar.</div>
+      <div class="f"><b>clave</b> · valor · vigencia_desde · quien_lo_cargo · comentario</div>
+    </div>
+
+    <div class="key">
+      <h3>Por qué <code>intocable</code> y <code>naturaleza</code> son los dos campos más importantes</h3>
+      <p>Con esos dos, el simulador deja de ser una planilla y pasa a ser una regla del sistema: <b>sueldos y cheques nunca se tocan</b>, y <b>lo variable no se cuenta en el escenario conservador</b>. Hoy esa lógica vive en la cabeza de quien arma la planilla; ahí pasaría a vivir en el dato.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="lbl">Cómo llegar</div>
+    <h2>Sin romper nada de lo que hoy funciona</h2>
+    <p class="lead">No hay que reescribir el Cash ni pedirle a nadie que cambie cómo trabaja. Se agrega una capa intermedia y listo.</p>
+    <div class="steps">
+      <div class="step"><div class="n">1</div><div><h3>Se deja la planilla como está</h3><p>El administrativo sigue cargando en el Excel que ya conoce. Cero fricción, cero resistencia.</p></div></div>
+      <div class="step"><div class="n">2</div><div><h3>Se agrega un “exportador”</h3><p>Un script que lee las solapas (sí, con las filas fijas) y escribe el contrato de arriba en formato estable. Es el único que sabe de filas y columnas — y es chico y fácil de arreglar.</p></div></div>
+      <div class="step"><div class="n">3</div><div><h3>Las herramientas visuales leen SOLO el contrato</h3><p>El dashboard y el simulador nunca tocan una celda. Piden “obligaciones del 3 al 10 de septiembre” y listo.</p></div></div>
+      <div class="step"><div class="n">4</div><div><h3>El día de mañana, se cambia el origen</h3><p>Cuando haya volumen, el exportador se reemplaza por una base de datos real. <b>Las herramientas visuales no se enteran</b> — no se toca ni una línea.</p></div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="lbl">Qué desbloquea</div>
+    <h2>Lo que recién ahí se vuelve posible</h2>
+    <ul class="unlock">
+      <li><b>El timeline día por día</b> del simulador (de tal fecha a tal fecha), que hoy no se puede hacer porque las fechas son columnas.</li>
+      <li><b>Vender a otra farmacia</b> sin rearmarle la planilla: cambia el perfil, no el código.</li>
+      <li><b>Cada usuario su vista</b>: el administrativo en su Excel, el dueño en el dashboard — mismo dato abajo.</li>
+      <li><b>Guardar y comparar escenarios</b> ("Suizo 450" vs "Suizo 300"), porque los supuestos pasan a ser dato.</li>
+      <li><b>Auditoría real</b>: quién cargó qué supuesto y cuándo.</li>
+    </ul>
+  </section>
+
+</div>
