@@ -1,6 +1,8 @@
 {
   "_comentario": "CATALOGO del cliente: el vocabulario con el que se cargan los movimientos. Es POR CLIENTE: otra empresa puede tener otros tipos, otros bancos y otras unidades. El codigo no conoce estos valores; los lee de aca.",
 
+  "_modelo_flexibilidad": "En vez de un si/no, cada tipo tiene 'dias_tolerancia' (cuantos dias se puede patear sin consecuencia: 0 = no se mueve) y 'consecuencia' (que pasa si no se paga). Asi el simulador puede decir 'esto lo podes correr 3 dias' en vez de tratar todo como blanco o negro.",
+
   "unidades": {
     "_ayuda": "Valor de la columna EMPRESA. Define a que cash va cada movimiento.",
     "valores": [
@@ -10,35 +12,55 @@
   },
 
   "bancos": {
-    "_ayuda": "Valor de la columna BANCO. OJO: 'EFVO' no es un banco, es la caja en efectivo; se trata como origen de fondos igual que un banco.",
+    "_ayuda": "Valor de la columna BANCO. EFVO (efectivo) se trata como un origen de fondos mas. Si un cliente quiere ver la caja de efectivo separada de la bancaria, se pone separar_caja_efectivo=true en el perfil.",
+    "separar_caja_efectivo": false,
     "valores": [
-      { "id": "GALICIA",   "nombre": "Galicia",   "es_banco": true },
-      { "id": "COMAFI",    "nombre": "Comafi",    "es_banco": true },
-      { "id": "SANTANDER", "nombre": "Santander", "es_banco": true },
-      { "id": "EFVO",      "nombre": "Efectivo",  "es_banco": false }
+      { "id": "GALICIA",   "nombre": "Galicia",   "tipo": "banco" },
+      { "id": "COMAFI",    "nombre": "Comafi",    "tipo": "banco" },
+      { "id": "SANTANDER", "nombre": "Santander", "tipo": "banco" },
+      { "id": "EFVO",      "nombre": "Efectivo",  "tipo": "caja" }
     ]
   },
 
   "tipos": {
-    "_ayuda": "Valor de la columna TIPO (el desplegable). 'categoria' agrupa para los reportes. 'intocable' = NO se puede atrasar (sueldos y cheques): es lo que el simulador aparta primero. 'reprogramable' = se puede correr unos dias si hace falta.",
+    "_ayuda": "Valor de la columna TIPO. dias_tolerancia = cuantos dias se puede correr el pago. 0 = intocable.",
     "valores": [
-      { "id": "SUELDO",              "nombre": "Sueldos y cargas",        "categoria": "personal",   "intocable": true,  "reprogramable": false },
-      { "id": "SUELDO_QUINTANA",     "nombre": "Sueldos Quintana",        "categoria": "personal",   "intocable": true,  "reprogramable": false },
-      { "id": "COMISION",            "nombre": "Gastos bancarios",        "categoria": "bancario",   "intocable": false, "reprogramable": false, "_nota": "debito automatico: no se puede reprogramar, pero tampoco manda al BCRA" },
-      { "id": "RETIRO_SOCIO",        "nombre": "Retiro de socios",        "categoria": "socios",     "intocable": false, "reprogramable": true,  "_nota": "es la variable de ajuste por excelencia" },
-      { "id": "ALQUILER",            "nombre": "Alquileres",              "categoria": "fijo",       "intocable": false, "reprogramable": true },
-      { "id": "HONORARIO",           "nombre": "Honorarios",              "categoria": "fijo",       "intocable": false, "reprogramable": true },
-      { "id": "IMPUESTO",            "nombre": "Impuestos",               "categoria": "impuestos",  "intocable": false, "reprogramable": true },
-      { "id": "SERVICIO",            "nombre": "Servicios",               "categoria": "fijo",       "intocable": false, "reprogramable": true },
-      { "id": "VEP_AFIP",            "nombre": "VEP AFIP",                "categoria": "impuestos",  "intocable": false, "reprogramable": true },
-      { "id": "EFECTIVO_VARIOS",     "nombre": "Efectivo varios",         "categoria": "varios",     "intocable": false, "reprogramable": true },
-      { "id": "PAGO_DROGUE_TRANSF",  "nombre": "Pago a drogueria (transferencia)", "categoria": "proveedores", "intocable": false, "reprogramable": true, "_nota": "esta es la 'jugada' que se simula" },
-      { "id": "PAGO",                "nombre": "Pago a proveedores",      "categoria": "proveedores", "intocable": false, "reprogramable": true, "_nota": "proveedores generales" }
+      { "id": "CHEQUE",              "nombre": "Cheque a pagar",          "categoria": "proveedores", "dias_tolerancia": 0, "consecuencia": "BCRA",
+        "_nota": "EL intocable por excelencia: si no se cubre, la empresa va al BCRA. Se carga desde el listado de cheques emitidos del banco (ver ingestas/cheques.py)." },
+
+      { "id": "SUELDO",              "nombre": "Sueldos y cargas",        "categoria": "personal",   "dias_tolerancia": 0, "consecuencia": "laboral" },
+      { "id": "SUELDO_QUINTANA",     "nombre": "Sueldos Quintana",        "categoria": "personal",   "dias_tolerancia": 0, "consecuencia": "laboral" },
+
+      { "id": "VEP_AFIP",            "nombre": "Cargas sociales / VEP AFIP", "categoria": "personal", "dias_tolerancia": 0, "consecuencia": "fiscal",
+        "_nota": "Las cargas son un aporte sobre los sueldos -> categoria personal. Tiene dos partes: (a) las recurrentes del mes (~la mitad de los sueldos) y (b) los PLANES de AFIP (cuando no se llega a pagar la carga entera: se paga un adelanto y el resto va a plan). Los PLANES se debitan en FECHA EXACTA -> no se mueven." },
+
+      { "id": "IMPUESTO",            "nombre": "Impuestos",               "categoria": "impuestos",  "dias_tolerancia": 0, "consecuencia": "fiscal",
+        "_nota": "Se pagan si o si." },
+
+      { "id": "ALQUILER",            "nombre": "Alquileres",              "categoria": "fijo",       "dias_tolerancia": 0, "consecuencia": "contractual",
+        "_nota": "Tiene fecha de vencimiento; muy rara vez se puede patear." },
+      { "id": "SERVICIO",            "nombre": "Servicios",               "categoria": "fijo",       "dias_tolerancia": 0, "consecuencia": "corte_servicio",
+        "_nota": "Suele ser debito automatico." },
+
+      { "id": "COMISION",            "nombre": "Comisiones al personal",  "categoria": "personal",   "dias_tolerancia": 3, "consecuencia": "interna",
+        "_nota": "OJO: NO son comisiones bancarias. Son comisiones en EFECTIVO que se le pagan a encargados y farmaceuticos. Se pueden mover 1/2/3 dias." },
+
+      { "id": "HONORARIO",           "nombre": "Honorarios",              "categoria": "fijo",       "dias_tolerancia": 5, "consecuencia": "contractual",
+        "_PENDIENTE": "Confirmar con Thomas cuantos dias se puede patear." },
+
+      { "id": "RETIRO_SOCIO",        "nombre": "Retiro de socios",        "categoria": "socios",     "dias_tolerancia": 999, "consecuencia": "ninguna",
+        "_nota": "La variable de ajuste por excelencia: es lo primero que se posterga." },
+
+      { "id": "EFECTIVO_VARIOS",     "nombre": "Efectivo varios",         "categoria": "varios",     "dias_tolerancia": 7, "consecuencia": "ninguna" },
+
+      { "id": "PAGO_DROGUE_TRANSF",  "nombre": "Pago a drogueria (transferencia)", "categoria": "proveedores", "dias_tolerancia": 15, "consecuencia": "comercial",
+        "_nota": "Esta es la 'jugada' que se simula: cuanto le puedo transferir sin comprometer lo rigido." },
+      { "id": "PAGO",                "nombre": "Pago a proveedores",      "categoria": "proveedores", "dias_tolerancia": 15, "consecuencia": "comercial" }
     ]
   },
 
   "estados": {
-    "_ayuda": "Valor de la columna ESTADO. Los REAL los escribe el bot/clasificador; los PROYECCION se cargan a mano. 'PROYECCION FIJA' (o la palabra FIJA/NO BORRAR en Observacion) no se borra cuando entran los REAL del dia.",
+    "_ayuda": "Valor de la columna ESTADO de MOVIMIENTOS.",
     "valores": [
       { "id": "REAL",            "nombre": "Real",            "origen": "automatico" },
       { "id": "PROYECCION",      "nombre": "Proyeccion",      "origen": "manual" },
@@ -46,5 +68,39 @@
     ]
   },
 
-  "_PENDIENTE_cheques": "FALTA DEFINIR: los CHEQUES A PAGAR son el segundo 'intocable' (si no se cubren, la empresa va al BCRA) pero NO estan en el desplegable de TIPO. Hoy viven en el cashflow ('Pago de mercaderia CHEQUES' y 'Cartera de CH'). Hay que decidir si se suman como un TIPO nuevo en MOVIMIENTOS o si el exportador los lee de donde estan hoy. Ver docs/MANANA_THOMAS.md."
+  "ingresos": {
+    "_ayuda": "Modelo de ingresos POR UNIDAD. La distincion FIJO/VARIABLE es la que usa el simulador: el escenario conservador solo cuenta los FIJOS.",
+
+    "MAGA": {
+      "_rubro": "farmacia",
+      "fuentes": [
+        { "id": "VENTA_DIARIA", "nombre": "Venta diaria (mostrador)", "naturaleza": "FIJO", "carga": "manual",
+          "_calculo": "Se proyecta sobre la venta del mes anterior +/- el % de variacion interanual del mismo periodo (ej: agosto vendio 100M; si el ano pasado de agosto a septiembre subio 6%, septiembre proyecta 106M). Cada cadena tiene su propia curva -> es lo mas dificil de automatizar." },
+        { "id": "TARJETA_MP",   "nombre": "Tarjeta y Mercado Pago",   "naturaleza": "FIJO",     "carga": "manual" },
+        { "id": "OBRA_SOCIAL",  "nombre": "Obras sociales",           "naturaleza": "VARIABLE", "carga": "manual",
+          "_nota": "OSDE paga 1 vez por mes, cerca del 15, sobre lo presentado. Las demas son mas impredecibles pero se calculan igual. TODAS pagan una parte en cheque/transferencia y otra en NOTAS DE CREDITO." },
+        { "id": "PAMI",         "nombre": "PAMI",                     "naturaleza": "VARIABLE", "carga": "manual",
+          "_nota": "El mas importante y el mas enredado. Paga 2 veces por mes (a veces 4), por QUINCENA PRESENTADA, pero cruzado: un pago cubre la 1ra quincena de un mes + la 2da del mes anterior. Ademas paga parte en notas de credito. PENDIENTE: modelar bien el calendario con Thomas/Andy." }
+      ]
+    },
+
+    "SPEEDMED": {
+      "_rubro": "drogueria",
+      "fuentes": [
+        { "id": "CARTERA_CH",   "nombre": "Cartera de cheques",       "naturaleza": "FIJO", "carga": "manual",
+          "_nota": "Lo unico verdaderamente fijo de la drogueria: el cheque ya esta en la mano con fecha. HOY SE CARGA A MANO -> deberia ser automatico (son ingresos)." },
+        { "id": "CTAS_COBRAR_FCIAS", "nombre": "Cuentas a cobrar - farmacias clientes", "naturaleza": "VARIABLE", "carga": "semi-automatica",
+          "_nota": "Se carga cliente, fecha de vto y monto. Si el estado pasa a PAGADO desaparece de cuentas a cobrar. Si transfieren, suma al saldo del dia siguiente; si pagan en cheque, va a CARTERA_CH. Origen: listado que se baja de RAL todos los lunes y se cruza con BUSCARV (manual). El bot de Cobranzas es el que pasa a PAGADO leyendo los PDF de una carpeta." },
+        { "id": "COBRANZA_DROGUERIAS", "nombre": "Cobranza a droguerias", "naturaleza": "VARIABLE", "carga": "manual",
+          "_nota": "Cada drogueria que debe tiene su linea (DDS, SUIZO, COFALOZA...). Suelen pagar en CHEQUE o COMPENSAR: si DDS debe 200 y nosotros le debemos 100, se compensan y el saldo de 100 viene en cheque. La COMPENSACION hay que modelarla: no es un cobro puro." }
+      ]
+    }
+  },
+
+  "_PENDIENTES": [
+    "HONORARIO: confirmar dias de tolerancia.",
+    "PAMI: modelar el calendario real de pagos por quincena cruzada.",
+    "Notas de credito (NCR): definir si se modelan como ingreso o como menor deuda.",
+    "Compensacion con droguerias: modelar como neteo, no como cobro."
+  ]
 }
