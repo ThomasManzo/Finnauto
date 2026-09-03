@@ -1,0 +1,50 @@
+{
+  "_comentario": "CATALOGO del cliente: el vocabulario con el que se cargan los movimientos. Es POR CLIENTE: otra empresa puede tener otros tipos, otros bancos y otras unidades. El codigo no conoce estos valores; los lee de aca.",
+
+  "unidades": {
+    "_ayuda": "Valor de la columna EMPRESA. Define a que cash va cada movimiento.",
+    "valores": [
+      { "id": "MAGA",     "nombre": "MAGA+",    "rubro": "farmacia" },
+      { "id": "SPEEDMED", "nombre": "Speedmed", "rubro": "drogueria" }
+    ]
+  },
+
+  "bancos": {
+    "_ayuda": "Valor de la columna BANCO. OJO: 'EFVO' no es un banco, es la caja en efectivo; se trata como origen de fondos igual que un banco.",
+    "valores": [
+      { "id": "GALICIA",   "nombre": "Galicia",   "es_banco": true },
+      { "id": "COMAFI",    "nombre": "Comafi",    "es_banco": true },
+      { "id": "SANTANDER", "nombre": "Santander", "es_banco": true },
+      { "id": "EFVO",      "nombre": "Efectivo",  "es_banco": false }
+    ]
+  },
+
+  "tipos": {
+    "_ayuda": "Valor de la columna TIPO (el desplegable). 'categoria' agrupa para los reportes. 'intocable' = NO se puede atrasar (sueldos y cheques): es lo que el simulador aparta primero. 'reprogramable' = se puede correr unos dias si hace falta.",
+    "valores": [
+      { "id": "SUELDO",              "nombre": "Sueldos y cargas",        "categoria": "personal",   "intocable": true,  "reprogramable": false },
+      { "id": "SUELDO_QUINTANA",     "nombre": "Sueldos Quintana",        "categoria": "personal",   "intocable": true,  "reprogramable": false },
+      { "id": "COMISION",            "nombre": "Gastos bancarios",        "categoria": "bancario",   "intocable": false, "reprogramable": false, "_nota": "debito automatico: no se puede reprogramar, pero tampoco manda al BCRA" },
+      { "id": "RETIRO_SOCIO",        "nombre": "Retiro de socios",        "categoria": "socios",     "intocable": false, "reprogramable": true,  "_nota": "es la variable de ajuste por excelencia" },
+      { "id": "ALQUILER",            "nombre": "Alquileres",              "categoria": "fijo",       "intocable": false, "reprogramable": true },
+      { "id": "HONORARIO",           "nombre": "Honorarios",              "categoria": "fijo",       "intocable": false, "reprogramable": true },
+      { "id": "IMPUESTO",            "nombre": "Impuestos",               "categoria": "impuestos",  "intocable": false, "reprogramable": true },
+      { "id": "SERVICIO",            "nombre": "Servicios",               "categoria": "fijo",       "intocable": false, "reprogramable": true },
+      { "id": "VEP_AFIP",            "nombre": "VEP AFIP",                "categoria": "impuestos",  "intocable": false, "reprogramable": true },
+      { "id": "EFECTIVO_VARIOS",     "nombre": "Efectivo varios",         "categoria": "varios",     "intocable": false, "reprogramable": true },
+      { "id": "PAGO_DROGUE_TRANSF",  "nombre": "Pago a drogueria (transferencia)", "categoria": "proveedores", "intocable": false, "reprogramable": true, "_nota": "esta es la 'jugada' que se simula" },
+      { "id": "PAGO",                "nombre": "Pago a proveedores",      "categoria": "proveedores", "intocable": false, "reprogramable": true, "_nota": "proveedores generales" }
+    ]
+  },
+
+  "estados": {
+    "_ayuda": "Valor de la columna ESTADO. Los REAL los escribe el bot/clasificador; los PROYECCION se cargan a mano. 'PROYECCION FIJA' (o la palabra FIJA/NO BORRAR en Observacion) no se borra cuando entran los REAL del dia.",
+    "valores": [
+      { "id": "REAL",            "nombre": "Real",            "origen": "automatico" },
+      { "id": "PROYECCION",      "nombre": "Proyeccion",      "origen": "manual" },
+      { "id": "PROYECCION FIJA", "nombre": "Proyeccion fija", "origen": "manual", "no_borrar": true }
+    ]
+  },
+
+  "_PENDIENTE_cheques": "FALTA DEFINIR: los CHEQUES A PAGAR son el segundo 'intocable' (si no se cubren, la empresa va al BCRA) pero NO estan en el desplegable de TIPO. Hoy viven en el cashflow ('Pago de mercaderia CHEQUES' y 'Cartera de CH'). Hay que decidir si se suman como un TIPO nuevo en MOVIMIENTOS o si el exportador los lee de donde estan hoy. Ver docs/MANANA_THOMAS.md."
+}
