@@ -1,0 +1,33 @@
+# ===================================================================
+#  finauto — lo que NUNCA sube al repo
+# ===================================================================
+
+# Credenciales de bancos (DPAPI, por cliente/banco) — SECRETO
+clientes/*/.credenciales/
+**/credenciales.dat
+**/*.key
+**/*.pem
+
+# Runtime por cliente/banco (perfil del navegador, capturas, estado, logs,
+# descargas temporales) — datos de la maquina, se regeneran solos
+clientes/*/.run/
+**/perfil_navegador/
+**/capturas/
+**/descargas_temp/
+**/estado_descargas.json
+**/log.txt
+
+# Python
+**/__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Node / clasp (si se versionan Apps Script mas adelante)
+node_modules/
+
+# Sistema
+Thumbs.db
+desktop.ini
+.DS_Store

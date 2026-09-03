@@ -1,0 +1,45 @@
+{
+  "_comentario": "Perfil del cliente MAGA+. Todo lo especifico de este cliente vive aca; el codigo (nucleo/bots) no cambia entre clientes. Para sumar otra farmacia: copiar esta carpeta a clientes/<otro>/ y editar estos valores.",
+
+  "cliente": "MAGA+",
+
+  "carpeta_drive_destino": "H:\\Mi unidad\\Extractos MAGA+",
+  "_ayuda_carpeta": "Ruta LOCAL donde Google Drive Escritorio sincroniza la carpeta 'Extractos MAGA+'. Confirmar la letra de unidad (G:, H:, etc.).",
+
+  "timeout_segundos": 45,
+  "modo_visible": false,
+  "incluir_hoy": true,
+  "backfill_dias_primera_vez": 0,
+
+  "bancos": {
+    "galicia": {
+      "activo": true,
+      "empresas_excluir": [],
+      "solo_estas_empresas": [],
+      "solo_empresa_activa": false,
+      "nombre_archivo": "cuit",
+      "prefijo_archivo": "",
+      "_ayuda": "Galicia identifica la farmacia por el CUIT que trae el propio CSV -> se deja el nombre original del archivo (nombre_archivo=cuit)."
+    },
+    "comafi": {
+      "activo": false,
+      "empresas_excluir": [],
+      "solo_estas_empresas": [],
+      "solo_empresa_activa": false,
+      "nombre_archivo": "empresa",
+      "prefijo_archivo": "Comafi",
+      "_ayuda": "Comafi identifica la farmacia por el NOMBRE del archivo -> se renombra como Comafi_<Empresa>_<DD-MM>.csv (nombre_archivo=empresa). Poner activo=true cuando se afinen los selectores (TODO COMAFI)."
+    },
+    "santander": {
+      "activo": false,
+      "empresas_excluir": [],
+      "solo_estas_empresas": [],
+      "solo_empresa_activa": false,
+      "nombre_archivo": "cuit",
+      "prefijo_archivo": "Santander",
+      "_ayuda": "No empezado. Poner activo=true cuando exista el adaptador."
+    }
+  },
+
+  "_ayuda_modos_de_prueba": "Para probar: en el banco que quieras, poner 'solo_empresa_activa': true (baja solo la que aparece abierta al entrar) o 'solo_estas_empresas': ['Nombre Tal Cual'] (baja solo esas). Vacio + solo_empresa_activa false = PRODUCCION (todas)."
+}
