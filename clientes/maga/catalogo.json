@@ -1,6 +1,8 @@
 {
   "_comentario": "CATALOGO del cliente: el vocabulario con el que se cargan los movimientos. Es POR CLIENTE: otra empresa puede tener otros tipos, otros bancos y otras unidades. El codigo no conoce estos valores; los lee de aca.",
 
+  "_modelo_divisible": "divisible=true significa que se puede pagar UNA PARTE. A una drogueria le podes transferir 250M de los 500M que le debes; un CHEQUE en cambio es todo o nada (o lo cubris o rebota), y un sueldo tampoco se paga por mitades. Esto permite que el consejo sea preciso: en vez de patear el pago entero, difiere solo lo que falta.",
+
   "_modelo_flexibilidad": "En vez de un si/no, cada tipo tiene 'dias_tolerancia' (cuantos dias se puede patear sin consecuencia: 0 = no se mueve) y 'consecuencia' (que pasa si no se paga). Asi el simulador puede decir 'esto lo podes correr 3 dias' en vez de tratar todo como blanco o negro.",
 
   "unidades": {
@@ -50,14 +52,14 @@
       { "id": "HONORARIO",           "nombre": "Honorarios",              "categoria": "personal",   "dias_tolerancia": 0, "consecuencia": "contractual",
         "_nota": "En la planilla real hay UN solo valor 'HONORARIO' (34 movimientos). Thomas distingue dos clases: los FIJOS se pagan junto con los sueldos (tolerancia 0) y los VARIABLES se pueden patear hasta 5 dias. Por ahora se toma el criterio conservador (0). PENDIENTE: separarlos, o en el desplegable, o deduciendolos del concepto." },
 
-      { "id": "RETIRO_SOCIO",        "nombre": "Retiro de socios",        "categoria": "socios",     "dias_tolerancia": 999, "consecuencia": "ninguna",
+      { "id": "RETIRO_SOCIO",        "nombre": "Retiro de socios",        "categoria": "socios",     "dias_tolerancia": 999, "consecuencia": "ninguna", "divisible": true,
         "_nota": "La variable de ajuste por excelencia: es lo primero que se posterga." },
 
-      { "id": "EFECTIVO_VARIOS",     "nombre": "Efectivo varios",         "categoria": "varios",     "dias_tolerancia": 7, "consecuencia": "ninguna" },
+      { "id": "EFECTIVO_VARIOS",     "nombre": "Efectivo varios",         "categoria": "varios",     "dias_tolerancia": 7, "consecuencia": "ninguna", "divisible": true },
 
-      { "id": "PAGO_DROGUE_TRANSF",  "nombre": "Pago a drogueria (transferencia)", "categoria": "proveedores", "dias_tolerancia": 15, "consecuencia": "comercial",
+      { "id": "PAGO_DROGUE_TRANSF",  "nombre": "Pago a drogueria (transferencia)", "categoria": "proveedores", "dias_tolerancia": 15, "consecuencia": "comercial", "divisible": true,
         "_nota": "Esta es la 'jugada' que se simula: cuanto le puedo transferir sin comprometer lo rigido." },
-      { "id": "PAGO",                "nombre": "Pago a proveedores",      "categoria": "proveedores", "dias_tolerancia": 15, "consecuencia": "comercial" },
+      { "id": "PAGO",                "nombre": "Pago a proveedores",      "categoria": "proveedores", "dias_tolerancia": 15, "consecuencia": "comercial", "divisible": true },
 
       { "id": "TRANSFERENCIA",       "nombre": "Transferencia interna",   "categoria": "interno", "interno": true, "consecuencia": "ninguna",
         "_nota": "MOVIMIENTO INTERNO (confirmado por Thomas): plata que se mueve entre cuentas propias o entre MAGA y Speedmed. NO es un gasto: no sale del grupo. El simulador NO lo cuenta como egreso; si lo contara, mostraria MENOS plata de la que realmente hay." },
@@ -81,11 +83,18 @@
         "contiene": ["FINANCIERA"],
         "nombre": "Pago a financiera",
         "categoria": "financiero",
-        "dias_tolerancia": 0,
+        "dias_tolerancia": 3,
         "consecuencia": "financiera",
-        "_PENDIENTE": "Confirmar con Thomas si el pago semanal a la financiera se puede correr algunos dias."
+        "_nota": "Confirmado por Thomas: el pago semanal a la financiera se puede correr 1 a 3 dias. NO es rigido como la cuota de prestamo."
       }
     ]
+  },
+
+  "orden_de_pateo": {
+    "_ayuda": "Cuando falta plata un dia, en que orden se proponen los pagos a postergar. Sale de como decide Thomas: PRIMERO las droguerias, y dentro de eso el que MAS DIAS aguanta, sin importar el monto.",
+    "prioridad_por_tipo": ["PAGO_DROGUE_TRANSF", "PAGO", "RETIRO_SOCIO", "EFECTIVO_VARIOS", "COMISION", "HONORARIO"],
+    "criterio_secundario": "mas_tolerancia_primero",
+    "_regla_dura": "Solo se puede proponer mover un pago si su tolerancia alcanza para pasar el dia critico: fecha + dias_tolerancia >= dia_critico. Si no, moverlo no sirve."
   },
 
   "estados": {
