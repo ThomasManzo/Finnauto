@@ -28,28 +28,14 @@ BASE_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_REPO not in sys.path:
     sys.path.insert(0, BASE_REPO)
 
-from simulador.semana import cargar_contrato, cheques_ventana, meta_de, _rigido, _m
+from simulador.semana import (cargar_contrato, cheques_ventana, meta_de, _rigido,
+                              _m, cargar_catalogo)
 
 
-# ----------------------------------------------------------------- catálogo
-def cargar_catalogo_completo(cliente):
-    ruta = os.path.join(BASE_REPO, "clientes", cliente, "catalogo.json")
-    with open(ruta, "r", encoding="utf-8") as f:
-        cat = json.load(f)
-    tipos = {}
-    for t in cat.get("tipos", {}).get("valores", []):
-        tipos[t["id"]] = {"nombre": t.get("nombre", t["id"]),
-                          "tolerancia": t.get("dias_tolerancia"),
-                          "interno": bool(t.get("interno")),
-                          "divisible": bool(t.get("divisible")),
-                          "consecuencia": t.get("consecuencia", "")}
-    exc = []
-    for r in cat.get("excepciones_por_concepto", {}).get("reglas", []):
-        exc.append({"contiene": [c.upper() for c in r.get("contiene", [])],
-                    "nombre": r.get("nombre"), "tolerancia": r.get("dias_tolerancia"),
-                    "consecuencia": r.get("consecuencia", "")})
-    orden = cat.get("orden_de_pateo", {}).get("prioridad_por_tipo", [])
-    return {"tipos": tipos, "excepciones": exc, "prioridad": orden}
+# NOTA: el catalogo se carga en UN SOLO lugar (simulador/semana.py). Antes habia
+# un cargador duplicado aca y quedo desactualizado: el consejo llego a proponer
+# postergar impuestos y sueldos porque no leia bien las tolerancias. Un solo
+# cargador = un solo lugar donde puede estar mal.
 
 
 # ----------------------------------------------------------------- datos
@@ -249,7 +235,7 @@ def main():
     desde = datetime.date.fromisoformat(args.desde) if args.desde else datetime.date.today()
     hasta = desde + datetime.timedelta(days=args.dias)
 
-    cat = cargar_catalogo_completo(args.cliente)
+    cat = cargar_catalogo(args.cliente)
     contrato = cargar_contrato(args.contrato)
     ch, _ = cheques_ventana(args.cheques, desde, hasta)
 

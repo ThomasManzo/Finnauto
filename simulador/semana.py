@@ -54,6 +54,7 @@ def cargar_catalogo(cliente):
             "nombre": t.get("nombre", t["id"]),
             "tolerancia": t.get("dias_tolerancia"),
             "interno": bool(t.get("interno")),
+            "divisible": bool(t.get("divisible")),
             "consecuencia": t.get("consecuencia", ""),
         }
     exc = []
@@ -66,7 +67,9 @@ def cargar_catalogo(cliente):
             "interno": bool(r.get("interno")),
             "tiene_tolerancia": ("dias_tolerancia" in r),
         })
-    return {"tipos": tipos, "excepciones": exc}
+    # Orden con el que el cliente decide que patear cuando falta plata.
+    prioridad = cat.get("orden_de_pateo", {}).get("prioridad_por_tipo", [])
+    return {"tipos": tipos, "excepciones": exc, "prioridad": prioridad}
 
 
 def meta_de(mov, cat):
