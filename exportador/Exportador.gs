@@ -58,11 +58,69 @@ var EXP_TIPOS = {
 /* ================================================================ */
 /*  MENÚ                                                            */
 /* ================================================================ */
-function onOpen() {
+/**
+ * OJO: NO se llama onOpen() a propósito.
+ * El proyecto del Cash YA tiene un onOpen() (el de Calculadora/Cobranzas) y si
+ * hubiera dos, uno pisaría al otro y se rompería el menú existente.
+ *
+ * Si algún día querés el menú de finauto en la planilla, agregá esta línea
+ * DENTRO del onOpen() que ya existe en Calculadora.gs:
+ *      agregarMenuFinauto();
+ * Mientras tanto, las funciones se corren desde el editor de Apps Script.
+ */
+function agregarMenuFinauto() {
   SpreadsheetApp.getUi().createMenu('finauto')
     .addItem('Exportar contrato (JSON)', 'exportarContrato')
     .addItem('Ver resumen (sin escribir)', 'previsualizarContrato')
     .addToUi();
+}
+
+/**
+ * PREVISUALIZAR EN EL LOG — la forma más segura de probar.
+ * No escribe NADA en ningún lado: solo lee y deja el resultado en
+ * "Registro de ejecución" del editor de Apps Script.
+ *
+ * Cómo correrla: en el editor, elegí 'previsualizarEnLog' en el desplegable
+ * de funciones y apretá ▶ Ejecutar. Después mirá "Registro de ejecución".
+ */
+function previsualizarEnLog() {
+  var p = _construirPayload_();
+
+  Logger.log('===== CONTRATO finauto — PREVISUALIZACIÓN (no se escribió nada) =====');
+  Logger.log('Cliente: %s', p.cliente);
+  Logger.log('Caja hoy: %s', p.caja_hoy);
+  Logger.log('Movimientos leídos: %s', p.movimientos.length);
+  Logger.log('Saldos leídos: %s', p.saldos.length);
+
+  // Cuántos movimientos por tipo (para ver si el catálogo cubre todo)
+  var porTipo = {}, porEstado = {}, sinCat = 0;
+  p.movimientos.forEach(function (m) {
+    porTipo[m.tipo || '(vacío)'] = (porTipo[m.tipo || '(vacío)'] || 0) + 1;
+    porEstado[m.estado || '(vacío)'] = (porEstado[m.estado || '(vacío)'] || 0) + 1;
+    if (m.categoria === 'sin_categoria') sinCat++;
+  });
+  Logger.log('--- Por TIPO ---');
+  Object.keys(porTipo).sort().forEach(function (t) { Logger.log('   %s: %s', t, porTipo[t]); });
+  Logger.log('--- Por ESTADO ---');
+  Object.keys(porEstado).sort().forEach(function (e) { Logger.log('   %s: %s', e, porEstado[e]); });
+  Logger.log('Movimientos sin categoría en el catálogo: %s', sinCat);
+
+  // Primeras 3 filas, para confirmar que se leyeron bien las columnas
+  Logger.log('--- Muestra (3 primeras filas) ---');
+  p.movimientos.slice(0, 3).forEach(function (m) {
+    Logger.log('   %s | %s | %s | %s | %s', m.fecha, m.unidad, m.banco, m.tipo, m.importe);
+  });
+
+  // Bancos encontrados en la grilla SALDOS
+  var bancos = {};
+  p.saldos.forEach(function (s) { bancos[s.banco] = (bancos[s.banco] || 0) + 1; });
+  Logger.log('--- SALDOS por banco ---');
+  Object.keys(bancos).forEach(function (b) { Logger.log('   %s: %s farmacias', b, bancos[b]); });
+
+  Logger.log('--- AVISOS ---');
+  if (p.avisos.length) { p.avisos.forEach(function (a) { Logger.log('   ⚠ %s', a); }); }
+  else { Logger.log('   (ninguno)'); }
+  Logger.log('===== FIN =====');
 }
 
 /* ================================================================ */
