@@ -57,7 +57,12 @@
 
       { "id": "PAGO_DROGUE_TRANSF",  "nombre": "Pago a drogueria (transferencia)", "categoria": "proveedores", "dias_tolerancia": 15, "consecuencia": "comercial",
         "_nota": "Esta es la 'jugada' que se simula: cuanto le puedo transferir sin comprometer lo rigido." },
-      { "id": "PAGO",                "nombre": "Pago a proveedores",      "categoria": "proveedores", "dias_tolerancia": 15, "consecuencia": "comercial" }
+      { "id": "PAGO",                "nombre": "Pago a proveedores",      "categoria": "proveedores", "dias_tolerancia": 15, "consecuencia": "comercial" },
+
+      { "id": "TRANSFERENCIA",       "nombre": "Transferencia interna",   "categoria": "interno", "interno": true, "consecuencia": "ninguna",
+        "_nota": "MOVIMIENTO INTERNO (confirmado por Thomas): plata que se mueve entre cuentas propias o entre MAGA y Speedmed. NO es un gasto: no sale del grupo. El simulador NO lo cuenta como egreso; si lo contara, mostraria MENOS plata de la que realmente hay." },
+      { "id": "DEPOSITO",            "nombre": "Deposito de efectivo",    "categoria": "interno", "interno": true, "consecuencia": "ninguna",
+        "_nota": "MOVIMIENTO INTERNO: se deposita el efectivo sobrante en el banco. Cambia la plata de lugar (caja -> banco), no la gasta." }
     ]
   },
 
