@@ -666,18 +666,21 @@ function _logDrog_(titulo, filas) {
   filas = filas || [];
   Logger.log('--- %s: %s registros ---', titulo, filas.length);
   if (!filas.length) return;
+  // OJO: el Logger de Apps Script NO soporta formatos tipo '%-10s' (los imprime
+  // literales). Solo %s / %d. Por eso acá se arma el texto con concatenación.
   var porEstado = {}, inter = 0, porC = {};
   filas.forEach(function (x) {
     if (x.intercompany) { inter += x.importe; return; }   // aparte: no es con terceros
     porEstado[x.estado] = (porEstado[x.estado] || 0) + x.importe;
-    porC[x.contraparte] = (porC[x.contraparte] || 0) + x.importe;
+    var k = x.estado + ' | ' + x.contraparte;
+    porC[k] = (porC[k] || 0) + x.importe;
   });
   Object.keys(porEstado).sort().forEach(function (e) {
-    Logger.log('   %-10s (terceros): %s', e, Math.round(porEstado[e]));
+    Logger.log('   TOTAL ' + e + ' (terceros): ' + Math.round(porEstado[e]));
   });
-  if (inter) Logger.log('   INTERCOMPANY        : %s  (saldo, no se suma)', Math.round(inter));
-  Object.keys(porC).sort().forEach(function (c) {
-    Logger.log('   · %s: %s', c, Math.round(porC[c]));
+  if (inter) Logger.log('   INTERCOMPANY (saldo, no se suma): ' + Math.round(inter));
+  Object.keys(porC).sort().forEach(function (k) {
+    Logger.log('   · ' + k + ': ' + Math.round(porC[k]));
   });
 }
 
