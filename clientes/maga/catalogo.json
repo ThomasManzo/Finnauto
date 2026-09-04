@@ -121,6 +121,16 @@
     ]
   },
 
+  "entidades_propias": {
+    "_ayuda": "Empresas, locales y sociedades DEL PROPIO GRUPO. Si un pago nombra a alguna de estas, casi seguro es un movimiento INTERNO (la plata no sale del grupo) y no un gasto. La auditoria lo usa para detectar internos que quedaron sin marcar. Es dato del cliente: otra empresa pone los suyos.",
+    "valores": [
+      "SPEEDMED", "MAGA+",
+      "FARMACIA DOMINICO", "AMERICANA", "NUEVA ESQUINA", "CRUCESITA",
+      "MAGA II", "BERNAL", "NUEVA ERA", "VARELA", "MALY", "TU FARMACIA",
+      "MORENO", "SARANDI", "DEL ESTE", "ROTONDA"
+    ]
+  },
+
   "orden_de_pateo": {
     "_ayuda": "Cuando falta plata un dia, en que orden se proponen los pagos a postergar. Sale de como decide Thomas: PRIMERO las droguerias, y dentro de eso el que MAS DIAS aguanta, sin importar el monto.",
     "prioridad_por_tipo": ["PAGO_DROGUE_TRANSF", "PAGO", "RETIRO_SOCIO", "EFECTIVO_VARIOS", "COMISION", "HONORARIO"],
