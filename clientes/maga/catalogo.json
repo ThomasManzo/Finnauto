@@ -86,6 +86,37 @@
         "dias_tolerancia": 3,
         "consecuencia": "financiera",
         "_nota": "Confirmado por Thomas: el pago semanal a la financiera se puede correr 1 a 3 dias. NO es rigido como la cuota de prestamo."
+      },
+      {
+        "contiene": ["SPEEDMED", "FARMACIA DOMINICO", "MAGA+"],
+        "nombre": "Movimiento interno (entre empresas del grupo)",
+        "categoria": "interno",
+        "interno": true,
+        "_nota": "CONFIRMADO por Thomas: dentro del tipo PAGO habia ~458 millones de transferencias entre empresas del grupo (Speedmed, Farmacia Dominico). NO son gastos: la plata no sale del grupo. Contarlas como egreso hacia que el simulador mostrara MENOS plata de la que hay. Si aparecen otras farmacias del grupo como contraparte, agregarlas a esta lista."
+      },
+      {
+        "contiene": ["BIENES PERSONALES", "IMP.AFIP", "IMP AFIP", "SICORE", "ARBA", "INGRESOS BRUTOS"],
+        "nombre": "Impuestos",
+        "categoria": "impuestos",
+        "dias_tolerancia": 0,
+        "consecuencia": "fiscal",
+        "_nota": "Venian cargados como PAGO pero son impuestos: se pagan si o si. OJO: esta regla va ANTES que la de servicios, porque hay conceptos tipo 'Pago de servicios (IMP.AFIP - Quilmes)' que en realidad son impuestos."
+      },
+      {
+        "contiene": ["SINDICATO", "HABERES"],
+        "nombre": "Sueldos y cargas",
+        "categoria": "personal",
+        "dias_tolerancia": 0,
+        "consecuencia": "laboral",
+        "_nota": "El pago al sindicato es parte de los sueldos (confirmado por Thomas)."
+      },
+      {
+        "contiene": ["SERVICIO"],
+        "nombre": "Servicios",
+        "categoria": "fijo",
+        "dias_tolerancia": 0,
+        "consecuencia": "corte_servicio",
+        "_nota": "Venian como PAGO pero son servicios (suelen ser debito automatico)."
       }
     ]
   },

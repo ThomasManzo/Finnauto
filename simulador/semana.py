@@ -63,6 +63,8 @@ def cargar_catalogo(cliente):
             "nombre": r.get("nombre"),
             "tolerancia": r.get("dias_tolerancia"),
             "consecuencia": r.get("consecuencia", ""),
+            "interno": bool(r.get("interno")),
+            "tiene_tolerancia": ("dias_tolerancia" in r),
         })
     return {"tipos": tipos, "excepciones": exc}
 
@@ -79,8 +81,12 @@ def meta_de(mov, cat):
         for r in cat["excepciones"]:
             if any(p in concepto for p in r["contiene"]):
                 meta["nombre"] = r["nombre"] or meta["nombre"]
-                meta["tolerancia"] = r["tolerancia"]
+                if r.get("tiene_tolerancia"):
+                    meta["tolerancia"] = r["tolerancia"]
                 meta["consecuencia"] = r["consecuencia"] or meta["consecuencia"]
+                if r.get("interno"):
+                    meta["interno"] = True      # no es gasto: no sale del grupo
+                    meta["divisible"] = False
                 meta["excepcion"] = True
                 break
     return meta
