@@ -68,6 +68,12 @@
     ]
   },
 
+  "_confirmado_ok": [
+    "COMISIONES dentro de SUELDO: van con sueldos (rigido). La auditoria las marca pero esta bien asi.",
+    "ALQUILER QUINTANA: es el alquiler de una oficina en Quintana -> concepto ALQUILER. Nada que ver con SUELDO_QUINTANA.",
+    "PAGO DE SERVICIOS: se trata como SERVICIO (la regla de impuestos va antes, asi 'PAGO DE SERVICIOS (IMP.AFIP)' cae en impuestos)."
+  ],
+
   "excepciones_por_concepto": {
     "_ayuda": "EL TIPO NO SIEMPRE ALCANZA. Bajo un mismo TIPO puede haber cosas con flexibilidad muy distinta: en MAGA, bajo 'RETIRO_SOCIO' conviven el retiro real de los socios (se puede postergar) con la CUOTA DE UN PRESTAMO (no se puede). Estas reglas miran el CONCEPTO y pisan la tolerancia del tipo. Se evaluan en orden: la primera que matchea gana.",
     "reglas": [
@@ -86,6 +92,13 @@
         "dias_tolerancia": 3,
         "consecuencia": "financiera",
         "_nota": "Confirmado por Thomas: el pago semanal a la financiera se puede correr 1 a 3 dias. NO es rigido como la cuota de prestamo."
+      },
+      {
+        "contiene": ["TRANSFERENCIA A TERCEROS"],
+        "nombre": "Transferencia interna",
+        "categoria": "interno",
+        "interno": true,
+        "_nota": "Confirmado por Thomas: 'transferencia a terceros' suele ser INTERNO. Son ~155 millones que aparecian cargados a veces como SERVICIO y a veces como TRANSFERENCIA. OJO: la excepcion seria una transferencia a una DROGUERIA (Thomas no cree que pase); si algun dia aparece, hay que sacarla de esta regla."
       },
       {
         "contiene": ["SPEEDMED", "FARMACIA DOMINICO", "MAGA+"],
