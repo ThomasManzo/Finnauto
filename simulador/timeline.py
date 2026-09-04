@@ -28,12 +28,12 @@ if BASE_REPO not in sys.path:
     sys.path.insert(0, BASE_REPO)
 
 from simulador.semana import (cargar_catalogo, cargar_contrato, _rigido,
-                              cheques_ventana, _m)
+                              cheques_ventana, _m, meta_de)
 
 DIAS_ES = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"]
 
 
-def armar_dias(contrato, tipos, cheques, desde, hasta):
+def armar_dias(contrato, cat, cheques, desde, hasta):
     """Arma un diccionario fecha -> {fijo, variable, rigido, flexible, detalle}."""
     dias = defaultdict(lambda: {"fijo": 0.0, "variable": 0.0, "rigido": 0.0,
                                 "flexible": 0.0, "detalle": []})
@@ -44,14 +44,13 @@ def armar_dias(contrato, tipos, cheques, desde, hasta):
         f = m.get("fecha")
         if not f or f < d or f > h:
             continue
-        tipo = m.get("tipo") or ""
-        meta = tipos.get(tipo, {"nombre": tipo, "tolerancia": None, "interno": False})
+        meta = meta_de(m, cat)
         if meta.get("interno"):
             continue                      # no entra ni sale: no mueve la caja
         imp = float(m.get("importe") or 0)
         clave = "rigido" if _rigido(meta) else "flexible"
         dias[f][clave] += imp
-        dias[f]["detalle"].append(("-", meta.get("nombre", tipo), imp, clave))
+        dias[f]["detalle"].append(("-", meta.get("nombre", ""), imp, clave))
 
     # Cheques del banco (siempre rígidos)
     for c in cheques:
@@ -149,11 +148,11 @@ def main():
     hasta = (datetime.date.fromisoformat(args.hasta) if args.hasta
              else desde + datetime.timedelta(days=args.dias))
 
-    tipos = cargar_catalogo(args.cliente)
+    cat = cargar_catalogo(args.cliente)
     contrato = cargar_contrato(args.contrato)
     cheques, _ = cheques_ventana(args.cheques, desde, hasta)
 
-    dias = armar_dias(contrato, tipos, cheques, desde, hasta)
+    dias = armar_dias(contrato, cat, cheques, desde, hasta)
     imprimir(dias, float(contrato.get("caja_hoy") or 0), desde, hasta,
              args.minimo, args.detalle)
 

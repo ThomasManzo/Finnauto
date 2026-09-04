@@ -66,6 +66,28 @@
     ]
   },
 
+  "excepciones_por_concepto": {
+    "_ayuda": "EL TIPO NO SIEMPRE ALCANZA. Bajo un mismo TIPO puede haber cosas con flexibilidad muy distinta: en MAGA, bajo 'RETIRO_SOCIO' conviven el retiro real de los socios (se puede postergar) con la CUOTA DE UN PRESTAMO (no se puede). Estas reglas miran el CONCEPTO y pisan la tolerancia del tipo. Se evaluan en orden: la primera que matchea gana.",
+    "reglas": [
+      {
+        "contiene": ["PRESTAMO", "CUOTA"],
+        "nombre": "Cuota de prestamo",
+        "categoria": "financiero",
+        "dias_tolerancia": 0,
+        "consecuencia": "financiera",
+        "_nota": "Se carga como RETIRO_SOCIO pero es la cuota de un prestamo que se tomo para adelantar ganancias a los socios. NO se puede patear."
+      },
+      {
+        "contiene": ["FINANCIERA"],
+        "nombre": "Pago a financiera",
+        "categoria": "financiero",
+        "dias_tolerancia": 0,
+        "consecuencia": "financiera",
+        "_PENDIENTE": "Confirmar con Thomas si el pago semanal a la financiera se puede correr algunos dias."
+      }
+    ]
+  },
+
   "estados": {
     "_ayuda": "Valor de la columna ESTADO de MOVIMIENTOS.",
     "valores": [

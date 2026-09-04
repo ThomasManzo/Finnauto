@@ -38,6 +38,13 @@ if BASE_REPO not in sys.path:
 
 # ------------------------------------------------------------------ catálogo
 def cargar_catalogo(cliente):
+    """Devuelve {'tipos': {...}, 'excepciones': [...]}.
+
+    Las EXCEPCIONES miran el concepto y pisan la tolerancia del tipo: bajo un
+    mismo TIPO puede haber cosas muy distintas (ej. 'RETIRO_SOCIO' incluye tanto
+    el retiro discrecional de los socios como la CUOTA DE UN PRÉSTAMO, que no se
+    puede patear). Sin esto, el consejo sale mal.
+    """
     ruta = os.path.join(BASE_REPO, "clientes", cliente, "catalogo.json")
     with open(ruta, "r", encoding="utf-8") as f:
         cat = json.load(f)
@@ -49,7 +56,34 @@ def cargar_catalogo(cliente):
             "interno": bool(t.get("interno")),
             "consecuencia": t.get("consecuencia", ""),
         }
-    return tipos
+    exc = []
+    for r in cat.get("excepciones_por_concepto", {}).get("reglas", []):
+        exc.append({
+            "contiene": [c.upper() for c in r.get("contiene", [])],
+            "nombre": r.get("nombre"),
+            "tolerancia": r.get("dias_tolerancia"),
+            "consecuencia": r.get("consecuencia", ""),
+        })
+    return {"tipos": tipos, "excepciones": exc}
+
+
+def meta_de(mov, cat):
+    """Clasifica un movimiento: primero por TIPO, y si alguna excepción matchea
+    el CONCEPTO, esa pisa la tolerancia y el nombre."""
+    tipo = mov.get("tipo") or ""
+    base = cat["tipos"].get(tipo, {"nombre": tipo or "(sin tipo)", "tolerancia": None,
+                                   "interno": False, "consecuencia": "?"})
+    meta = dict(base)
+    concepto = (mov.get("concepto") or "").upper()
+    if concepto:
+        for r in cat["excepciones"]:
+            if any(p in concepto for p in r["contiene"]):
+                meta["nombre"] = r["nombre"] or meta["nombre"]
+                meta["tolerancia"] = r["tolerancia"]
+                meta["consecuencia"] = r["consecuencia"] or meta["consecuencia"]
+                meta["excepcion"] = True
+                break
+    return meta
 
 
 def _rigido(meta):
@@ -62,7 +96,7 @@ def cargar_contrato(ruta):
         return json.load(f)
 
 
-def egresos_ventana(contrato, tipos, desde, hasta):
+def egresos_ventana(contrato, cat, desde, hasta):
     d, h = desde.isoformat(), hasta.isoformat()
     rigidos, flexibles, internos = [], [], []
     for m in contrato.get("movimientos", []):
@@ -70,8 +104,7 @@ def egresos_ventana(contrato, tipos, desde, hasta):
         if not f or f < d or f > h:
             continue
         tipo = m.get("tipo") or ""
-        meta = tipos.get(tipo, {"nombre": tipo or "(sin tipo)", "tolerancia": None,
-                               "interno": False, "consecuencia": "?"})
+        meta = meta_de(m, cat)
         item = {"fecha": f, "tipo": tipo, "nombre": meta["nombre"],
                 "importe": float(m.get("importe") or 0),
                 "tolerancia": meta["tolerancia"], "consecuencia": meta["consecuencia"]}
@@ -264,10 +297,10 @@ def main():
     desde = datetime.date.fromisoformat(args.desde) if args.desde else datetime.date.today()
     hasta = desde + datetime.timedelta(days=args.dias)
 
-    tipos = cargar_catalogo(args.cliente)
+    cat = cargar_catalogo(args.cliente)
     contrato = cargar_contrato(args.contrato)
 
-    rigidos, flexibles, int_eg = egresos_ventana(contrato, tipos, desde, hasta)
+    rigidos, flexibles, int_eg = egresos_ventana(contrato, cat, desde, hasta)
     fijos, variables, int_in = cobros_ventana(contrato, desde, hasta)
     ch, _ = cheques_ventana(args.cheques, desde, hasta)
     rigidos += ch
