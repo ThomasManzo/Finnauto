@@ -106,7 +106,7 @@ def imprimir(dias, caja, desde, hasta, minimo, detalle=False):
         if bajo:
             dias_rojos.append((f, cons))
 
-        marca = "  🔴" if bajo else ("  🟡" if cons < (minimo or 0) * 1.5 and minimo else "")
+        marca = "  <-- BAJO MINIMO" if bajo else ("  <-- ajustado" if minimo and cons < (minimo or 0) * 1.5 else "")
         etiqueta = "%s %s" % (DIAS_ES[f.weekday()], f.strftime("%d/%m"))
         movido = (entra_f or entra_v or sale)
         print("  %-11s %16s %16s %18s %18s%s" % (
@@ -125,11 +125,11 @@ def imprimir(dias, caja, desde, hasta, minimo, detalle=False):
         peor_dia.strftime("%d/%m/%Y"), _m(peor_cons)))
 
     if dias_rojos:
-        print("\n  🔴 ATENCIÓN: %d día(s) por debajo de la caja mínima:" % len(dias_rojos))
+        print("\n  [!] ATENCION: %d día(s) por debajo de la caja mínima:" % len(dias_rojos))
         for f2, v in dias_rojos[:10]:
             print("       %s  ->  %s" % (f2.strftime("%d/%m/%Y"), _m(v)))
     else:
-        print("\n  🟢 Ningún día queda por debajo de la caja mínima en el período.")
+        print("\n  [OK] Ningun dia queda por debajo de la caja mínima en el período.")
 
 
 def main():
