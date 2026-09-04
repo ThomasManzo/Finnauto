@@ -76,17 +76,80 @@ def sin_concepto(movs, hall):
 
 
 def cajon_de_sastre(movs, cat, hall):
-    """Un tipo con muchisimos conceptos distintos suele estar sirviendo de bolsa
-    para cosas que en realidad son otra cosa (nos paso con PAGO)."""
+    """Detecta un tipo que esta sirviendo de bolsa para cosas de OTRO tipo.
+
+    Contar conceptos distintos no sirve: SUELDO tiene 93 conceptos distintos y
+    esta perfecto (son nombres de empleados). La senal util es otra: que los
+    conceptos de un tipo NOMBREN a otro tipo del catalogo. Si adentro de 'PAGO'
+    hay conceptos que dicen "servicios", "impuesto" o "haberes", ese tipo se esta
+    usando como cajon de sastre.
+
+    Es generico: los nombres a buscar salen del catalogo del cliente.
+    """
+    # Vocabulario: para cada tipo, las palabras que lo delatan (su id y su nombre).
+    # DOS cuidados para no llenar de falsos positivos:
+    #  1) Solo palabras UNICAS de un tipo. "SUELDO" esta en SUELDO y en
+    #     SUELDO_QUINTANA, asi que no distingue nada -> se descarta.
+    #  2) Match por PALABRA COMPLETA, no por substring: si no, "PERSONALES" de
+    #     "BIENES PERSONALES" matchea con "PERSONAL" de "Comisiones al personal".
+    bruto = {}
+    for tid, meta in cat["tipos"].items():
+        palabras = set()
+        for txt in (tid, meta.get("nombre", "")):
+            for w in _norm(txt).replace("_", " ").split():
+                # Palabras demasiado genericas: aparecen en cualquier concepto y
+                # no distinguen nada (ej "PERSONAL" esta en "Comisiones al
+                # personal" pero tambien en "BIENES PERSONALES" y en "PRESTAMO
+                # PERSONAL", que no tienen nada que ver).
+                if len(w) >= 5 and w not in GENERICAS:
+                    palabras.add(w)
+        bruto[tid] = palabras
+
+    veces = Counter(w for ps in bruto.values() for w in ps)
+    vocab = {t: {w for w in ps if veces[w] == 1} for t, ps in bruto.items()}
+    vocab = {t: ps for t, ps in vocab.items() if ps}
+
+    def _palabras(texto):
+        out = set()
+        for w in texto.replace("_", " ").replace("(", " ").replace(")", " ").replace(",", " ").replace("-", " ").split():
+            out.add(w)
+            if w.endswith("ES") and len(w) > 5:
+                out.add(w[:-2])      # PERSONALES -> PERSONAL
+            if w.endswith("S") and len(w) > 4:
+                out.add(w[:-1])      # SERVICIOS -> SERVICIO
+        return out
+
     por_tipo = defaultdict(list)
     for m in movs:
         por_tipo[m.get("tipo") or "(vacio)"].append(m)
+
     for t, items in sorted(por_tipo.items()):
-        conceptos = set(_norm(m.get("concepto"))[:40] for m in items if m.get("concepto"))
-        if len(items) >= 20 and len(conceptos) >= 15:
-            hall.append((REVISAR, "Tipo posiblemente usado como cajon de sastre",
-                         "'%s': %d movimientos con %d conceptos distintos. Conviene revisar si adentro "
-                         "hay cosas que en realidad son de otro tipo." % (t, len(items), len(conceptos))))
+        intrusos = defaultdict(lambda: [0, 0.0, []])
+        for m in items:
+            c = _norm(m.get("concepto"))
+            if not c:
+                continue
+            pal_c = _palabras(c)
+            for otro, palabras in vocab.items():
+                if otro == t:
+                    continue
+                if palabras & pal_c:
+                    imp = float(m.get("importe") or 0)
+                    intrusos[otro][0] += 1
+                    intrusos[otro][1] += imp
+                    if len(intrusos[otro][2]) < 2:
+                        intrusos[otro][2].append("'%s'" % c[:34])
+                    break
+        for otro, (n, imp, ej) in sorted(intrusos.items(), key=lambda kv: -kv[1][1]):
+            if n >= 3:
+                hall.append((REVISAR, "Tipo usado como cajon de sastre",
+                             "Dentro de '%s' hay %d movimientos (%s) cuyo concepto habla de '%s'. "
+                             "Ej: %s" % (t, n, _m(imp), otro, ", ".join(ej))))
+
+
+# Palabras demasiado comunes como para identificar un tipo (ver cajon_de_sastre).
+GENERICAS = {"PAGOS", "OTROS", "VARIOS", "PERSONAL", "PERSONALES", "SOCIALES",
+             "TRANSFERENCIA", "TRANSFERENCIAS", "PROVEEDORES", "DIARIA", "TOTAL"}
 
 
 # Palabras que indican que el concepto describe un GASTO. Si aparecen, el nombre
