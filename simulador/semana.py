@@ -115,18 +115,24 @@ def cheques_ventana(ruta_csv, desde, hasta):
 
 
 def deuda_resumen(contrato):
-    """Cuánto le debemos a cada droguería (terceros), vencido vs a vencer."""
-    venc, fut, por_c = 0.0, 0.0, defaultdict(float)
+    """Deuda VIVA con droguerías (terceros).
+
+    OJO: en el bloque de deuda, una fecha PASADA significa que ese pago YA SE HIZO.
+    Así que la deuda que todavía hay que pagar es solo la que está PENDIENTE.
+    Las NCR vienen con signo invertido (restan), así que la suma ya las contempla.
+    """
+    pendiente, pagado, por_c = 0.0, 0.0, defaultdict(float)
     for d in contrato.get("deuda_droguerias", []):
         if d.get("intercompany"):
             continue
         imp = float(d.get("importe") or 0)
+        est = d.get("estado")
+        if est in ("PAGADO",):
+            pagado += imp
+            continue
+        pendiente += imp
         por_c[d.get("contraparte", "?")] += imp
-        if d.get("estado") == "VENCIDO":
-            venc += imp
-        else:
-            fut += imp
-    return venc, fut, dict(por_c)
+    return pendiente, pagado, dict(por_c)
 
 
 # ------------------------------------------------------------------ cálculo
@@ -236,13 +242,14 @@ def imprimir(res, rigidos, flexibles, fijos, variables, internos, desde, hasta, 
     print("     sin depender de ingresos variables:       %20s" % _m(max(0, res["margen_seguro"])))
     print("     si además pateás todo lo flexible:        %20s" % _m(max(0, res["margen_max"])))
 
-    venc, fut, por_c = deuda
+    pendiente, pagado, por_c = deuda
     if por_c:
-        print("\n  ── A QUIÉN LE DEBÉS (droguerías, terceros) ─────────────────")
+        print("\n  ── DEUDA VIVA CON DROGUERÍAS (lo que falta pagar) ──────────")
         for c, v in sorted(por_c.items(), key=lambda kv: -kv[1]):
-            print("     %-32s %20s" % (c, _m(v)))
-        print("     %-32s %20s" % ("vencido", _m(venc)))
-        print("     %-32s %20s" % ("a vencer", _m(fut)))
+            etiqueta = c + ("  (nota de crédito, resta)" if v < 0 else "")
+            print("     %-42s %20s" % (etiqueta[:42], _m(v)))
+        print("     %-42s %20s" % ("TOTAL PENDIENTE", _m(pendiente)))
+        print("     (ya pagado en el período: %s)" % _m(pagado))
 
 
 def main():

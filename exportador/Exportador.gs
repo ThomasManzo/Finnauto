@@ -102,6 +102,28 @@ var EXP_FILAS_DERIVADAS = ['SALDO', 'SALDO INICIO', 'SALDO CIERRE', 'POSICION BA
 // Además: cualquier fila que empiece con estos prefijos se considera derivada.
 var EXP_PREFIJOS_DERIVADOS = ['CON PAGO', 'SALDO ', 'TOTAL ', 'SUBTOTAL'];
 
+/**
+ * FILAS DE SALDO: no son eventos, es UN saldo que se repite en cada columna-fecha
+ * (ej. la deuda intercompany con MAGA+, que arrastra el mismo número día tras día).
+ * NO se suman: se toma solamente el ÚLTIMO valor, que es el saldo vigente.
+ */
+var EXP_FILAS_SALDO = ['MAGA+', 'MAGA', 'SPEEDMED'];
+
+/**
+ * FILAS DE CRÉDITO: restan en vez de sumar. Las notas de crédito bajan la deuda,
+ * pero en la planilla están cargadas en POSITIVO -> hay que invertirlas.
+ */
+var EXP_PREFIJOS_CREDITO = ['NCR', 'NOTA DE CREDITO'];
+
+function _esFilaSaldo_(etq) { return EXP_FILAS_SALDO.indexOf(etq) > -1; }
+
+function _esCredito_(etq) {
+  for (var i = 0; i < EXP_PREFIJOS_CREDITO.length; i++) {
+    if (etq.indexOf(EXP_PREFIJOS_CREDITO[i]) === 0) return true;
+  }
+  return false;
+}
+
 function _esFilaDerivada_(etiquetaNorm) {
   if (EXP_FILAS_DERIVADAS.indexOf(etiquetaNorm) > -1) return true;
   for (var i = 0; i < EXP_PREFIJOS_DERIVADOS.length; i++) {
@@ -530,10 +552,15 @@ function _leerBloquesDroguerias_(ss, avisos) {
       if (f) cols.push({ c: c2, fecha: f });
     }
 
+    // NOS DEBEN: si la fecha ya pasó y el monto sigue ahí, es que NO cobramos -> VENCIDO.
     cobrar = cobrar.concat(_filasDeBloque_(grid, cols, 'COBRANZA DROGUERIA',
-      ['DEUDA DROGUERIA'], unidad, sh.getName(), hoy));
+      ['DEUDA DROGUERIA'], unidad, sh.getName(), hoy,
+      { pasado: 'VENCIDO', futuro: 'A_VENCER' }));
+
+    // LES DEBEMOS: si la fecha ya pasó, ese pago YA SE HIZO -> PAGADO (no es deuda viva).
     deuda = deuda.concat(_filasDeBloque_(grid, cols, 'DEUDA DROGUERIA',
-      ['COBRANZA DROGUERIA'], unidad, sh.getName(), hoy));
+      ['COBRANZA DROGUERIA'], unidad, sh.getName(), hoy,
+      { pasado: 'PAGADO', futuro: 'PENDIENTE' }));
   }
   if (!cobrar.length && !deuda.length) {
     avisos.push('No encontré los bloques "Cobranza Droguería" / "Deuda Droguería" en los cashflow.');
@@ -541,8 +568,10 @@ function _leerBloquesDroguerias_(ss, avisos) {
   return { cuentas_a_cobrar_droguerias: cobrar, deuda_droguerias: deuda };
 }
 
-/** Lee las filas de un bloque etiquetado, hasta otra etiqueta o 3 filas vacías. */
-function _filasDeBloque_(grid, cols, etiquetaInicio, etiquetasFin, unidad, hoja, hoy) {
+/** Lee las filas de un bloque etiquetado, hasta otra etiqueta o 3 filas vacías.
+ *  etiquetasEstado = {pasado: '...', futuro: '...'} porque el significado de una
+ *  fecha pasada cambia según el bloque (ver comentario más abajo). */
+function _filasDeBloque_(grid, cols, etiquetaInicio, etiquetasFin, unidad, hoja, hoy, etiquetasEstado) {
   var out = [], inicio = -1;
   for (var r = 0; r < grid.length; r++) {
     if (_norm_(grid[r][0]) === etiquetaInicio) { inicio = r; break; }
@@ -565,22 +594,36 @@ function _filasDeBloque_(grid, cols, etiquetaInicio, etiquetasFin, unidad, hoja,
     // repiten un saldo en cada columna. Sumarlas da cifras absurdas -> se saltean.
     if (_esFilaDerivada_(etqNorm)) continue;
 
-    // Deuda entre empresas del grupo (Speedmed <-> MAGA+): se marca aparte porque
-    // no es deuda con un tercero, es intercompany.
     var esIntercompany = (etqNorm === 'MAGA+' || etqNorm === 'MAGA' || etqNorm === 'SPEEDMED');
+    var esSaldo = _esFilaSaldo_(etqNorm);   // arrastra el mismo saldo día a día
+    var signo = _esCredito_(etqNorm) ? -1 : 1;  // las NCR restan
 
+    var deLaFila = [];
     for (var k = 0; k < cols.length; k++) {
       var v = _num_(grid[rr][cols[k].c]);
       if (!v) continue;
-      out.push({
+      deLaFila.push({
         fecha: cols[k].fecha,
         contraparte: etiqueta,
-        importe: v,
+        importe: v * signo,
         unidad: unidad,
         intercompany: esIntercompany,
-        estado: (cols[k].fecha < hoy) ? 'VENCIDO' : 'A_VENCER',
+        es_saldo: esSaldo,
+        es_credito: (signo < 0),
+        // OJO: el significado de la fecha CAMBIA según el bloque.
+        //  · Nos deben (cobranza): fecha pasada = todavía no cobramos -> VENCIDO
+        //  · Les debemos (deuda) : fecha pasada = ya se pagó         -> PAGADO
+        estado: (cols[k].fecha < hoy) ? etiquetasEstado.pasado : etiquetasEstado.futuro,
         origen: hoja
       });
+    }
+
+    // Si es una fila de saldo, no se suma: vale solo el último valor.
+    if (esSaldo && deLaFila.length) {
+      deLaFila.sort(function (a, b) { return a.fecha < b.fecha ? -1 : 1; });
+      out.push(deLaFila[deLaFila.length - 1]);
+    } else {
+      out = out.concat(deLaFila);
     }
   }
   return out;
@@ -623,16 +666,16 @@ function _logDrog_(titulo, filas) {
   filas = filas || [];
   Logger.log('--- %s: %s registros ---', titulo, filas.length);
   if (!filas.length) return;
-  var venc = 0, futuro = 0, inter = 0, porC = {};
+  var porEstado = {}, inter = 0, porC = {};
   filas.forEach(function (x) {
-    if (x.intercompany) { inter += x.importe; }
-    else if (x.estado === 'VENCIDO') { venc += x.importe; }
-    else { futuro += x.importe; }
+    if (x.intercompany) { inter += x.importe; return; }   // aparte: no es con terceros
+    porEstado[x.estado] = (porEstado[x.estado] || 0) + x.importe;
     porC[x.contraparte] = (porC[x.contraparte] || 0) + x.importe;
   });
-  Logger.log('   VENCIDO (terceros) : %s', Math.round(venc));
-  Logger.log('   A VENCER (terceros): %s', Math.round(futuro));
-  if (inter) Logger.log('   INTERCOMPANY       : %s  (no es deuda con terceros)', Math.round(inter));
+  Object.keys(porEstado).sort().forEach(function (e) {
+    Logger.log('   %-10s (terceros): %s', e, Math.round(porEstado[e]));
+  });
+  if (inter) Logger.log('   INTERCOMPANY        : %s  (saldo, no se suma)', Math.round(inter));
   Object.keys(porC).sort().forEach(function (c) {
     Logger.log('   · %s: %s', c, Math.round(porC[c]));
   });
