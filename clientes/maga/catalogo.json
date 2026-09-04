@@ -45,8 +45,10 @@
       { "id": "COMISION",            "nombre": "Comisiones al personal",  "categoria": "personal",   "dias_tolerancia": 3, "consecuencia": "interna",
         "_nota": "OJO: NO son comisiones bancarias. Son comisiones en EFECTIVO que se le pagan a encargados y farmaceuticos. Se pueden mover 1/2/3 dias." },
 
-      { "id": "HONORARIO",           "nombre": "Honorarios",              "categoria": "fijo",       "dias_tolerancia": 5, "consecuencia": "contractual",
-        "_PENDIENTE": "Confirmar con Thomas cuantos dias se puede patear." },
+      { "id": "HONORARIO_FIJO",      "nombre": "Honorarios fijos",        "categoria": "personal",   "dias_tolerancia": 0, "consecuencia": "contractual",
+        "_nota": "Se pagan practicamente junto con los sueldos -> se comportan como sueldo." },
+      { "id": "HONORARIO_VAR",       "nombre": "Honorarios variables",    "categoria": "fijo",       "dias_tolerancia": 5, "consecuencia": "contractual",
+        "_nota": "Se pueden patear 5 dias como maximo." },
 
       { "id": "RETIRO_SOCIO",        "nombre": "Retiro de socios",        "categoria": "socios",     "dias_tolerancia": 999, "consecuencia": "ninguna",
         "_nota": "La variable de ajuste por excelencia: es lo primero que se posterga." },
@@ -71,6 +73,9 @@
   "ingresos": {
     "_ayuda": "Modelo de ingresos POR UNIDAD. La distincion FIJO/VARIABLE es la que usa el simulador: el escenario conservador solo cuenta los FIJOS.",
 
+    "_ayuda_efecto": "OJO - CLAVE: no todo lo que parece ingreso es PLATA EN LA CAJA. Cada fuente tiene un 'efecto': 'caja' = entra plata al banco y sube el saldo; 'cartera' = entra un CHEQUE, que recien se vuelve caja en su fecha de cobro; 'menos_deuda' = no entra un peso, baja lo que debemos. El simulador solo puede usar para pagar lo que tiene efecto 'caja' en la fecha.",
+
+
     "MAGA": {
       "_rubro": "farmacia",
       "fuentes": [
@@ -91,16 +96,22 @@
           "_nota": "Lo unico verdaderamente fijo de la drogueria: el cheque ya esta en la mano con fecha. HOY SE CARGA A MANO -> deberia ser automatico (son ingresos)." },
         { "id": "CTAS_COBRAR_FCIAS", "nombre": "Cuentas a cobrar - farmacias clientes", "naturaleza": "VARIABLE", "carga": "semi-automatica",
           "_nota": "Se carga cliente, fecha de vto y monto. Si el estado pasa a PAGADO desaparece de cuentas a cobrar. Si transfieren, suma al saldo del dia siguiente; si pagan en cheque, va a CARTERA_CH. Origen: listado que se baja de RAL todos los lunes y se cruza con BUSCARV (manual). El bot de Cobranzas es el que pasa a PAGADO leyendo los PDF de una carpeta." },
-        { "id": "COBRANZA_DROGUERIAS", "nombre": "Cobranza a droguerias", "naturaleza": "VARIABLE", "carga": "manual",
-          "_nota": "Cada drogueria que debe tiene su linea (DDS, SUIZO, COFALOZA...). Suelen pagar en CHEQUE o COMPENSAR: si DDS debe 200 y nosotros le debemos 100, se compensan y el saldo de 100 viene en cheque. La COMPENSACION hay que modelarla: no es un cobro puro." }
+        { "id": "COBRANZA_DROGUERIAS", "nombre": "Cobranza a droguerias", "naturaleza": "VARIABLE", "carga": "manual", "efecto": "cartera",
+          "_nota": "Cada drogueria que debe tiene su linea (DDS, SUIZO, COFALOZA...). TODAS las droguerias pagan en CHEQUE -> el cobro entra a CARTERA_CH, no a la caja. Se vuelve caja recien en la fecha de cobro del cheque." },
+
+        { "id": "COMPENSACION", "nombre": "Compensacion con drogueria", "naturaleza": "VARIABLE", "carga": "manual", "efecto": "menos_deuda",
+          "_nota": "NO es un cobro: es un neteo. Si DDS nos debe 200 y nosotros le debemos 100, se compensan: BAJA DIRECTAMENTE LA DEUDA (vencida o a vencer) y el saldo a favor viene en cheque. No entra plata a la caja por la parte compensada." },
+
+        { "id": "NCR", "nombre": "Notas de credito", "naturaleza": "VARIABLE", "carga": "manual", "efecto": "menos_deuda",
+          "_nota": "Se cuentan como ingreso pero NO van dentro de 'ingresos estimados': son un tipo de ingreso APARTE. Se debitan directamente de la deuda que tengamos con las droguerias. Las obras sociales tambien pagan una parte en NCR." }
       ]
     }
   },
 
   "_PENDIENTES": [
-    "HONORARIO: confirmar dias de tolerancia.",
-    "PAMI: modelar el calendario real de pagos por quincena cruzada.",
-    "Notas de credito (NCR): definir si se modelan como ingreso o como menor deuda.",
-    "Compensacion con droguerias: modelar como neteo, no como cobro."
+    "PAMI: por ahora queda CARGA MANUAL (Thomas tiene dudas sobre el calendario real de quincenas cruzadas). No modelar todavia.",
+    "Venta diaria: automatizar la proyeccion (mes anterior +/- % interanual) requiere el historico de ventas por farmacia; hoy es manual.",
+    "Cartera de CH: hoy se carga a mano y deberia ser automatica (son ingresos con fecha cierta).",
+    "Cuentas a cobrar FCIAS: el cruce con el listado de RAL (hoy BUSCARV manual todos los lunes) deberia ser automatico. RAL solo funciona dentro de la red, pero el CRUCE si se puede automatizar."
   ]
 }
