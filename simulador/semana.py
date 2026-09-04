@@ -2,18 +2,23 @@
 """
 simulador.semana — el escenario de caja a N días, con datos REALES.
 
-Esta es la punta final de la cadena:
+Punta final de la cadena:
 
     Cash (planilla)  --Exportador.gs-->  contrato.json  --+
                                                           +--> ESTE MODULO --> el escenario
     Banco (listado)  --ingestas/cheques.py--> cheques  ---+
 
-Reglas que aplica (salen del catálogo del cliente, no están hardcodeadas):
-  · Los movimientos INTERNOS (transferencias entre cuentas propias, depósitos de
-    efectivo) NO son egresos: la plata no sale, solo cambia de lugar.
-  · Los egresos se parten en RÍGIDOS (dias_tolerancia = 0: sueldos, cheques,
-    impuestos, alquileres...) y FLEXIBLES (se pueden patear N días).
+Reglas (salen del catálogo del cliente, no están hardcodeadas):
+  · INTERNOS (transferencias entre cuentas propias, depósitos de efectivo) NO
+    cuentan: la plata no entra ni sale, solo cambia de lugar.
+  · Egresos: RÍGIDOS (dias_tolerancia = 0: sueldos, cheques, impuestos...) vs
+    FLEXIBLES (se pueden patear N días).
+  · Ingresos: FIJOS (entran sí o sí) vs VARIABLES (pueden no entrar ese día).
   · Los CHEQUES son el rígido más duro: si no se cubren, la empresa va al BCRA.
+
+Dos escenarios:
+  · CONSERVADOR  = solo con los ingresos FIJOS. Es el que manda para decidir.
+  · OPTIMISTA    = contando también los VARIABLES.
 
 Uso:
     python simulador/semana.py --contrato ruta.json --cheques listado.csv --dias 7
@@ -43,24 +48,21 @@ def cargar_catalogo(cliente):
             "tolerancia": t.get("dias_tolerancia"),
             "interno": bool(t.get("interno")),
             "consecuencia": t.get("consecuencia", ""),
-            "categoria": t.get("categoria", ""),
         }
     return tipos
 
 
-def _es_rigido(meta):
-    """Rígido = no se puede mover ni un día."""
-    return (meta.get("tolerancia") == 0)
+def _rigido(meta):
+    return meta.get("tolerancia") == 0
 
 
-# ------------------------------------------------------------------ datos
+# ------------------------------------------------------------------ lectura
 def cargar_contrato(ruta):
     with open(ruta, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
 def egresos_ventana(contrato, tipos, desde, hasta):
-    """Movimientos de egreso en la ventana, ya clasificados y sin los internos."""
     d, h = desde.isoformat(), hasta.isoformat()
     rigidos, flexibles, internos = [], [], []
     for m in contrato.get("movimientos", []):
@@ -69,54 +71,85 @@ def egresos_ventana(contrato, tipos, desde, hasta):
             continue
         tipo = m.get("tipo") or ""
         meta = tipos.get(tipo, {"nombre": tipo or "(sin tipo)", "tolerancia": None,
-                                "interno": False, "consecuencia": "?", "categoria": "?"})
-        item = {
-            "fecha": f, "tipo": tipo, "nombre": meta["nombre"],
-            "importe": float(m.get("importe") or 0),
-            "unidad": m.get("unidad", ""), "banco": m.get("banco", ""),
-            "estado": m.get("estado", ""), "tolerancia": meta["tolerancia"],
-            "consecuencia": meta["consecuencia"],
-        }
+                               "interno": False, "consecuencia": "?"})
+        item = {"fecha": f, "tipo": tipo, "nombre": meta["nombre"],
+                "importe": float(m.get("importe") or 0),
+                "tolerancia": meta["tolerancia"], "consecuencia": meta["consecuencia"]}
         if meta["interno"]:
             internos.append(item)
-        elif _es_rigido(meta):
+        elif _rigido(meta):
             rigidos.append(item)
         else:
             flexibles.append(item)
     return rigidos, flexibles, internos
 
 
+def cobros_ventana(contrato, desde, hasta):
+    """Ingresos previstos, separados en FIJOS / VARIABLES (los internos se descartan)."""
+    d, h = desde.isoformat(), hasta.isoformat()
+    fijos, variables, internos = [], [], []
+    for c in contrato.get("cobros_previstos", []):
+        f = c.get("fecha")
+        if not f or f < d or f > h:
+            continue
+        item = {"fecha": f, "concepto": c.get("concepto", ""), "unidad": c.get("unidad", ""),
+                "importe": float(c.get("importe") or 0), "naturaleza": c.get("naturaleza")}
+        if c.get("interno"):
+            internos.append(item)
+        elif c.get("naturaleza") == "FIJO":
+            fijos.append(item)
+        else:
+            variables.append(item)
+    return fijos, variables, internos
+
+
 def cheques_ventana(ruta_csv, desde, hasta):
-    """Cheques del listado del banco que vencen en la ventana (siempre rígidos)."""
     if not ruta_csv:
         return [], None
     from ingestas.cheques import parse_galicia, proximos
     obl, resumen = parse_galicia(ruta_csv)
     prox = proximos(obl, desde.isoformat(), hasta.isoformat())
-    items = [{
-        "fecha": o["fecha_vencimiento"], "tipo": "CHEQUE", "nombre": "Cheque a pagar",
-        "importe": o["importe"], "unidad": o.get("unidad", ""), "banco": o.get("banco", ""),
-        "estado": o.get("estado_banco", ""), "tolerancia": 0, "consecuencia": "BCRA",
-    } for o in prox]
+    items = [{"fecha": o["fecha_vencimiento"], "tipo": "CHEQUE", "nombre": "Cheque a pagar",
+              "importe": o["importe"], "tolerancia": 0, "consecuencia": "BCRA"} for o in prox]
     return items, resumen
 
 
+def deuda_resumen(contrato):
+    """Cuánto le debemos a cada droguería (terceros), vencido vs a vencer."""
+    venc, fut, por_c = 0.0, 0.0, defaultdict(float)
+    for d in contrato.get("deuda_droguerias", []):
+        if d.get("intercompany"):
+            continue
+        imp = float(d.get("importe") or 0)
+        por_c[d.get("contraparte", "?")] += imp
+        if d.get("estado") == "VENCIDO":
+            venc += imp
+        else:
+            fut += imp
+    return venc, fut, dict(por_c)
+
+
 # ------------------------------------------------------------------ cálculo
-def calcular(caja, rigidos, flexibles):
-    tot_rig = sum(i["importe"] for i in rigidos)
-    tot_flex = sum(i["importe"] for i in flexibles)
+def calcular(caja, rigidos, flexibles, fijos, variables):
+    t_rig = sum(i["importe"] for i in rigidos)
+    t_flex = sum(i["importe"] for i in flexibles)
+    t_fijo = sum(i["importe"] for i in fijos)
+    t_var = sum(i["importe"] for i in variables)
     return {
-        "caja": caja,
-        "rigido": tot_rig,
-        "flexible": tot_flex,
-        "tras_rigidos": caja - tot_rig,          # lo que queda después de lo intocable
-        "tras_todo": caja - tot_rig - tot_flex,  # si además pagás todo lo flexible
-        "margen": caja - tot_rig,                # máximo disponible para maniobrar
+        "caja": caja, "rigido": t_rig, "flexible": t_flex,
+        "fijo": t_fijo, "variable": t_var,
+        # Escenarios (después de pagar TODO lo de la semana)
+        "conservador": caja + t_fijo - t_rig - t_flex,
+        "optimista": caja + t_fijo + t_var - t_rig - t_flex,
+        # Margen para una jugada nueva, cubriendo lo de la semana
+        "margen_seguro": caja + t_fijo - t_rig - t_flex,
+        "margen_optimista": caja + t_fijo + t_var - t_rig - t_flex,
+        # Si solo cubrimos lo intocable y pateamos todo lo flexible
+        "margen_max": caja + t_fijo - t_rig,
     }
 
 
 def sugerir_pateo(flexibles, faltante):
-    """Si falta plata, propone qué patear: primero lo de mayor tolerancia."""
     if faltante <= 0:
         return []
     orden = sorted(flexibles, key=lambda i: (-(i["tolerancia"] or 0), -i["importe"]))
@@ -131,62 +164,94 @@ def sugerir_pateo(flexibles, faltante):
 
 # ------------------------------------------------------------------ salida
 def _m(x):
-    return "$" + format(round(x, 2), ",.2f")
+    signo = "-" if x < 0 else ""
+    return signo + "$" + format(abs(round(x, 2)), ",.2f")
 
 
-def imprimir(res, rigidos, flexibles, internos, desde, hasta, resumen_ch):
-    print("=" * 68)
-    print("  ESCENARIO DE CAJA  ·  %s a %s" % (desde.strftime("%d/%m"), hasta.strftime("%d/%m/%Y")))
-    print("=" * 68)
-    print("\n  Caja hoy (bancos + efectivo)            %18s" % _m(res["caja"]))
-
-    print("\n  ── LO RÍGIDO (no se puede mover) ──────────────────────────")
-    for nombre, tot, n in _agrupar(rigidos):
-        print("     %-30s %3d  %18s" % (nombre, n, _m(tot)))
-    print("     %-30s %3s  %18s" % ("TOTAL RÍGIDO", "", _m(res["rigido"])))
-
-    print("\n  ── LO FLEXIBLE (se puede patear) ──────────────────────────")
-    for nombre, tot, n in _agrupar(flexibles):
-        tol = next((i["tolerancia"] for i in flexibles if i["nombre"] == nombre), None)
-        print("     %-30s %3d  %18s   (hasta %s días)" % (nombre, n, _m(tot), tol))
-    print("     %-30s %3s  %18s" % ("TOTAL FLEXIBLE", "", _m(res["flexible"])))
-
-    if internos:
-        tot_int = sum(i["importe"] for i in internos)
-        print("\n  ── INTERNOS (NO son gasto: la plata no sale) ──────────────")
-        print("     %-30s %3d  %18s   ← excluidos" % ("Movimientos internos", len(internos), _m(tot_int)))
-
-    print("\n" + "-" * 68)
-    print("  Después de pagar LO RÍGIDO              %18s" % _m(res["tras_rigidos"]))
-    print("  Después de pagar TODO                   %18s" % _m(res["tras_todo"]))
-    print("-" * 68)
-
-    print("\n  >> MÁXIMO QUE PODÉS PAGAR A UNA DROGUERÍA")
-    print("     sin comprometer lo rígido:           %18s" % _m(max(0, res["margen"])))
-    print("\n  (OJO: todavía NO se cuentan los INGRESOS de la semana —")
-    print("   venta diaria, obras sociales, cartera de cheques —, así que")
-    print("   este es el piso: el peor escenario posible.)")
-
-    if resumen_ch:
-        print("\n  Listado de cheques: %s pendientes de %s leídos." % (
-            resumen_ch.get("pendientes"), resumen_ch.get("cheques")))
-
-
-def _agrupar(items):
+def _agrupar(items, campo="nombre"):
     agg = defaultdict(lambda: [0.0, 0])
     for i in items:
-        agg[i["nombre"]][0] += i["importe"]
-        agg[i["nombre"]][1] += 1
+        agg[i.get(campo, "?")][0] += i["importe"]
+        agg[i.get(campo, "?")][1] += 1
     return sorted([(k, v[0], v[1]) for k, v in agg.items()], key=lambda t: -t[1])
+
+
+def imprimir(res, rigidos, flexibles, fijos, variables, internos, desde, hasta, deuda):
+    L = 70
+    print("=" * L)
+    print("  ESCENARIO DE CAJA  ·  %s al %s" % (desde.strftime("%d/%m"), hasta.strftime("%d/%m/%Y")))
+    print("=" * L)
+    print("\n  Caja hoy (bancos + efectivo)              %20s" % _m(res["caja"]))
+
+    print("\n  ── INGRESOS FIJOS (entran sí o sí) ─────────────────────────")
+    for n, t, c in _agrupar(fijos, "concepto"):
+        print("     %-32s %3d %20s" % (n, c, _m(t)))
+    print("     %-32s %3s %20s" % ("TOTAL FIJOS", "", _m(res["fijo"])))
+
+    print("\n  ── INGRESOS VARIABLES (pueden no entrar) ───────────────────")
+    for n, t, c in _agrupar(variables, "concepto"):
+        print("     %-32s %3d %20s" % (n, c, _m(t)))
+    print("     %-32s %3s %20s" % ("TOTAL VARIABLES", "", _m(res["variable"])))
+
+    print("\n  ── EGRESOS RÍGIDOS (no se pueden mover) ────────────────────")
+    for n, t, c in _agrupar(rigidos):
+        print("     %-32s %3d %20s" % (n, c, _m(t)))
+    print("     %-32s %3s %20s" % ("TOTAL RÍGIDO", "", _m(res["rigido"])))
+
+    print("\n  ── EGRESOS FLEXIBLES (se pueden patear) ────────────────────")
+    for n, t, c in _agrupar(flexibles):
+        tol = next((i["tolerancia"] for i in flexibles if i["nombre"] == n), "?")
+        print("     %-32s %3d %20s  (%s días)" % (n, c, _m(t), tol))
+    print("     %-32s %3s %20s" % ("TOTAL FLEXIBLE", "", _m(res["flexible"])))
+
+    if internos:
+        print("\n  ── INTERNOS (no entran ni salen) ───────────────────────────")
+        print("     %-32s %3d %20s  ← excluidos" % ("Movimientos internos", len(internos),
+                                                    _m(sum(i["importe"] for i in internos))))
+
+    print("\n" + "=" * L)
+    print("  ESCENARIO CONSERVADOR  (solo ingresos seguros)  %18s" % _m(res["conservador"]))
+    print("  ESCENARIO OPTIMISTA    (si entra todo)          %18s" % _m(res["optimista"]))
+    print("=" * L)
+
+    # Veredicto
+    print("")
+    if res["conservador"] >= 0:
+        print("  🟢 PODÉS PAGAR TRANQUILO")
+        print("     Cubrís todo lo de la semana aunque no entre ningún ingreso variable.")
+    elif res["optimista"] >= 0:
+        print("  🟡 RIESGOSO")
+        print("     Solo cierra si entran los ingresos variables (%s)." % _m(res["variable"]))
+        print("     Si no entran, te faltan %s." % _m(-res["conservador"]))
+        plan = sugerir_pateo(flexibles, -res["conservador"])
+        if plan:
+            print("\n     ¿Qué patear? (lo de mayor tolerancia primero):")
+            for i in plan:
+                print("       · %-28s %16s  (hasta %s días)" % (i["nombre"], _m(i["importe"]), i["tolerancia"]))
+    else:
+        print("  🔴 NO ALCANZA")
+        print("     Ni con los ingresos variables cubrís la semana. Faltan %s." % _m(-res["optimista"]))
+
+    print("\n  >> MÁXIMO PARA UNA JUGADA NUEVA (pagar a una droguería)")
+    print("     sin depender de ingresos variables:       %20s" % _m(max(0, res["margen_seguro"])))
+    print("     si además pateás todo lo flexible:        %20s" % _m(max(0, res["margen_max"])))
+
+    venc, fut, por_c = deuda
+    if por_c:
+        print("\n  ── A QUIÉN LE DEBÉS (droguerías, terceros) ─────────────────")
+        for c, v in sorted(por_c.items(), key=lambda kv: -kv[1]):
+            print("     %-32s %20s" % (c, _m(v)))
+        print("     %-32s %20s" % ("vencido", _m(venc)))
+        print("     %-32s %20s" % ("a vencer", _m(fut)))
 
 
 def main():
     ap = argparse.ArgumentParser(description="Escenario de caja a N días con datos reales")
-    ap.add_argument("--contrato", required=True, help="JSON exportado del Cash")
-    ap.add_argument("--cheques", help="CSV del listado de cheques emitidos del banco")
+    ap.add_argument("--contrato", required=True)
+    ap.add_argument("--cheques")
     ap.add_argument("--cliente", default="maga")
     ap.add_argument("--dias", type=int, default=7)
-    ap.add_argument("--desde", help="AAAA-MM-DD (default: hoy)")
+    ap.add_argument("--desde")
     args = ap.parse_args()
 
     desde = datetime.date.fromisoformat(args.desde) if args.desde else datetime.date.today()
@@ -195,12 +260,14 @@ def main():
     tipos = cargar_catalogo(args.cliente)
     contrato = cargar_contrato(args.contrato)
 
-    rigidos, flexibles, internos = egresos_ventana(contrato, tipos, desde, hasta)
-    ch, resumen_ch = cheques_ventana(args.cheques, desde, hasta)
-    rigidos += ch   # los cheques son siempre rígidos
+    rigidos, flexibles, int_eg = egresos_ventana(contrato, tipos, desde, hasta)
+    fijos, variables, int_in = cobros_ventana(contrato, desde, hasta)
+    ch, _ = cheques_ventana(args.cheques, desde, hasta)
+    rigidos += ch
 
-    res = calcular(float(contrato.get("caja_hoy") or 0), rigidos, flexibles)
-    imprimir(res, rigidos, flexibles, internos, desde, hasta, resumen_ch)
+    res = calcular(float(contrato.get("caja_hoy") or 0), rigidos, flexibles, fijos, variables)
+    imprimir(res, rigidos, flexibles, fijos, variables, int_eg + int_in,
+             desde, hasta, deuda_resumen(contrato))
 
 
 if __name__ == "__main__":
