@@ -163,6 +163,10 @@ function previsualizarEnLog() {
     Logger.log('   rango de fechas: %s a %s', fechas[0], fechas[fechas.length - 1]);
   }
 
+  // Droguerías: lo que nos deben y lo que debemos (NO es caja, son derechos/obligaciones)
+  _logDrog_('CUENTAS A COBRAR A DROGUERIAS (nos deben)', p.cuentas_a_cobrar_droguerias);
+  _logDrog_('DEUDA CON DROGUERIAS (les debemos)', p.deuda_droguerias);
+
   Logger.log('--- AVISOS ---');
   if (p.avisos.length) { p.avisos.forEach(function (a) { Logger.log('   ⚠ %s', a); }); }
   else { Logger.log('   (ninguno)'); }
@@ -257,9 +261,10 @@ function _construirPayload_() {
   var saldos = _leerSaldos_(ss, avisos);
   var cajaHoy = _leerCajaHoy_(ss, avisos);
   var cobros = _leerIngresosCashflow_(ss, avisos);
+  var drog = _leerBloquesDroguerias_(ss, avisos);
 
   return {
-    contrato_version: '1.1',
+    contrato_version: '1.2',
     cliente: EXP_CONFIG.CLIENTE,
     generado: new Date().toISOString(),
     caja_hoy: cajaHoy,
@@ -267,7 +272,10 @@ function _construirPayload_() {
     catalogo_ingresos: EXP_INGRESOS,
     saldos: saldos,
     movimientos: movimientos,       // egresos (de la solapa MOVIMIENTOS)
-    cobros_previstos: cobros,       // ingresos a futuro (del bloque INGRESOS del cashflow)
+    cobros_previstos: cobros,       // ingresos a futuro (bloque INGRESOS del cashflow) -> SÍ es caja
+    // Lo de abajo NO es caja: son derechos/obligaciones. No sumar a los cobros.
+    cuentas_a_cobrar_droguerias: drog.cuentas_a_cobrar_droguerias,
+    deuda_droguerias: drog.deuda_droguerias,
     avisos: avisos
   };
 }
@@ -454,6 +462,96 @@ function _leerIngresosCashflow_(ss, avisos) {
 }
 
 /**
+ * Lee los bloques que están DEBAJO del "Saldo cierre" en los cashflow:
+ *
+ *   · Cobranza Droguería  -> lo que las droguerías NOS deben (DDS, SUIZO, COFALOZA...)
+ *   · Deuda Droguería     -> lo que NOSOTROS les debemos (+ refinanciación, NCR)
+ *
+ * OJO — REGLA IMPORTANTE (confirmada con Thomas):
+ * "Cobranza Droguería" NO es caja: es un derecho de cobro. Cuando la droguería
+ * paga, el monto DESAPARECE de ahí y aparece en Cartera de CH (o baja deuda si el
+ * cheque se endosó a otra droguería). Son estados mutuamente excluyentes, así que
+ * NO hay que sumarlo a los cobros previstos: se contaría dos veces.
+ *
+ * Un monto con fecha PASADA que sigue ahí = esa droguería todavía no pagó (vencido).
+ */
+function _leerBloquesDroguerias_(ss, avisos) {
+  var cobrar = [], deuda = [];
+  var hoy = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  var hojas = ss.getSheets();
+
+  for (var i = 0; i < hojas.length; i++) {
+    var sh = hojas[i];
+    var nom = _norm_(sh.getName());
+    if (nom.indexOf('CASH') < 0 || nom.indexOf('FLOW') < 0) continue;
+    var unidad = (nom.indexOf('SPEED') > -1) ? 'SPEEDMED' : (nom.indexOf('MAGA') > -1) ? 'MAGA' : '';
+    if (!unidad) continue;
+
+    var maxR = sh.getLastRow(), maxC = sh.getLastColumn();
+    if (maxR < 2 || maxC < 2) continue;
+    var grid = sh.getRange(1, 1, maxR, maxC).getValues();
+
+    // fila de fechas + columnas-fecha (igual que en ingresos)
+    var filaFechas = -1, mejor = 0;
+    for (var r = 0; r < Math.min(grid.length, 15); r++) {
+      var n = 0;
+      for (var c = 1; c < grid[r].length; c++) if (_fechaCol_(grid[r][c])) n++;
+      if (n > mejor) { mejor = n; filaFechas = r; }
+    }
+    if (filaFechas < 0 || mejor < 3) continue;
+    var cols = [];
+    for (var c2 = 1; c2 < grid[filaFechas].length; c2++) {
+      var f = _fechaCol_(grid[filaFechas][c2]);
+      if (f) cols.push({ c: c2, fecha: f });
+    }
+
+    cobrar = cobrar.concat(_filasDeBloque_(grid, cols, 'COBRANZA DROGUERIA',
+      ['DEUDA DROGUERIA'], unidad, sh.getName(), hoy));
+    deuda = deuda.concat(_filasDeBloque_(grid, cols, 'DEUDA DROGUERIA',
+      ['COBRANZA DROGUERIA'], unidad, sh.getName(), hoy));
+  }
+  if (!cobrar.length && !deuda.length) {
+    avisos.push('No encontré los bloques "Cobranza Droguería" / "Deuda Droguería" en los cashflow.');
+  }
+  return { cuentas_a_cobrar_droguerias: cobrar, deuda_droguerias: deuda };
+}
+
+/** Lee las filas de un bloque etiquetado, hasta otra etiqueta o 3 filas vacías. */
+function _filasDeBloque_(grid, cols, etiquetaInicio, etiquetasFin, unidad, hoja, hoy) {
+  var out = [], inicio = -1;
+  for (var r = 0; r < grid.length; r++) {
+    if (_norm_(grid[r][0]) === etiquetaInicio) { inicio = r; break; }
+  }
+  if (inicio < 0) return out;
+
+  var vacios = 0;
+  for (var rr = inicio + 1; rr < grid.length; rr++) {
+    var etiqueta = String(grid[rr][0] == null ? '' : grid[rr][0]).trim();
+    if (!etiqueta) {
+      vacios++;
+      if (vacios >= 3) break;   // se terminó el bloque
+      continue;
+    }
+    if (etiquetasFin.indexOf(_norm_(etiqueta)) > -1) break;
+    vacios = 0;
+
+    for (var k = 0; k < cols.length; k++) {
+      var v = _num_(grid[rr][cols[k].c]);
+      if (!v) continue;
+      out.push({
+        fecha: cols[k].fecha,
+        contraparte: etiqueta,
+        importe: v,
+        unidad: unidad,
+        estado: (cols[k].fecha < hoy) ? 'VENCIDO' : 'A_VENCER',
+        origen: hoja
+      });
+    }
+  }
+  return out;
+}
+
+/**
  * Encabezado de columna -> 'AAAA-MM-DD', o null si no es una fecha.
  * En el cashflow las columnas vienen como '4-9' (sin año) -> se asume el año en curso,
  * igual que hace la Calculadora.
@@ -485,6 +583,23 @@ function _leerCajaHoy_(ss, avisos) {
 /* ================================================================ */
 /*  HELPERS                                                         */
 /* ================================================================ */
+/** Resumen de un bloque de droguerías: total vencido vs a vencer, por contraparte. */
+function _logDrog_(titulo, filas) {
+  filas = filas || [];
+  Logger.log('--- %s: %s registros ---', titulo, filas.length);
+  if (!filas.length) return;
+  var venc = 0, futuro = 0, porC = {};
+  filas.forEach(function (x) {
+    if (x.estado === 'VENCIDO') venc += x.importe; else futuro += x.importe;
+    porC[x.contraparte] = (porC[x.contraparte] || 0) + x.importe;
+  });
+  Logger.log('   VENCIDO : %s', Math.round(venc));
+  Logger.log('   A VENCER: %s', Math.round(futuro));
+  Object.keys(porC).sort().forEach(function (c) {
+    Logger.log('   · %s: %s', c, Math.round(porC[c]));
+  });
+}
+
 function _norm_(v) {
   return String(v == null ? '' : v).toUpperCase()
     .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
