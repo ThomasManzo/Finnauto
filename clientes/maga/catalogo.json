@@ -18,6 +18,8 @@
       { "id": "GALICIA",   "nombre": "Galicia",   "tipo": "banco" },
       { "id": "COMAFI",    "nombre": "Comafi",    "tipo": "banco" },
       { "id": "SANTANDER", "nombre": "Santander", "tipo": "banco" },
+      { "id": "PROVINCIA", "nombre": "Banco Provincia", "tipo": "banco",
+        "_nota": "Detectado en la grilla SALDOS real (15 farmacias). No estaba en la lista inicial." },
       { "id": "EFVO",      "nombre": "Efectivo",  "tipo": "caja" }
     ]
   },
@@ -45,10 +47,8 @@
       { "id": "COMISION",            "nombre": "Comisiones al personal",  "categoria": "personal",   "dias_tolerancia": 3, "consecuencia": "interna",
         "_nota": "OJO: NO son comisiones bancarias. Son comisiones en EFECTIVO que se le pagan a encargados y farmaceuticos. Se pueden mover 1/2/3 dias." },
 
-      { "id": "HONORARIO_FIJO",      "nombre": "Honorarios fijos",        "categoria": "personal",   "dias_tolerancia": 0, "consecuencia": "contractual",
-        "_nota": "Se pagan practicamente junto con los sueldos -> se comportan como sueldo." },
-      { "id": "HONORARIO_VAR",       "nombre": "Honorarios variables",    "categoria": "fijo",       "dias_tolerancia": 5, "consecuencia": "contractual",
-        "_nota": "Se pueden patear 5 dias como maximo." },
+      { "id": "HONORARIO",           "nombre": "Honorarios",              "categoria": "personal",   "dias_tolerancia": 0, "consecuencia": "contractual",
+        "_nota": "En la planilla real hay UN solo valor 'HONORARIO' (34 movimientos). Thomas distingue dos clases: los FIJOS se pagan junto con los sueldos (tolerancia 0) y los VARIABLES se pueden patear hasta 5 dias. Por ahora se toma el criterio conservador (0). PENDIENTE: separarlos, o en el desplegable, o deduciendolos del concepto." },
 
       { "id": "RETIRO_SOCIO",        "nombre": "Retiro de socios",        "categoria": "socios",     "dias_tolerancia": 999, "consecuencia": "ninguna",
         "_nota": "La variable de ajuste por excelencia: es lo primero que se posterga." },
