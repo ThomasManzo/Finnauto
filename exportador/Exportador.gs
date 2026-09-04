@@ -79,11 +79,36 @@ var EXP_INGRESOS = {
   'EFECTIVO':               { naturaleza: 'FIJO',     unidad: 'MAGA' },
   'COBRO O.SOCIALES':       { naturaleza: 'VARIABLE', unidad: 'MAGA' },
   'COBRO O SOCIALES':       { naturaleza: 'VARIABLE', unidad: 'MAGA' },
+  'COBRO O .SOCIALES':      { naturaleza: 'VARIABLE', unidad: 'MAGA' },  // así viene escrito en la planilla
   'PAMI':                   { naturaleza: 'VARIABLE', unidad: 'MAGA' }
 };
 
 // Palabras que marcan el fin del bloque de ingresos en el cashflow.
 var EXP_FIN_INGRESOS = ['EGRESOS', 'GASTOS BANCARIOS', 'SALDO CIERRE', 'SALDO DE CIERRE'];
+
+/**
+ * FILAS DERIVADAS (regla general, confirmada con Thomas).
+ *
+ * En el cashflow hay filas que NO son movimientos sino SALDOS calculados: por
+ * ejemplo "Con pago a droguerías" = cuánto quedaría de saldo si se les pagara.
+ * Esas filas repiten un saldo en cada columna-fecha, así que NO SE SUMAN:
+ * "se toman como una sola". Si se suman a lo largo de 200 columnas, dan cifras
+ * absurdas (nos pasó: $249 mil millones).
+ *
+ * Se saltean por completo. Cualquier planilla de cliente va a tener filas así,
+ * por eso está como lista configurable y no hardcodeado en la lógica.
+ */
+var EXP_FILAS_DERIVADAS = ['SALDO', 'SALDO INICIO', 'SALDO CIERRE', 'POSICION BANCARIA', 'TOTAL'];
+// Además: cualquier fila que empiece con estos prefijos se considera derivada.
+var EXP_PREFIJOS_DERIVADOS = ['CON PAGO', 'SALDO ', 'TOTAL ', 'SUBTOTAL'];
+
+function _esFilaDerivada_(etiquetaNorm) {
+  if (EXP_FILAS_DERIVADAS.indexOf(etiquetaNorm) > -1) return true;
+  for (var i = 0; i < EXP_PREFIJOS_DERIVADOS.length; i++) {
+    if (etiquetaNorm.indexOf(EXP_PREFIJOS_DERIVADOS[i]) === 0) return true;
+  }
+  return false;
+}
 
 /* ================================================================ */
 /*  MENÚ                                                            */
@@ -532,8 +557,17 @@ function _filasDeBloque_(grid, cols, etiquetaInicio, etiquetasFin, unidad, hoja,
       if (vacios >= 3) break;   // se terminó el bloque
       continue;
     }
-    if (etiquetasFin.indexOf(_norm_(etiqueta)) > -1) break;
+    var etqNorm = _norm_(etiqueta);
+    if (etiquetasFin.indexOf(etqNorm) > -1) break;
     vacios = 0;
+
+    // Filas de SALDO calculado (ej "Con pago a droguerías"): no son movimientos,
+    // repiten un saldo en cada columna. Sumarlas da cifras absurdas -> se saltean.
+    if (_esFilaDerivada_(etqNorm)) continue;
+
+    // Deuda entre empresas del grupo (Speedmed <-> MAGA+): se marca aparte porque
+    // no es deuda con un tercero, es intercompany.
+    var esIntercompany = (etqNorm === 'MAGA+' || etqNorm === 'MAGA' || etqNorm === 'SPEEDMED');
 
     for (var k = 0; k < cols.length; k++) {
       var v = _num_(grid[rr][cols[k].c]);
@@ -543,6 +577,7 @@ function _filasDeBloque_(grid, cols, etiquetaInicio, etiquetasFin, unidad, hoja,
         contraparte: etiqueta,
         importe: v,
         unidad: unidad,
+        intercompany: esIntercompany,
         estado: (cols[k].fecha < hoy) ? 'VENCIDO' : 'A_VENCER',
         origen: hoja
       });
@@ -588,13 +623,16 @@ function _logDrog_(titulo, filas) {
   filas = filas || [];
   Logger.log('--- %s: %s registros ---', titulo, filas.length);
   if (!filas.length) return;
-  var venc = 0, futuro = 0, porC = {};
+  var venc = 0, futuro = 0, inter = 0, porC = {};
   filas.forEach(function (x) {
-    if (x.estado === 'VENCIDO') venc += x.importe; else futuro += x.importe;
+    if (x.intercompany) { inter += x.importe; }
+    else if (x.estado === 'VENCIDO') { venc += x.importe; }
+    else { futuro += x.importe; }
     porC[x.contraparte] = (porC[x.contraparte] || 0) + x.importe;
   });
-  Logger.log('   VENCIDO : %s', Math.round(venc));
-  Logger.log('   A VENCER: %s', Math.round(futuro));
+  Logger.log('   VENCIDO (terceros) : %s', Math.round(venc));
+  Logger.log('   A VENCER (terceros): %s', Math.round(futuro));
+  if (inter) Logger.log('   INTERCOMPANY       : %s  (no es deuda con terceros)', Math.round(inter));
   Object.keys(porC).sort().forEach(function (c) {
     Logger.log('   · %s: %s', c, Math.round(porC[c]));
   });
