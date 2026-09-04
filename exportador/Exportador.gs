@@ -60,6 +60,31 @@ var EXP_TIPOS = {
   'DEPOSITO':           { categoria: 'interno', intocable: false, reprogramable: true, interno: true }
 };
 
+/**
+ * INGRESOS: cómo se interpreta cada línea del bloque INGRESOS de los cashflow.
+ * 'naturaleza' es lo que usa el simulador: el escenario CONSERVADOR solo cuenta
+ * los FIJOS (lo que entra sí o sí). Los VARIABLES pueden no entrar ese día.
+ * 'interno' = no es plata nueva, solo se mueve de lugar.
+ */
+var EXP_INGRESOS = {
+  // --- Speedmed (droguería) ---
+  'CARTERA DE CH':          { naturaleza: 'FIJO',     unidad: 'SPEEDMED' },
+  'CUENTAS A COBRAR FCIAS': { naturaleza: 'VARIABLE', unidad: 'SPEEDMED' },
+  'FINANCIACION':           { naturaleza: 'VARIABLE', unidad: 'SPEEDMED' },
+  'DEPOSITO EFECTIVO':      { naturaleza: 'FIJO',     unidad: 'SPEEDMED', interno: true },
+  'TRANSF MAGA+':           { naturaleza: 'FIJO',     unidad: 'SPEEDMED', interno: true },
+  'TRANSF MAGA':            { naturaleza: 'FIJO',     unidad: 'SPEEDMED', interno: true },
+  // --- MAGA+ (farmacias) ---
+  'TARJETA Y MP':           { naturaleza: 'FIJO',     unidad: 'MAGA' },
+  'EFECTIVO':               { naturaleza: 'FIJO',     unidad: 'MAGA' },
+  'COBRO O.SOCIALES':       { naturaleza: 'VARIABLE', unidad: 'MAGA' },
+  'COBRO O SOCIALES':       { naturaleza: 'VARIABLE', unidad: 'MAGA' },
+  'PAMI':                   { naturaleza: 'VARIABLE', unidad: 'MAGA' }
+};
+
+// Palabras que marcan el fin del bloque de ingresos en el cashflow.
+var EXP_FIN_INGRESOS = ['EGRESOS', 'GASTOS BANCARIOS', 'SALDO CIERRE', 'SALDO DE CIERRE'];
+
 /* ================================================================ */
 /*  MENÚ                                                            */
 /* ================================================================ */
@@ -121,6 +146,22 @@ function previsualizarEnLog() {
   p.saldos.forEach(function (s) { bancos[s.banco] = (bancos[s.banco] || 0) + 1; });
   Logger.log('--- SALDOS por banco ---');
   Object.keys(bancos).forEach(function (b) { Logger.log('   %s: %s farmacias', b, bancos[b]); });
+
+  // INGRESOS previstos (bloque INGRESOS de los cashflow)
+  var cob = p.cobros_previstos || [];
+  Logger.log('--- COBROS PREVISTOS: %s registros ---', cob.length);
+  var porConcepto = {};
+  cob.forEach(function (x) {
+    var k = x.unidad + ' · ' + x.concepto + ' (' + x.naturaleza + ')';
+    porConcepto[k] = (porConcepto[k] || 0) + x.importe;
+  });
+  Object.keys(porConcepto).sort().forEach(function (k) {
+    Logger.log('   %s: %s', k, Math.round(porConcepto[k]));
+  });
+  if (cob.length) {
+    var fechas = cob.map(function (x) { return x.fecha; }).sort();
+    Logger.log('   rango de fechas: %s a %s', fechas[0], fechas[fechas.length - 1]);
+  }
 
   Logger.log('--- AVISOS ---');
   if (p.avisos.length) { p.avisos.forEach(function (a) { Logger.log('   ⚠ %s', a); }); }
@@ -215,15 +256,18 @@ function _construirPayload_() {
   var movimientos = _leerMovimientos_(ss, avisos);
   var saldos = _leerSaldos_(ss, avisos);
   var cajaHoy = _leerCajaHoy_(ss, avisos);
+  var cobros = _leerIngresosCashflow_(ss, avisos);
 
   return {
-    contrato_version: '1.0',
+    contrato_version: '1.1',
     cliente: EXP_CONFIG.CLIENTE,
     generado: new Date().toISOString(),
     caja_hoy: cajaHoy,
     catalogo_tipos: EXP_TIPOS,
+    catalogo_ingresos: EXP_INGRESOS,
     saldos: saldos,
-    movimientos: movimientos,
+    movimientos: movimientos,       // egresos (de la solapa MOVIMIENTOS)
+    cobros_previstos: cobros,       // ingresos a futuro (del bloque INGRESOS del cashflow)
     avisos: avisos
   };
 }
@@ -325,6 +369,105 @@ function _leerSaldos_(ss, avisos) {
     });
   }
   return out;
+}
+
+/**
+ * Lee el bloque INGRESOS de las solapas de cashflow (una por unidad de negocio).
+ *
+ * Estas solapas son una MATRIZ: cada columna es una FECHA y cada fila un concepto.
+ * Acá están los cobros PREVISTOS a futuro (lo que MOVIMIENTOS no tiene, porque
+ * esa solapa es solo de egresos).
+ *
+ * No usa números de fila fijos: busca la fila que tiene fechas y la fila que dice
+ * "INGRESOS", y lee el bloque que sigue hasta EGRESOS. Así aguanta que muevan filas.
+ * Las columnas de TOTAL mensual quedan afuera solas (no parsean como fecha).
+ */
+function _leerIngresosCashflow_(ss, avisos) {
+  var out = [], encontradas = 0;
+  var hojas = ss.getSheets();
+
+  for (var i = 0; i < hojas.length; i++) {
+    var sh = hojas[i];
+    var nom = _norm_(sh.getName());
+    if (nom.indexOf('CASH') < 0 || nom.indexOf('FLOW') < 0) continue;
+    var unidad = (nom.indexOf('SPEED') > -1) ? 'SPEEDMED'
+               : (nom.indexOf('MAGA') > -1) ? 'MAGA' : '';
+    if (!unidad) continue;
+    encontradas++;
+
+    var maxR = sh.getLastRow(), maxC = sh.getLastColumn();
+    if (maxR < 2 || maxC < 2) continue;
+    var grid = sh.getRange(1, 1, maxR, maxC).getValues();
+
+    // 1) La fila de fechas = la que más celdas-fecha tiene arriba de todo.
+    var filaFechas = -1, mejor = 0;
+    for (var r = 0; r < Math.min(grid.length, 15); r++) {
+      var n = 0;
+      for (var c = 1; c < grid[r].length; c++) if (_fechaCol_(grid[r][c])) n++;
+      if (n > mejor) { mejor = n; filaFechas = r; }
+    }
+    if (filaFechas < 0 || mejor < 3) {
+      avisos.push('En "' + sh.getName() + '" no encontré la fila de fechas.');
+      continue;
+    }
+
+    var cols = [];
+    for (var c2 = 1; c2 < grid[filaFechas].length; c2++) {
+      var f = _fechaCol_(grid[filaFechas][c2]);
+      if (f) cols.push({ c: c2, fecha: f });
+    }
+
+    // 2) La fila "INGRESOS" y el bloque que le sigue.
+    var filaIng = -1;
+    for (var r2 = 0; r2 < grid.length; r2++) {
+      if (_norm_(grid[r2][0]) === 'INGRESOS') { filaIng = r2; break; }
+    }
+    if (filaIng < 0) {
+      avisos.push('En "' + sh.getName() + '" no encontré la fila INGRESOS.');
+      continue;
+    }
+
+    for (var rr = filaIng + 1; rr < grid.length; rr++) {
+      var etiqueta = _norm_(grid[rr][0]);
+      if (EXP_FIN_INGRESOS.indexOf(etiqueta) > -1) break;   // fin del bloque
+      if (!etiqueta) continue;                              // fila separadora
+      var meta = EXP_INGRESOS[etiqueta];
+      if (!meta) avisos.push('Concepto de ingreso sin mapear en "' + sh.getName() + '": "' + grid[rr][0] + '"');
+      for (var k = 0; k < cols.length; k++) {
+        var v = _num_(grid[rr][cols[k].c]);
+        if (!v) continue;
+        out.push({
+          fecha: cols[k].fecha,
+          unidad: (meta && meta.unidad) || unidad,
+          concepto: String(grid[rr][0]).trim(),
+          importe: v,
+          naturaleza: meta ? meta.naturaleza : 'VARIABLE',
+          interno: meta ? !!meta.interno : false,
+          efecto: 'caja',
+          origen: sh.getName()
+        });
+      }
+    }
+  }
+  if (!encontradas) avisos.push('No encontré solapas de cashflow (busco nombres con "cash" y "flow").');
+  return out;
+}
+
+/**
+ * Encabezado de columna -> 'AAAA-MM-DD', o null si no es una fecha.
+ * En el cashflow las columnas vienen como '4-9' (sin año) -> se asume el año en curso,
+ * igual que hace la Calculadora.
+ */
+function _fechaCol_(v) {
+  if (v instanceof Date) return Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  var s = String(v == null ? '' : v).trim();
+  var m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})(?:[\/\-.](\d{2,4}))?$/);
+  if (!m) return null;
+  var d = parseInt(m[1], 10), mes = parseInt(m[2], 10);
+  var y = m[3] ? parseInt(m[3], 10) : (new Date()).getFullYear();
+  if (y < 100) y += 2000;
+  if (mes < 1 || mes > 12 || d < 1 || d > 31) return null;
+  return Utilities.formatDate(new Date(y, mes - 1, d), Session.getScriptTimeZone(), 'yyyy-MM-dd');
 }
 
 function _leerCajaHoy_(ss, avisos) {
