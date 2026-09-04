@@ -142,14 +142,44 @@ function exportarContrato() {
     : DriveApp.getRootFolder();
   var archivo = carpeta.createFile(blob);
 
-  SpreadsheetApp.getUi().alert(
-    '✅ Contrato exportado\n\n' +
-    'Archivo: ' + nombre + '\n' +
-    'Movimientos: ' + payload.movimientos.length + '\n' +
-    'Saldos: ' + payload.saldos.length + '\n' +
-    'Caja hoy: ' + payload.caja_hoy + '\n\n' +
-    (payload.avisos.length ? ('⚠ Avisos:\n- ' + payload.avisos.join('\n- ')) : 'Sin avisos.')
-  );
+  // OJO: el alert() solo funciona si la planilla está abierta y alguien lo acepta.
+  // Corriendo desde el editor puede quedar ESPERANDO para siempre -> por eso va
+  // dentro de try/catch y el resultado importante se escribe SIEMPRE en el log.
+  Logger.log('✅ Contrato exportado');
+  Logger.log('Archivo: %s', nombre);
+  Logger.log('URL: %s', archivo.getUrl());
+  Logger.log('Movimientos: %s | Saldos: %s | Caja hoy: %s',
+             payload.movimientos.length, payload.saldos.length, payload.caja_hoy);
+  try {
+    SpreadsheetApp.getUi().alert('✅ Contrato exportado\n\nArchivo: ' + nombre);
+  } catch (e) {
+    // Sin interfaz (corriendo desde el editor): no pasa nada, ya está en el log.
+  }
+  return archivo.getUrl();
+}
+
+/**
+ * EXPORTAR SIN NINGÚN CARTEL — la versión recomendada para correr desde el editor.
+ * Hace exactamente lo mismo pero no intenta mostrar ningún popup, así no se puede
+ * quedar esperando. El resultado queda en "Registro de ejecución".
+ */
+function exportarContratoEnLog() {
+  var payload = _construirPayload_();
+  var nombre = EXP_CONFIG.NOMBRE_SALIDA + '_' +
+    Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd_HHmm') + '.json';
+  var blob = Utilities.newBlob(JSON.stringify(payload, null, 2), 'application/json', nombre);
+  var carpeta = EXP_CONFIG.CARPETA_SALIDA_ID
+    ? DriveApp.getFolderById(EXP_CONFIG.CARPETA_SALIDA_ID)
+    : DriveApp.getRootFolder();
+  var archivo = carpeta.createFile(blob);
+
+  Logger.log('===== CONTRATO EXPORTADO =====');
+  Logger.log('Archivo : %s', nombre);
+  Logger.log('Tamaño  : %s KB', Math.round(blob.getBytes().length / 1024));
+  Logger.log('URL     : %s', archivo.getUrl());
+  Logger.log('Movimientos: %s | Saldos: %s | Caja hoy: %s',
+             payload.movimientos.length, payload.saldos.length, payload.caja_hoy);
+  Logger.log('Está en tu Drive, en "Mi unidad".');
   return archivo.getUrl();
 }
 
