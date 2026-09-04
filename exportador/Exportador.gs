@@ -52,7 +52,12 @@ var EXP_TIPOS = {
   'VEP_AFIP':           { categoria: 'impuestos',   intocable: false, reprogramable: true  },
   'EFECTIVO_VARIOS':    { categoria: 'varios',      intocable: false, reprogramable: true  },
   'PAGO_DROGUE_TRANSF': { categoria: 'proveedores', intocable: false, reprogramable: true  },
-  'PAGO':               { categoria: 'proveedores', intocable: false, reprogramable: true  }
+  'PAGO':               { categoria: 'proveedores', intocable: false, reprogramable: true  },
+
+  // INTERNOS: la plata no sale del grupo, solo cambia de lugar.
+  // NO se cuentan como egreso (si se contaran, el simulador mostraría de menos).
+  'TRANSFERENCIA':      { categoria: 'interno', intocable: false, reprogramable: true, interno: true },
+  'DEPOSITO':           { categoria: 'interno', intocable: false, reprogramable: true, interno: true }
 };
 
 /* ================================================================ */
@@ -224,6 +229,7 @@ function _leerMovimientos_(ss, avisos) {
         categoria: meta ? meta.categoria : 'sin_categoria',
         intocable: meta ? !!meta.intocable : false,
         reprogramable: meta ? !!meta.reprogramable : true,
+        interno: meta ? !!meta.interno : false,   // true = no es gasto real, solo mueve plata de lugar
         concepto: _txt_(row[ubic.col.CONCEPTO]),
         importe: importe,
         signo: 'egreso',                              // esta solapa son egresos
