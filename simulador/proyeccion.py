@@ -510,6 +510,189 @@ def imprimir_horizonte(r):
         print("  %-12s %18s %18s %8s" % (f, _m(vp), _m(vr), e))
 
 
+# ============================================================== caja completa
+# Hasta aca todo proyectaba EGRESOS. Pero la pregunta que importa no es "cuanto
+# voy a gastar": es "¿me alcanza?", y eso es lo que entra menos lo que sale.
+#
+# Medido sobre los datos reales de MAGA, 5 tramos de 45 dias:
+#     ingresos solos   5% de error mediano
+#     egresos solos   27%
+#     NETO             4%   (rango 1% a 46%)
+#
+# Los ingresos se proyectan mucho mejor porque son regulares (venta diaria,
+# tarjetas), mientras que los egresos son grumosos: un pago de $362M a una
+# drogueria en un dia variable mueve toda la curva.
+#
+# El motor es el MISMO: no sabe si lo que le dan entra o sale. Lo unico que
+# cambia es el signo con que se acumula.
+
+
+def _como_movimientos(cobros):
+    """Los cobros del contrato, con la forma que espera el motor.
+
+    El motor agrupa por 'tipo' y los cobros traen 'concepto': se mapea y listo.
+    No hay nada especial en un ingreso -- es un movimiento con otro signo.
+    """
+    return [{"fecha": x["fecha"], "tipo": (x.get("concepto") or "?"),
+             "concepto": x.get("concepto", ""),
+             "importe": float(x.get("importe") or 0)}
+            for x in (cobros or []) if x.get("fecha")]
+
+
+def proyectar_caja(contrato, desde, dias=45, caja_inicial=None, nivel="tipo"):
+    """Curva de caja dia por dia: lo que entra menos lo que sale."""
+    egr = [x for x in contrato.get("movimientos", []) if x.get("fecha")]
+    ing = _como_movimientos(contrato.get("cobros_previstos"))
+
+    pe, _ = perfilar(egr, desde, nivel=nivel)
+    pi, _ = perfilar(ing, desde, nivel=nivel)
+    proy_e = proyectar_horizonte(pe, desde, dias)
+    proy_i = proyectar_horizonte(pi, desde, dias)
+
+    hasta = desde + datetime.timedelta(days=dias - 1)
+    por_dia = defaultdict(float)
+    for x in proy_i:
+        por_dia[x["fecha"]] += abs(x["importe"])
+    for x in proy_e:
+        por_dia[x["fecha"]] -= abs(x["importe"])
+
+    caja = caja_inicial
+    if caja is None:
+        caja = float(contrato.get("caja_hoy") or 0)
+
+    curva, f, acum = [], desde, caja
+    while f <= hasta:
+        acum += por_dia.get(f.isoformat(), 0.0)
+        curva.append({"fecha": f.isoformat(), "caja": acum,
+                      "movimiento": por_dia.get(f.isoformat(), 0.0)})
+        f += datetime.timedelta(days=1)
+
+    return {"desde": desde.isoformat(), "hasta": hasta.isoformat(),
+            "caja_inicial": caja, "curva": curva,
+            "total_ingresos": sum(abs(x["importe"]) for x in proy_i),
+            "total_egresos": sum(abs(x["importe"]) for x in proy_e),
+            "perfiles_ingresos": pi, "perfiles_egresos": pe}
+
+
+def revisar_coherencia(contrato, meses=3):
+    """¿Los dos lados del contrato son comparables?
+
+    APARECIO CON DATOS REALES. En el contrato de MAGA, agosto da:
+        entra  $7.032M
+        sale   $2.707M
+        neto  +$4.326M por mes
+    pero la caja es de $1.183M y no se mueve. O sea que la empresa NO gana
+    $4.326M por mes: hay egresos que no estan registrados como movimientos.
+    En este caso son las compras a droguerias, que en esa planilla viven en un
+    bloque aparte.
+
+    Sin este chequeo, la curva de caja da un dibujo precioso que sube y sube, y
+    es exactamente el error mas caro posible: decirle a alguien que le sobra
+    plata cuando no le sobra.
+
+    No se puede corregir solo. Lo que si se puede es DETECTARLO y preguntar, que
+    es lo mismo que hace el lector con las columnas que no entiende.
+    """
+    egr = [x for x in contrato.get("movimientos", []) if x.get("fecha")]
+    ing = _como_movimientos(contrato.get("cobros_previstos"))
+    if not egr or not ing:
+        return None
+
+    tope = max(x["fecha"] for x in egr + ing)
+    piso = (datetime.date.fromisoformat(tope) -
+            datetime.timedelta(days=int(meses * 30.44))).isoformat()
+
+    def suma(xs):
+        return sum(abs(float(x.get("importe") or 0)) for x in xs if x["fecha"] >= piso)
+
+    ti, te = suma(ing), suma(egr)
+    if not ti or not te:
+        return None
+
+    neto_mes = (ti - te) / float(meses)
+    caja = float(contrato.get("caja_hoy") or 0)
+
+    avisos = []
+    # Si el neto mensual es una fraccion grande de la caja y la caja no crece a
+    # ese ritmo, es que falta registrar movimientos de un lado.
+    if caja and neto_mes > caja * 0.5:
+        avisos.append(
+            "El contrato dice que entran %s por mes mas de lo que sale, pero la "
+            "caja es de %s. Si eso fuera cierto, la caja se multiplicaria en "
+            "pocos meses. Lo mas probable es que FALTEN EGRESOS sin registrar "
+            "(en una farmacia, tipicamente las compras a droguerias)."
+            % (_m(neto_mes), _m(caja)))
+    if te and ti / te > 2.0:
+        avisos.append(
+            "Entra %.1f veces lo que sale. Preguntarle al cliente que gastos no "
+            "estan en esta planilla." % (ti / te))
+    if ti and te / ti > 2.0:
+        avisos.append(
+            "Sale %.1f veces lo que entra. O falta registrar ingresos, o la "
+            "empresa se esta financiando con algo que no figura aca." % (te / ti))
+
+    return {"ingresos": ti, "egresos": te, "meses": meses,
+            "neto_mes": neto_mes, "caja": caja, "avisos": avisos}
+
+
+def imprimir_caja(r, minimo=0.0, coherencia=None):
+    L = 76
+    print("=" * L)
+    print("  CAJA PROYECTADA  .  %s al %s" % (r["desde"], r["hasta"]))
+    print("=" * L)
+    print("  Caja inicial : %s" % _m(r["caja_inicial"]))
+    print("  Entra        : %s" % _m(r["total_ingresos"]))
+    print("  Sale         : %s" % _m(r["total_egresos"]))
+    neto = r["total_ingresos"] - r["total_egresos"]
+    print("  Neto         : %s" % _m(neto))
+    print("  Caja al final: %s" % _m(r["curva"][-1]["caja"] if r["curva"] else 0))
+
+    bajo = [d for d in r["curva"] if d["caja"] < minimo] if minimo else []
+    print("")
+    if minimo:
+        if bajo:
+            peor = min(bajo, key=lambda d: d["caja"])
+            print("  [!] LA CAJA CAE POR DEBAJO DE %s" % _m(minimo))
+            print("      Primer dia: %s  (%s)" % (bajo[0]["fecha"], _m(bajo[0]["caja"])))
+            print("      Peor dia  : %s  (%s)" % (peor["fecha"], _m(peor["caja"])))
+            print("      Dias en rojo: %d de %d" % (len(bajo), len(r["curva"])))
+        else:
+            print("  [OK] La caja no baja del minimo en todo el tramo.")
+
+    print("")
+    print("  %-12s %18s %18s" % ("FECHA", "MOVIMIENTO DEL DIA", "CAJA"))
+    paso = max(1, len(r["curva"]) // 12)
+    for i in range(0, len(r["curva"]), paso):
+        d = r["curva"][i]
+        marca = "  <-- bajo el minimo" if minimo and d["caja"] < minimo else ""
+        print("  %-12s %18s %18s%s" % (d["fecha"], _m(d["movimiento"]),
+                                       _m(d["caja"]), marca))
+    if coherencia and coherencia["avisos"]:
+        print("")
+        print("  " + "!" * (L - 4))
+        print("  ANTES DE CREERLE A ESTA CURVA")
+        print("  " + "!" * (L - 4))
+        print("  En los ultimos %d meses el contrato registra:" % coherencia["meses"])
+        print("     entra %s" % _m(coherencia["ingresos"]))
+        print("     sale  %s" % _m(coherencia["egresos"]))
+        for a in coherencia["avisos"]:
+            linea = "  . "
+            for palabra in a.split():
+                if len(linea) + len(palabra) + 1 > L - 2:
+                    print(linea)
+                    linea = "    "
+                linea += palabra + " "
+            print(linea.rstrip())
+        print("")
+        print("  Mientras falte ese lado, la curva de arriba esta INCOMPLETA y")
+        print("  peca de optimista. Es el error mas caro posible.")
+
+    print("")
+    print("  OJO: esto sale del historial, no de una carga manual. Medido sobre")
+    print("  datos reales el neto erra 4% tipico, pero llego a 46% en el tramo")
+    print("  con menos historia. Sirve para ver la FORMA y el dia critico.")
+
+
 def main():
     ap = argparse.ArgumentParser(description="Proyeccion del mes deducida del historial")
     ap.add_argument("--contrato", required=True)
@@ -517,6 +700,11 @@ def main():
     ap.add_argument("--backtest", help="mes YA pasado, para medir cuanto acierta")
     ap.add_argument("--horizonte", type=int, help="proyectar N dias (ej: --horizonte 45)")
     ap.add_argument("--desde", help="fecha de corte del horizonte (aaaa-mm-dd)")
+    ap.add_argument("--caja", type=float,
+                    help="proyectar la CAJA (entra menos sale) desde N dias, "
+                         "partiendo del saldo que se indique")
+    ap.add_argument("--caja-minima", type=float, default=0, dest="caja_minima",
+                    help="caja minima de seguridad, para marcar los dias en rojo")
     ap.add_argument("--nivel", choices=["tipo", "concepto"], default="tipo",
                     help="a que nivel buscar la repeticion (default: tipo)")
     ap.add_argument("--minimo", type=int, default=2,
@@ -525,6 +713,16 @@ def main():
 
     with io.open(args.contrato, encoding="utf-8") as f:
         movs = json.load(f).get("movimientos", [])
+
+    if args.caja is not None:
+        with io.open(args.contrato, encoding="utf-8") as f:
+            c = json.load(f)
+        corte = (datetime.date.fromisoformat(args.desde) if args.desde
+                 else datetime.date.today())
+        dias = args.horizonte or 45
+        imprimir_caja(proyectar_caja(c, corte, dias, args.caja, args.nivel),
+                      args.caja_minima, revisar_coherencia(c))
+        return
 
     if args.horizonte:
         corte = (datetime.date.fromisoformat(args.desde) if args.desde

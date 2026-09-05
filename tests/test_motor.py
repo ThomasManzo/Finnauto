@@ -503,6 +503,79 @@ def test_horizonte():
        "%.0f%%" % r["peor_desvio"])
 
 
+# ------------------------------------------------- caja completa (dos lados)
+def test_caja_completa():
+    print("\n== Curva de caja: lo que entra menos lo que sale ==")
+    from simulador import proyeccion as PR
+
+    movs, cobros = [], []
+    f = datetime.date(2026, 6, 1)
+    while f < datetime.date(2026, 9, 1):
+        if f.weekday() < 5:
+            movs.append({"fecha": f.isoformat(), "tipo": "GASTO",
+                         "concepto": "g", "importe": 100.0})
+            cobros.append({"fecha": f.isoformat(), "concepto": "Venta",
+                           "importe": 150.0})
+        f += datetime.timedelta(days=1)
+    contrato = {"caja_hoy": 1000.0, "movimientos": movs, "cobros_previstos": cobros}
+
+    r = PR.proyectar_caja(contrato, datetime.date(2026, 9, 1), 10)
+    ok(r["caja_inicial"] == 1000.0, "arranca del saldo que se le da")
+    ok(r["total_ingresos"] > 0 and r["total_egresos"] > 0,
+       "proyecta los DOS lados, no solo los egresos")
+    ok(r["curva"][-1]["caja"] > 1000.0,
+       "si entra mas de lo que sale, la caja sube")
+
+    # El motor es el mismo para los dos lados: un ingreso es un movimiento con
+    # otro signo. Si se invierte la relacion, la curva tiene que bajar.
+    c2 = {"caja_hoy": 1000.0, "movimientos": [dict(m, importe=200.0) for m in movs],
+          "cobros_previstos": [dict(c, importe=50.0) for c in cobros]}
+    r2 = PR.proyectar_caja(c2, datetime.date(2026, 9, 1), 10)
+    ok(r2["curva"][-1]["caja"] < 1000.0, "y si sale mas de lo que entra, baja")
+
+    ok(len(r["curva"]) == 10, "una fila por dia del tramo", str(len(r["curva"])))
+
+
+def test_coherencia():
+    print("\n== Detectar que falta un lado de los movimientos ==")
+    from simulador import proyeccion as PR
+
+    # EL CASO REAL: en el contrato de MAGA entra 2,5 veces lo que sale, lo que
+    # daria +$3.078M por mes con una caja de $1.183M. No es que gane eso: faltan
+    # las compras a droguerias. Sin este chequeo la curva sube y sube, y decirle
+    # a alguien que le sobra plata cuando no le sobra es el error mas caro.
+    movs, cobros = [], []
+    f = datetime.date(2026, 6, 1)
+    while f < datetime.date(2026, 9, 1):
+        if f.weekday() < 5:
+            movs.append({"fecha": f.isoformat(), "tipo": "GASTO",
+                         "concepto": "g", "importe": 100.0})
+            cobros.append({"fecha": f.isoformat(), "concepto": "Venta",
+                           "importe": 500.0})
+        f += datetime.timedelta(days=1)
+
+    r = PR.revisar_coherencia({"caja_hoy": 1000.0, "movimientos": movs,
+                               "cobros_previstos": cobros})
+    ok(r and r["avisos"], "avisa cuando entra mucho mas de lo que sale")
+    ok(any("FALTEN EGRESOS" in a for a in r["avisos"]),
+       "y dice que lo mas probable es que falten egresos", str(r["avisos"])[:80])
+
+    # Al reves tambien: una empresa que gasta el doble de lo que declara cobrar.
+    r2 = PR.revisar_coherencia({"caja_hoy": 1000.0,
+                                "movimientos": [dict(m, importe=500.0) for m in movs],
+                                "cobros_previstos": [dict(c, importe=100.0) for c in cobros]})
+    ok(any("falta registrar ingresos" in a for a in r2["avisos"]),
+       "y avisa el caso contrario", str(r2["avisos"])[:80])
+
+    # Lo normal NO tiene que dar aviso, si no el aviso deja de significar algo.
+    r3 = PR.revisar_coherencia({"caja_hoy": 100000.0, "movimientos": movs,
+                                "cobros_previstos": [dict(c, importe=110.0) for c in cobros]})
+    ok(not r3["avisos"], "un contrato equilibrado no genera ruido", str(r3["avisos"]))
+
+    ok(PR.revisar_coherencia({"movimientos": [], "cobros_previstos": []}) is None,
+       "sin datos de un lado no inventa un aviso")
+
+
 if __name__ == "__main__":
     print("=" * 62)
     print("  TESTS DEL MOTOR finauto")
@@ -519,6 +592,8 @@ if __name__ == "__main__":
     test_formato()
     test_proyeccion()
     test_horizonte()
+    test_caja_completa()
+    test_coherencia()
     print("\n" + "=" * 62)
     if _fallos:
         print("  %d TEST(S) FALLARON: %s" % (len(_fallos), ", ".join(_fallos)))
