@@ -1089,6 +1089,86 @@ def test_disponibilidad():
        "y el efectivo del grupo se avisa en vez de repartirse")
 
 
+def test_posicion_por_unidad():
+    """LA POSICION DE CADA EMPRESA, SEGUN A QUIEN LE PAGUES.
+
+    Los dos escenarios que Thomas mira todos los dias, calculados a la fecha del
+    export en vez de a una celda fija.
+
+    Y un invariante que vale para cualquier grupo: UN PAGO ENTRE DOS EMPRESAS
+    DEL MISMO GRUPO NO PUEDE CAMBIAR EL TOTAL. La plata se mueve de bolsillo,
+    no desaparece. Ese chequeo fue el que detecto que el escenario 3 estaba mal
+    calculado -- el total del grupo cambiaba -- y por eso el escenario no se
+    publica: la deuda de MAGA con Speed no esta cargada del lado de MAGA.
+    """
+    from simulador import posicion as P
+
+    hoy = "2026-09-05"
+    dentro = "2026-09-20"
+    contrato = {
+        "generado": hoy + "T00:00:00Z",
+        "caja_hoy": 1000.0,
+        "caja_por_unidad": {"MAGA": 600.0, "SPEEDMED": 400.0},
+        "cobros_previstos": [],
+        "cuentas_a_cobrar_droguerias": [],
+        "egresos_cashflow": [
+            {"fecha": dentro, "contraparte": "Sueldos", "importe": 100.0,
+             "unidad": "MAGA"},
+        ],
+        "deuda_droguerias": [
+            {"fecha": dentro, "contraparte": "SUIZO", "importe": 300.0,
+             "unidad": "MAGA"},
+            {"fecha": dentro, "contraparte": "DDS", "importe": 250.0,
+             "unidad": "SPEEDMED"},
+        ],
+    }
+
+    us, filas = P.calcular(contrato, dias=45)
+    ok(us == ["MAGA", "SPEEDMED"],
+       "las empresas salen del contrato, no estan hardcodeadas", str(us))
+    ok(len(filas) == 2, "se publican los dos escenarios que se pueden calcular")
+
+    # Escenario 1: no se paga a droguerias -> solo pesan los egresos.
+    ok(abs(filas[0]["por_unidad"]["MAGA"] - 500.0) < 0.01,
+       "sin pagar a droguerias, la deuda no resta", str(filas[0]["por_unidad"]))
+    ok(abs(filas[0]["por_unidad"]["SPEEDMED"] - 400.0) < 0.01,
+       "y cada empresa queda con lo suyo")
+
+    # Escenario 2: se paga.
+    ok(abs(filas[1]["por_unidad"]["MAGA"] - 200.0) < 0.01,
+       "pagando, la deuda resta de la empresa que la tiene")
+    ok(abs(filas[1]["por_unidad"]["SPEEDMED"] - 150.0) < 0.01,
+       "y de la otra tambien, cada una la suya")
+
+    # El salto entre los dos es lo que te financia el proveedor.
+    ok(abs((filas[0]["total"] - filas[1]["total"]) - 550.0) < 0.01,
+       "el salto entre escenarios es lo que te financian las droguerias")
+
+    # EL INVARIANTE: lo intercompany no cambia el total del grupo.
+    from simulador import disponibilidad as D
+    con_inter = dict(contrato)
+    con_inter["deuda_droguerias"] = contrato["deuda_droguerias"] + [
+        {"fecha": dentro, "contraparte": "MAGA+", "importe": 90.0,
+         "unidad": "SPEEDMED", "intercompany": True},
+        {"fecha": dentro, "contraparte": "SPEEDMED", "importe": -90.0,
+         "unidad": "MAGA", "intercompany": True},
+    ]
+    t = sum(D.puente(con_inter, dias=45, unidad=u, con_droguerias=True,
+                     con_intercompany=True)["proyectada_seguro"]
+            for u in us)
+    ok(abs(t - filas[1]["total"]) < 0.01,
+       "un pago entre empresas del grupo no cambia el total del grupo", str(t))
+
+    # Y cuando esta cargado de un solo lado, se dice cual y cuanto.
+    solo_uno = dict(contrato)
+    solo_uno["deuda_droguerias"] = contrato["deuda_droguerias"] + [
+        {"fecha": dentro, "contraparte": "MAGA+", "importe": 90.0,
+         "unidad": "SPEEDMED", "intercompany": True}]
+    f, por_u = P.diagnostico_esc3(solo_uno)
+    ok(len(f) == 1 and list(por_u) == ["SPEEDMED"],
+       "y el diagnostico dice de que lado quedo cargado")
+
+
 if __name__ == "__main__":
     print("=" * 62)
     print("  TESTS DEL MOTOR finauto")
@@ -1114,6 +1194,7 @@ if __name__ == "__main__":
     test_deuda_vencida()
     test_puentes_contraste()
     test_disponibilidad()
+    test_posicion_por_unidad()
     print("\n" + "=" * 62)
     if _fallos:
         print("  %d TEST(S) FALLARON: %s" % (len(_fallos), ", ".join(_fallos)))

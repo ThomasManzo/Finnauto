@@ -141,23 +141,43 @@ def cobros(contrato, hoy, hasta, unidad=None):
 
 
 # ------------------------------------------------------------------ salidas
-def pagos(contrato, hoy, hasta, unidad=None):
+def pagos(contrato, hoy, hasta, unidad=None,
+          con_droguerias=True, con_intercompany=False):
     """Lo que sale, separado por si se puede mover o no.
 
     Cada línea es (nombre, monto, se_puede_patear).
+
+    LOS DOS INTERRUPTORES SON LOS ESCENARIOS DE THOMAS.
+
+    Su Posición Consolidada compara tres mundos (ver docs/NEGOCIO.md §8):
+
+      1. sin pagarle a las droguerías   -> con_droguerias=False
+      2. pagándoles                      -> con_droguerias=True
+      3. y además MAGA pagándole a Speed -> con_intercompany=True
+
+    El tercero no es una curiosidad contable: es el que muestra **qué tan
+    rentable es una empresa del grupo sin la otra**, que es la pregunta de
+    fondo cuando MAGA sola no cierra.
     """
     deuda_venc, deuda_fut, ncr = 0.0, 0.0, 0.0
     refi_venc, refi_fut = 0.0, 0.0
 
+    inter = 0.0
     for x in contrato.get("deuda_droguerias", []):
-        if x.get("intercompany"):
-            continue
         if unidad and (x.get("unidad") or "") != unidad:
             continue
         f = x.get("fecha") or ""
         if not f:
             continue
         imp = float(x.get("importe") or 0)
+
+        if x.get("intercompany"):
+            # Plata que se mueve DENTRO del grupo: no sale para afuera. Solo
+            # cuenta en el escenario 3, y ahí lo que hace es correr posición de
+            # una empresa a la otra sin cambiar el total del grupo.
+            if con_intercompany and f <= hasta:
+                inter += imp
+            continue
 
         if _es_refi(x):
             # Se puede patear, pero es una obligación, y no es una droguería:
@@ -193,7 +213,15 @@ def pagos(contrato, hoy, hasta, unidad=None):
         egresos[(x.get("contraparte") or "?").strip()] += float(x.get("importe") or 0)
 
     # Lo vencido primero: es lo que aprieta.
+    if not con_droguerias:
+        # Escenario 1: "si no les pago". Thomas lo usaba cuando el negocio
+        # estaba peor, para ver si al menos se cubrían los cheques de la
+        # semana. La deuda no desaparece -- se patea, y eso se dice.
+        deuda_venc = deuda_fut = ncr = 0.0
+
     lineas = []
+    if inter:
+        lineas.append(("Pago a la otra empresa del grupo", inter, True))
     if deuda_venc:
         lineas.append(("Deuda droguerias YA VENCIDA", deuda_venc, True))
     if deuda_fut:
@@ -208,7 +236,8 @@ def pagos(contrato, hoy, hasta, unidad=None):
 
 
 # ------------------------------------------------------------------ el puente
-def puente(contrato, dias=45, unidad=None, minima=0.0, hoy=None):
+def puente(contrato, dias=45, unidad=None, minima=0.0, hoy=None,
+           con_droguerias=True, con_intercompany=False):
     hoy = hoy or hoy_de(contrato)
     hasta = (datetime.date(*map(int, hoy.split("-")))
              + datetime.timedelta(days=dias)).isoformat()
@@ -223,7 +252,8 @@ def puente(contrato, dias=45, unidad=None, minima=0.0, hoy=None):
         sin_efectivo = float(contrato.get("caja_efectivo") or 0)
 
     lin_c, drog_vencido = cobros(contrato, hoy, hasta, unidad)
-    lin_p = pagos(contrato, hoy, hasta, unidad)
+    lin_p = pagos(contrato, hoy, hasta, unidad,
+                  con_droguerias, con_intercompany)
 
     entra_seguro = sum(v for _, v, ok in lin_c if ok)
     entra_todo = sum(v for _, v, _ in lin_c)
@@ -235,6 +265,7 @@ def puente(contrato, dias=45, unidad=None, minima=0.0, hoy=None):
         "efectivo_sin_asignar": sin_efectivo,
         "entra_seguro": entra_seguro, "entra_todo": entra_todo, "sale": sale,
         "cobranza_vencida": drog_vencido,
+        "con_droguerias": con_droguerias, "con_intercompany": con_intercompany,
         "proyectada_seguro": caja + entra_seguro - sale,
         "proyectada_todo": caja + entra_todo - sale,
         "minima": minima,
