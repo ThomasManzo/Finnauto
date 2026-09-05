@@ -55,6 +55,7 @@ if BASE_REPO not in sys.path:
 GENERICAS = set("""
 PARA POR CON SIN DEL LOS LAS UNA UNOS UNAS ESTE ESTA ESTOS ESTAS
 PAGO PAGOS PAGAR ABONO COBRO COBROS TRANSFERENCIA TRANSFERENCIAS TRANSF
+PROVEEDOR PROVEEDORES CLIENTE CLIENTES VARIOS OTROS GENERAL
 FACTURA FACTURAS FACT COMPROBANTE RECIBO NOTA
 CUENTA CUENTAS BANCO BANCARIA MOVIMIENTO SALDO IMPORTE TOTAL
 ENERO FEBRERO MARZO ABRIL MAYO JUNIO JULIO AGOSTO SEPTIEMBRE SETIEMBRE
@@ -106,8 +107,12 @@ def proponer(movimientos, minimo=MIN_GRUPO):
         if not ts:
             sueltos.append(m)
             continue
-        # la menos frecuente = la mas especifica
-        grupos[min(ts, key=lambda t: freq[t])].append(m)
+        # La menos frecuente es la mas especifica. El segundo criterio (el texto)
+        # NO es cosmetico: sin el, dos palabras con la misma frecuencia se
+        # desempatan segun el orden de un set, que en Python cambia entre
+        # corridas. La misma planilla daba grupos distintos dos veces seguidas,
+        # y eso adelante de un cliente es indefendible.
+        grupos[min(ts, key=lambda t: (freq[t], t))].append(m)
 
     out = []
     for t, ms in grupos.items():
