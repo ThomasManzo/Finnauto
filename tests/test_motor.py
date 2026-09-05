@@ -371,6 +371,56 @@ def test_formato():
     ok(fmt(0) == "$0,00", "cero")
 
 
+# --------------------------------------------------- proyeccion automatica
+def test_proyeccion():
+    print("\n== Proyeccion deducida del historial ==")
+    from simulador import proyeccion as PR
+
+    # Agrupar por TEXTO del concepto es lo que parece obvio y es lo que falla:
+    # el mismo gasto se escribe distinto cada mes. Por eso el default es 'tipo'.
+    a = PR.clave({"tipo": "SUELDO", "concepto": "Sueldos Comafi"})
+    b = PR.clave({"tipo": "SUELDO", "concepto": "Cs. Agosto"})
+    ok(a == b, "a nivel TIPO, el mismo gasto agrupa aunque cambie el texto")
+    a2 = PR.clave({"tipo": "SUELDO", "concepto": "Sueldos Comafi"}, "concepto")
+    b2 = PR.clave({"tipo": "SUELDO", "concepto": "Cs. Agosto"}, "concepto")
+    ok(a2 != b2, "a nivel CONCEPTO no agrupan: por eso ese nivel cubre menos")
+
+    ok(PR.limpiar("honorarios junio Veronica") == PR.limpiar("honorarios julio Veronica"),
+       "el mes dentro del concepto no separa un gasto mensual en dos")
+    ok(PR.limpiar("Arciba 07-26") == PR.limpiar("Arciba 08-26"),
+       "ni el periodo escrito como 07-26")
+
+    movs = []
+    for mes in ("2026-05", "2026-06", "2026-07"):
+        movs.append({"fecha": mes + "-10", "tipo": "ALQUILER", "concepto": "x", "importe": 100.0})
+        movs.append({"fecha": mes + "-04", "tipo": "SUELDO", "concepto": "y", "importe": 900.0})
+    movs.append({"fecha": "2026-06-15", "tipo": "RARO", "concepto": "z", "importe": 50.0})
+
+    pat, prev = PR.aprender(movs, "2026-08")
+    ok(prev == ["2026-05", "2026-06", "2026-07"], "aprende solo con los meses anteriores", str(prev))
+    ok(pat["ALQUILER"]["dia"] == 10, "saca el dia tipico del mes")
+    ok(pat["ALQUILER"]["apariciones"] == 3, "y en cuantos meses aparecio")
+
+    prop = PR.proyectar(pat, "2026-08", minimo_apariciones=2)
+    claves = [p["clave"] for p in prop]
+    ok("ALQUILER" in claves and "SUELDO" in claves, "propone los recurrentes", str(claves))
+    ok("RARO" not in claves, "y descarta lo que paso una sola vez", str(claves))
+
+    # Un mes que YA paso no se puede espiar: si el backtest mirara el mes que
+    # esta prediciendo, daria 100% y no serviria para nada.
+    movs.append({"fecha": "2026-08-10", "tipo": "SORPRESA", "concepto": "s", "importe": 7.0})
+    pat2, _ = PR.aprender(movs, "2026-08")
+    ok("SORPRESA" not in pat2, "el backtest no puede ver el mes que esta prediciendo")
+
+    # Febrero no tiene 31: un patron del 31 tiene que caer en el ultimo dia.
+    movs31 = [{"fecha": m + "-31", "tipo": "FIN", "concepto": "f", "importe": 1.0}
+              for m in ("2025-12", "2026-01")]
+    p31, _ = PR.aprender(movs31, "2026-02")
+    pr31 = PR.proyectar(p31, "2026-02", 2)
+    ok(pr31 and pr31[0]["fecha"] == "2026-02-28", "un pago del 31 cae al ultimo dia de febrero",
+       pr31[0]["fecha"] if pr31 else "nada")
+
+
 if __name__ == "__main__":
     print("=" * 62)
     print("  TESTS DEL MOTOR finauto")
@@ -385,6 +435,7 @@ if __name__ == "__main__":
     test_memoria()
     test_ajustes()
     test_formato()
+    test_proyeccion()
     print("\n" + "=" * 62)
     if _fallos:
         print("  %d TEST(S) FALLARON: %s" % (len(_fallos), ", ".join(_fallos)))
