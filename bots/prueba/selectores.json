@@ -1,0 +1,110 @@
+{
+  "_comentario": "Ficha del BANCO DE PRUEBA (scripts/banco_de_prueba/index.html). No es un banco real: existe para probar el bot generico de punta a punta sin depender de que haya acceso a un home banking. Sirve tambien como EJEMPLO COMPLETO de como se llena una ficha.",
+  "nombre": "Banco de Prueba",
+  "url": "",
+  "_ayuda_selectores": "Cada paso es una LISTA de candidatos que se prueban en orden hasta que uno funciona. Tener 2 o 3 formas de encontrar el mismo boton es lo que evita que el bot se caiga cuando el banco cambia el frente. Formas soportadas: CSS ('#id', '.clase'), 'texto=Lo que dice', 'boton=Nombre del boton'.",
+  "login": {
+    "usuario": [
+      "#usuario",
+      "[name='usuario']"
+    ],
+    "clave": [
+      "#clave",
+      "input[type='password']"
+    ],
+    "ingresar": [
+      "#ingresar",
+      "boton=Ingresar"
+    ],
+    "confirmacion": [
+      "#saludo",
+      "texto=Hola"
+    ],
+    "_nota": "'confirmacion' es como el bot sabe que entro de verdad. Sin esto sigue trabajando sobre la pantalla de login y falla mucho despues, con un error que no dice nada."
+  },
+  "empresas": {
+    "tiene": true,
+    "activa": [
+      "[data-tour='empresa-activa']",
+      "#empresaActiva"
+    ],
+    "abrir_selector": [
+      "#btnEmpresas",
+      "boton=Cambiar empresa"
+    ],
+    "buscador": [
+      "#buscarEmpresa"
+    ],
+    "filas": [
+      ".empresa"
+    ],
+    "cerrar": [
+      "#cerrarEmpresas",
+      "boton=Cerrar"
+    ],
+    "_nota": "Si la empresa es una sola, poner 'tiene': false y el bot saltea todo este paso."
+  },
+  "cuenta": {
+    "ir_a_cuentas": [
+      "#irCuentas",
+      "boton=Cuentas"
+    ],
+    "abrir_saldo": [
+      ".verSaldo",
+      "boton=Ver saldo"
+    ],
+    "_nota": "Los dos pasos que describio Thomas: entrar a la cuenta principal y apretar en saldo."
+  },
+  "saldos": {
+    "actual": [
+      "#saldoActual"
+    ],
+    "disponible": [
+      "#saldoDisponible"
+    ]
+  },
+  "fechas": {
+    "modo": "inputs",
+    "formato": "%d/%m/%Y",
+    "abrir_filtros": [
+      "#btnFiltros",
+      "boton=Filtros"
+    ],
+    "desde": [
+      "#fDesde",
+      "[name='desde']"
+    ],
+    "hasta": [
+      "#fHasta",
+      "[name='hasta']"
+    ],
+    "aplicar": [
+      "#aplicar",
+      "boton=Aplicar"
+    ],
+    "confirmacion": [
+      "#rangoAplicado"
+    ],
+    "_nota": "'confirmacion' evita el peor error silencioso del bot: descargar el periodo por default creyendo que filtro. Nadie se entera hasta que faltan movimientos en la planilla."
+  },
+  "descarga": {
+    "boton": [
+      "#descargar",
+      "boton=Descargar"
+    ],
+    "espera_ms": 20000,
+    "patron_cuenta_id": "(CC\\d+)"
+  },
+  "esperas": {
+    "despues_de_abrir": 300,
+    "despues_de_login": 300,
+    "menu_empresas": 300,
+    "listado_cuentas": 300,
+    "movimientos": 300,
+    "filtros_abiertos": 300,
+    "despues_de_aplicar": 400,
+    "despues_de_cambiar_empresa": 300
+  },
+  "_url_en_runtime": true,
+  "_nota_url": "La url la pone el que corre la prueba (apunta al archivo local scripts/banco_de_prueba/index.html), por eso 'url' va vacia."
+}
