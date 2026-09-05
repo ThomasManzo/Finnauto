@@ -190,6 +190,12 @@ COMPARACIONES = [
      "Monto con fecha anterior a hoy que sigue en la planilla = no se pago. "
      "Es la deuda que aprieta: la que puede hacer que te corten la compra.",
      lambda c: _puentes_deuda(c, True)),
+    # Chequeo de lectura del bloque de egresos, que antes no se exportaba.
+    ("Pago mercaderia cheques (Speed)", "PAGO MERCADERIA CHEQUES (SPEED)",
+     lambda c: _egreso_etiqueta(c, "PAGO DE MERCADERIA CHEQUES", "SPEEDMED", _hoy(c)),
+     "Es una sola fila del cashflow. Si no coincide, el bloque de egresos se "
+     "esta leyendo mal.",
+     None),
     ("Cuentas a cobrar a droguerias", "COBRANZA DROGUERIAS (SPEED)",
      lambda c: _suma(c, "cuentas_a_cobrar_droguerias", ("VENCIDO", "A_VENCER")),
      None, None),
@@ -207,6 +213,31 @@ def _puentes_deuda(contrato, vencida):
          "tu Calculadora no las descuenta del saldo; el motor si, porque una "
          "NCR baja deuda"),
     ]
+
+
+def _egreso_etiqueta(contrato, etiqueta, unidad, hoy):
+    """Una fila del bloque de egresos del cashflow, a futuro y SIN horizonte.
+
+    Se calcula igual que el cliente -- todas las columnas con fecha posterior a
+    hoy, sin cortar a 45 dias -- a proposito: esto no es el modelo del motor,
+    es un chequeo de LECTURA. Si el bloque de egresos se lee mal (se movio una
+    fila, cambio un rotulo), esta linea deja de coincidir y nos enteramos.
+
+    El motor tiene su propio puente en simulador/disponibilidad.py, con
+    horizonte de verdad. Eso es otra cosa y no se compara aca.
+    """
+    t = 0.0
+    for x in contrato.get("egresos_cashflow", []):
+        if x.get("intercompany"):
+            continue
+        if unidad and (x.get("unidad") or "") != unidad:
+            continue
+        if etiqueta not in " ".join(str(x.get("contraparte") or "").upper().split()):
+            continue
+        f = x.get("fecha") or ""
+        if f and f > hoy:
+            t += float(x.get("importe") or 0)
+    return t
 
 
 TOLERANCIA = 2.0        # % por debajo del cual se considera que coincide
