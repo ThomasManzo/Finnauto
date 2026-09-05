@@ -782,7 +782,17 @@ function _filasDeBloque_(grid, cols, etiquetaInicio, etiquetasFin, unidad, hoja,
 
     var esIntercompany = (etqNorm === 'MAGA+' || etqNorm === 'MAGA' || etqNorm === 'SPEEDMED');
     var esSaldo = _esFilaSaldo_(etqNorm);   // arrastra el mismo saldo día a día
-    var signo = _esCredito_(etqNorm) ? -1 : 1;  // las NCR restan
+    // Las NCR SIEMPRE restan, se hayan cargado como se hayan cargado.
+    //
+    // ERROR REAL (05/09/2026): esto hacia "v * -1" para las filas de credito.
+    // Pero en esta planilla algunas NCR ya estan cargadas en NEGATIVO y otras en
+    // positivo -- depende de quien las cargo. Multiplicar por -1 las que ya
+    // venian negativas las volvia POSITIVAS, o sea que SUMABAN a la deuda en vez
+    // de restarla. Eran $435.000.000 de mas solo en MAGA.
+    //
+    // Por eso no se invierte el signo: se FUERZA. Una nota de credito baja la
+    // deuda, y como este cargada en la planilla no cambia eso.
+    var esCred = _esCredito_(etqNorm);
 
     var deLaFila = [];
     for (var k = 0; k < cols.length; k++) {
@@ -791,11 +801,11 @@ function _filasDeBloque_(grid, cols, etiquetaInicio, etiquetasFin, unidad, hoja,
       deLaFila.push({
         fecha: cols[k].fecha,
         contraparte: etiqueta,
-        importe: v * signo,
+        importe: esCred ? -Math.abs(v) : v,
         unidad: unidad,
         intercompany: esIntercompany,
         es_saldo: esSaldo,
-        es_credito: (signo < 0),
+        es_credito: esCred,
         // OJO: el significado de la fecha CAMBIA según el bloque.
         //  · Nos deben (cobranza): fecha pasada = todavía no cobramos -> VENCIDO
         //  · Les debemos (deuda) : fecha pasada = ya se pagó         -> PAGADO
