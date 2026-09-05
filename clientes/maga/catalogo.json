@@ -477,11 +477,7 @@
         "compensa": "cruzada",
         "_nota": "CORREGIDO POR THOMAS: Speedmed NO le compra a Cofaloza. Cofaloza le COMPRA a Speedmed y le VENDE a MAGA. Por eso la compensacion cruza entre las dos empresas: bajan las cuentas a cobrar de Speed y baja la deuda de MAGA al mismo tiempo."
       }
-    ],
-    "_fuera_de_este_esquema": {
-      "REFINANCIACION": "Acuerdo con DDS por USD 219.000 mensuales. Se paga aparte y NO tiene la tolerancia de una factura comun: es un acuerdo. No entra en el reparto semanal.",
-      "LABORATORIOS": "Speedmed les compra a 30/35/40/45/50/55/60 y hasta 90 dias. Gran parte de los cheques a pagar de Speedmed son de laboratorios, y un cheque NO tiene tolerancia: no puede rebotar."
-    }
+    ]
   },
   "_efecto_de_los_cobros": {
     "_ayuda": "No todo lo que se cobra entra a la caja. Confirmado por Thomas.",
@@ -489,5 +485,28 @@
     "menos_deuda": "NO entra un peso: baja lo que se debe. Hay que declarar A QUIEN se le baja.\n . cheques con estado ENDOSADO (se le pasan a la drogueria a la que se le debe)\n . notas de credito de obras sociales: PAMI le paga a MAGA una parte en DDS y otra en Suizo\n . compensaciones con Cofaloza y con DDS",
     "cartera": "Entro un cheque pero todavia no es plata: se vuelve caja recien en su fecha, y solo si se deposita.",
     "_pendiente_de_datos": "Hoy el exportador marca TODOS los cobros como efecto 'caja', incluida la Cartera de CH. Para distinguirlos hace falta leer la solapa 'Cartera de CH' con el estado de cada cheque, y las notas de credito con su contraparte."
+  },
+  "obligaciones": {
+    "_ayuda": "Compromisos que NO son droguerias pero tampoco son intocables. Tercera categoria, entre lo rigido (cheques, sueldos) y el reparto semanal con droguerias.",
+    "_por_que": "Thomas: 'la refi se puede patear, pero es una obligacion, aunque no tiene nada que ver con las droguerias'. Yo la habia puesto como 'fuera del reparto', que la trataba como intocable. Se puede mover: simplemente no compite con las droguerias por el mismo lugar.",
+    "valores": [
+      {
+        "id": "REFINANCIACION",
+        "nombre": "Refinanciacion Drogueria del Sud",
+        "contraparte": "DROG.DEL SUD",
+        "monto_usd_mensual": 219000,
+        "pateable": true,
+        "tolerancia_semanas": null,
+        "_falta_definir": "Cuantas semanas se puede patear la refi sin consecuencia. Thomas dijo que se puede, pero no cuanto. Hasta saberlo el motor la muestra aparte y NO la propone para patear.",
+        "_nota": "Acuerdo por USD 219.000 mensuales con DDS. Se hace un cheque, se retira en efectivo y DDS manda una financiera a buscarlo en pesos. La contraparte es DDS pero NO es una factura de mercaderia: no entra en el reparto semanal de droguerias."
+      },
+      {
+        "id": "FONDO_DE_COMERCIO",
+        "nombre": "Cuota compra del fondo de comercio",
+        "monto_usd_trimestral": 315000,
+        "pateable": false,
+        "_nota": "USD 315.000 por trimestre. Compite con los retiros de accionistas y con el pago a droguerias: cuando cae en el mismo mes que la refi y un retiro, hay que elegir."
+      }
+    ]
   }
 }

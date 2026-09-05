@@ -42,9 +42,14 @@ CRITICO, REVISAR, INFO = "CRITICO", "REVISAR", "INFO"
 
 
 def _m(x):
-    signo = "-" if x < 0 else ""
-    return signo + "$" + format(abs(round(x, 2)), ",.0f")
+    """Formato argentino, igual que el resto del sistema: $1.183.497.652.
 
+    Estaba dejando los miles con coma (formato ingles) mientras el resto del
+    sistema usa punto. Dos formatos distintos en la misma corrida hacen dudar
+    de todos los numeros.
+    """
+    signo = "-" if x < 0 else ""
+    return signo + "$" + format(int(round(abs(x))), ",d").replace(",", ".")
 
 def _norm(s):
     return " ".join(str(s or "").upper().split())
@@ -443,7 +448,28 @@ def completitud(contrato):
                     "Hay %d fila(s) de deuda pero NINGUNA de cuentas a cobrar. "
                     "Revisar que ese bloque se este leyendo." % len(deuda)))
 
-    # --- 6) LOS AVISOS DEL PROPIO EXPORT --------------------------------
+    # --- 6) CHEQUES EN CARTERA QUE NUNCA SE RESOLVIERON -----------------
+    # Un cheque con fecha pasada y estado RECIBIDO es una de dos cosas: o sigue
+    # en el cajon, o alguien no actualizo el estado. Son cosas muy distintas y
+    # la diferencia puede ser mucha plata. En MAGA aparecieron 182 por
+    # $5.974.194.535.
+    ch = contrato.get("cartera_cheques") or []
+    if ch:
+        hoy_iso = datetime.date.today().isoformat()
+        sin_resolver = [x for x in ch
+                        if (x.get("estado") or "").strip().upper() in
+                        ("RECIBIDO", "EN CARTERA", "PENDIENTE", "")
+                        and (x.get("fecha") or "9999") < hoy_iso]
+        if sin_resolver:
+            imp = _suma(sin_resolver)
+            mas_viejo = min(x["fecha"] for x in sin_resolver)
+            out.append(("CHEQUES SIN RESOLVER",
+                        "%d cheque(s) por %s tienen fecha pasada y siguen como "
+                        "'recibido', el mas viejo del %s. O siguen en el cajon o "
+                        "quedo sin actualizar el estado: son cosas muy distintas."
+                        % (len(sin_resolver), _m(imp), mas_viejo)))
+
+    # --- 7) LOS AVISOS DEL PROPIO EXPORT --------------------------------
     # Viajan en el contrato y nadie los miraba. Si el export tuvo algo para
     # decir, la auditoria lo repite.
     for a in (contrato.get("avisos") or []):
