@@ -47,12 +47,15 @@ CAT = {
     },
     "excepciones": [
         {"contiene": ["CUOTA PRESTAMO"], "nombre": "Cuota de prestamo", "tolerancia": 0,
-         "consecuencia": "financiera", "interno": False, "tiene_tolerancia": True},
+         "consecuencia": "financiera", "interno": False, "tiene_tolerancia": True, "solo_tipos": []},
         {"contiene": ["SPEEDMED"], "nombre": "Interno grupo", "tolerancia": None,
-         "consecuencia": "", "interno": True, "tiene_tolerancia": False},
+         "consecuencia": "", "interno": True, "tiene_tolerancia": False, "solo_tipos": []},
         {"contiene": ["HONORARIOS DJ"], "nombre": "Honorarios DJ", "tolerancia": None,
          "consecuencia": "", "interno": False, "tiene_tolerancia": False,
-         "monto_variable": True},
+         "monto_variable": True, "solo_tipos": []},
+        {"contiene": ["DJ"], "nombre": "Honorarios D.Jaimovich", "tolerancia": None,
+         "consecuencia": "", "interno": False, "tiene_tolerancia": False,
+         "monto_variable": True, "solo_tipos": ["SUELDO"]},
     ],
     "prioridad": ["PAGO", "RETIRO"],
 }
@@ -209,6 +212,15 @@ def test_monto_variable():
 
     m = meta_de({"tipo": "PAGO", "concepto": "proveedor comun"}, CAT)
     ok(not m.get("monto_variable"), "un pago comun no queda marcado como estimado")
+
+    # ERROR REAL: una sigla corta significa cosas distintas segun el tipo.
+    # 'DJ' es D.Jaimovich en un honorario y DECLARACION JURADA en un impuesto.
+    m = meta_de({"tipo": "SUELDO", "concepto": "honorarios DJ julio"}, CAT)
+    ok(m.get("monto_variable") is True, "la excepcion aplica dentro de su tipo")
+    m = meta_de({"tipo": "PAGO", "concepto": "DJ SICORE 06-2026"}, CAT)
+    ok(not m.get("monto_variable"),
+       "y NO aplica fuera de su tipo (ahi DJ es declaracion jurada)",
+       "nombre=%s" % m.get("nombre"))
 
     # El estres solo toca los variables, y con 0 no toca nada.
     egr = [_egr("v", "2026-09-20", "SUELDO", 100.0, 0, True, False),

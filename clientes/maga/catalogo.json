@@ -184,15 +184,19 @@
     "reglas": [
       {
         "contiene": [
-          "DJ"
+          "DJ",
+          "JAIMOVICH"
         ],
-        "nombre": "Honorarios DJ (10% del resultado)",
+        "nombre": "Honorarios D.Jaimovich (10% del resultado)",
         "categoria": "personal",
         "dias_tolerancia": 0,
         "consecuencia": "contractual",
         "monto_variable": true,
-        "_nota": "CONFIRMADO por Thomas: aparece todos los meses pasada la mitad del mes, es el 10% del resultado del mes anterior -> VARIA EL VALOR, NO LA FECHA. Caso testigo del segundo eje. OJO 'palabra_completa': con matcheo por subcadena, 'D.J' pegaba adentro de 'honorarios D.Jaimovich' y ademas de forma inconsistente (no pegaba en 'honorarios junio D.Jaimovich'). PREGUNTA ABIERTA PARA THOMAS: ver _PENDIENTES.",
-        "palabra_completa": true
+        "_nota": "CONFIRMADO por Thomas: 'DJ' son las iniciales de D.Jaimovich. Fecha fija (pasada la mitad del mes), monto estimado (10% del resultado del mes anterior). Caso testigo del segundo eje. OJO 'solo_tipos': sin eso, 'DJ' tambien pegaba en 'DJ SICORE 06-2026' y 'Impuesto (DJ omision)', donde DJ es DECLARACION JURADA. La misma sigla significa cosas distintas segun el tipo de movimiento.",
+        "palabra_completa": false,
+        "solo_tipos": [
+          "HONORARIO"
+        ]
       },
       {
         "contiene": [
@@ -408,7 +412,6 @@
     }
   },
   "_PENDIENTES": [
-    "HONORARIOS DJ: en la planilla conviven 'honorarios DJ', 'honorarios D.jaimovich' y 'honorarios junio D.Jaimovich'. Si DJ son las iniciales de D.Jaimovich, TODOS esos son el 10% del resultado y hay que marcarlos monto_variable. Si DJ es otra cosa (declaracion jurada?), la regla actual ya esta bien. Hoy SOLO se marca 'DJ' como palabra suelta: es lo conservador, marca de menos y no de mas.",
     "PAMI: por ahora queda CARGA MANUAL (Thomas tiene dudas sobre el calendario real de quincenas cruzadas). No modelar todavia.",
     "Venta diaria: automatizar la proyeccion (mes anterior +/- % interanual) requiere el historico de ventas por farmacia; hoy es manual.",
     "Cartera de CH: hoy se carga a mano y deberia ser automatica (son ingresos con fecha cierta).",

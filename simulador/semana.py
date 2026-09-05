@@ -74,6 +74,7 @@ def cargar_catalogo(cliente):
             "tiene_tolerancia": ("dias_tolerancia" in r),
             "monto_variable": bool(r.get("monto_variable")),
             "palabra_completa": bool(r.get("palabra_completa")),
+            "solo_tipos": [t.upper() for t in r.get("solo_tipos", [])],
         })
     # Orden con el que el cliente decide que patear cuando falta plata.
     prioridad = cat.get("orden_de_pateo", {}).get("prioridad_por_tipo", [])
@@ -87,6 +88,7 @@ def _matchea(concepto, regla):
     la clave es corta y se mete adentro de otra: "DJ" aparece dentro de
     "D.Jaimovich", y ya nos paso lo mismo con "PERSONAL" dentro de "PERSONALES".
     """
+    # 'solo_tipos' se chequea afuera (necesita el tipo del movimiento).
     if regla.get("palabra_completa"):
         return any(re.search(r"(?<![A-Z0-9])%s(?![A-Z0-9])" % re.escape(p), concepto)
                    for p in regla["contiene"])
@@ -104,6 +106,11 @@ def meta_de(mov, cat):
     concepto = (mov.get("concepto") or "").upper()
     if concepto:
         for r in cat["excepciones"]:
+            # Una misma sigla puede querer decir cosas distintas segun el tipo:
+            # 'DJ' es D.Jaimovich en un HONORARIO y Declaracion Jurada en un
+            # IMPUESTO. Por eso una excepcion puede limitarse a ciertos tipos.
+            if r["solo_tipos"] and tipo.upper() not in r["solo_tipos"]:
+                continue
             if _matchea(concepto, r):
                 meta["nombre"] = r["nombre"] or meta["nombre"]
                 if r.get("tiene_tolerancia"):
