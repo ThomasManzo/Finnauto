@@ -306,7 +306,8 @@ function _construirPayload_() {
 
   var movimientos = _leerMovimientos_(ss, avisos);
   var saldos = _leerSaldos_(ss, avisos);
-  var cajaHoy = _leerCajaHoy_(ss, avisos);
+  var caja = _leerCajaPorUnidad_(ss, avisos);
+  var cajaHoy = caja.total;
   var cobros = _leerIngresosCashflow_(ss, avisos);
   var drog = _leerBloquesDroguerias_(ss, avisos);
 
@@ -315,6 +316,8 @@ function _construirPayload_() {
     cliente: EXP_CONFIG.CLIENTE,
     generado: new Date().toISOString(),
     caja_hoy: cajaHoy,
+    caja_por_unidad: caja.por_unidad,
+    caja_efectivo: caja.efectivo,
     catalogo_tipos: EXP_TIPOS,
     catalogo_ingresos: EXP_INGRESOS,
     saldos: saldos,
@@ -686,6 +689,88 @@ function _fechaCol_(v) {
   if (y < 100) y += 2000;
   if (mes < 1 || mes > 12 || d < 1 || d > 31) return null;
   return Utilities.formatDate(new Date(y, mes - 1, d), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+}
+
+/**
+ * La caja de hoy, buscada POR ETIQUETA y no por celda fija.
+ *
+ * Antes esto leia SALDOS!C26 a secas. Dos problemas:
+ *
+ *   1. Una celda fija se rompe sola. Alcanza con que alguien inserte una fila
+ *      arriba para que el export empiece a traer otro numero, sin error y sin
+ *      aviso. (Ya habia pasado lo mismo en el clasificador con getRange(3,2).)
+ *
+ *   2. Traia solo el TOTAL. Debajo, en la misma columna, estan los subtotales
+ *      por unidad -- SPEEDMED y MAGA -- y el informe los necesita: son dos
+ *      empresas con cajas distintas, no una sola bolsa.
+ *
+ * Ahora se recorre la solapa buscando las etiquetas en las primeras columnas y
+ * se toma el primer numero que haya a la derecha. Si no aparece la etiqueta del
+ * total, recien ahi se cae a la celda fija, y se avisa.
+ */
+function _leerCajaPorUnidad_(ss, avisos) {
+  var out = { total: 0, efectivo: 0, por_unidad: {} };
+  var sh = ss.getSheetByName(EXP_CONFIG.TAB_SALDOS);
+  if (!sh) { avisos.push('No existe la solapa "' + EXP_CONFIG.TAB_SALDOS + '".'); return out; }
+
+  var maxR = sh.getLastRow(), maxC = Math.min(sh.getLastColumn(), 12);
+  if (maxR < 1 || maxC < 1) return out;
+  var grid = sh.getRange(1, 1, maxR, maxC).getValues();
+
+  for (var r = 0; r < grid.length; r++) {
+    for (var c = 0; c < Math.min(grid[r].length, 4); c++) {
+      var et = _norm_(grid[r][c]);
+      if (!et) continue;
+      if (et !== 'TOTAL' && et !== 'EFECTIVO' &&
+          et !== 'SPEEDMED' && et !== 'MAGA') continue;
+      // el primer numero a la derecha de la etiqueta
+      for (var k = c + 1; k < grid[r].length; k++) {
+        var v = _num_(grid[r][k]);
+        if (v) {
+          if (et === 'TOTAL') out.total = v;
+          else if (et === 'EFECTIVO') out.efectivo = v;
+          else out.por_unidad[et] = v;
+          break;
+        }
+      }
+    }
+  }
+
+  if (!out.total) {
+    try {
+      var partes = EXP_CONFIG.CAJA_HOY_REF.split('!');
+      var sh2 = ss.getSheetByName(partes[0]);
+      if (sh2) out.total = _num_(sh2.getRange(partes[1]).getValue());
+      avisos.push('No encontre la fila "TOTAL" en ' + EXP_CONFIG.TAB_SALDOS +
+                  '. Use la celda fija ' + EXP_CONFIG.CAJA_HOY_REF +
+                  ': verificar que siga siendo la correcta.');
+    } catch (e2) {
+      avisos.push('No pude leer la caja de hoy: ' + e2);
+    }
+  }
+
+  // La suma de las unidades MAS el efectivo tiene que dar el total. Si no, hay
+  // una unidad que no estamos leyendo -- que es exactamente lo que paso con la
+  // deuda de MAGA: el numero salia prolijo y le faltaba la mitad.
+  //
+  // El efectivo va aparte a proposito: en esta grilla los subtotales por unidad
+  // cubren solo los bancos, y el efectivo esta en su propia fila. Sin esa
+  // distincion el chequeo ladraba por los $20.000.000 de efectivo, que estan
+  // perfectamente bien.
+  var suma = 0, n = 0;
+  for (var u in out.por_unidad) { suma += out.por_unidad[u]; n++; }
+  var dif = out.total - (suma + out.efectivo);
+  if (n && out.total && Math.abs(dif) > 1) {
+    avisos.push('Los subtotales por unidad (' + Math.round(suma) + ') mas el ' +
+                'efectivo (' + Math.round(out.efectivo) + ') dan ' +
+                Math.round(suma + out.efectivo) + ', pero el TOTAL dice ' +
+                Math.round(out.total) + '. Diferencia: ' + Math.round(dif) +
+                '. Falta alguna unidad o hay una fila de mas.');
+  }
+  avisos.push('Caja: total ' + Math.round(out.total) + ' = bancos por unidad (' +
+              Object.keys(out.por_unidad).join(', ') + ') + efectivo ' +
+              Math.round(out.efectivo) + '.');
+  return out;
 }
 
 function _leerCajaHoy_(ss, avisos) {
