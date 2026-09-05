@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Banco de Prueba</title>
+<!--
+  scripts/banco_de_prueba/index.html — un home banking falso.
+
+  Reproduce el recorrido que Thomas describio y que comparten casi todos los
+  bancos:
+
+      login -> home -> cuenta principal -> apretas en saldo -> movimientos ->
+      filtro de fecha -> aplicas -> boton de descarga -> CSV
+
+  Para que sirve: probar el bot generico DE VERDAD, de punta a punta, sin
+  necesitar acceso a ningun banco real. Cuando MAGA recupere las claves, el
+  motor ya va a estar probado y lo unico nuevo va a ser la ficha de selectores.
+
+  Tambien sirve de regresion: si manana se toca el nucleo, este banco de prueba
+  avisa si algo se rompio, sin depender de que un banco este de buen humor.
+-->
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; background: #f7f8fa; color: #1a1a1a; }
+  header { background: #0b5; color: #fff; padding: 14px 22px; font-weight: 600; }
+  main { padding: 22px; max-width: 980px; }
+  .pantalla { display: none; }
+  .pantalla.activa { display: block; }
+  label { display: block; margin: 12px 0 4px; font-size: 14px; }
+  input { padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
+  button { padding: 9px 16px; border: 0; border-radius: 6px; background: #0b5;
+           color: #fff; font-size: 14px; cursor: pointer; margin-right: 8px; }
+  button.sec { background: #e8781a; }
+  table { border-collapse: collapse; width: 100%; margin-top: 16px; background: #fff; }
+  th, td { border-bottom: 1px solid #e4e6ea; padding: 8px 10px; text-align: left; font-size: 14px; }
+  .saldos { display: flex; gap: 28px; margin: 18px 0; }
+  .saldo { background: #fff; border: 1px solid #e4e6ea; border-radius: 8px; padding: 12px 18px; }
+  .saldo small { color: #666; display: block; font-size: 12px; }
+  .saldo b { font-size: 20px; }
+  #modalEmpresas { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.35); }
+  #modalEmpresas .caja { background: #fff; max-width: 420px; margin: 80px auto; padding: 20px; border-radius: 10px; }
+  .empresa { padding: 10px; border-bottom: 1px solid #eee; cursor: pointer; }
+  .empresa:hover { background: #f0f7f2; }
+</style>
+</head>
+<body>
+
+<header>Banco de Prueba <span id="empresaActiva" data-tour="empresa-activa"></span></header>
+
+<main>
+
+  <!-- 1. LOGIN -->
+  <section id="pLogin" class="pantalla activa">
+    <h2>Ingresar</h2>
+    <label for="usuario">Usuario</label>
+    <input id="usuario" name="usuario" type="text" autocomplete="off">
+    <label for="clave">Clave</label>
+    <input id="clave" name="clave" type="password" autocomplete="off">
+    <p><button id="ingresar">Ingresar</button></p>
+    <p id="errLogin" style="color:#c00"></p>
+  </section>
+
+  <!-- 2. HOME -->
+  <section id="pHome" class="pantalla">
+    <h2 id="saludo">Bienvenido</h2>
+    <p><button id="btnEmpresas" class="sec">Cambiar empresa</button>
+       <button id="irCuentas">Cuentas</button></p>
+  </section>
+
+  <!-- 3. CUENTAS -->
+  <section id="pCuentas" class="pantalla">
+    <h2>Mis cuentas</h2>
+    <table>
+      <thead><tr><th>Cuenta</th><th>Moneda</th><th>Saldo</th><th></th></tr></thead>
+      <tbody>
+        <tr><td>Cuenta corriente 0123-456/7</td><td>ARS</td><td>$1.234.567,89</td>
+            <td><button class="verSaldo" data-cuenta="CC0123456">Ver saldo</button></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 4. MOVIMIENTOS -->
+  <section id="pMovimientos" class="pantalla">
+    <h2>Saldos y movimientos</h2>
+    <div class="saldos">
+      <div class="saldo"><small>Saldo actual</small><b id="saldoActual">$1.234.567,89</b></div>
+      <div class="saldo"><small>Saldo disponible</small><b id="saldoDisponible">$1.200.000,00</b></div>
+    </div>
+
+    <button id="btnFiltros" class="sec">Filtros</button>
+    <div id="filtros" style="display:none; margin-top:12px;">
+      <label for="fDesde">Desde</label><input id="fDesde" name="desde" placeholder="dd/mm/aaaa">
+      <label for="fHasta">Hasta</label><input id="fHasta" name="hasta" placeholder="dd/mm/aaaa">
+      <p><button id="aplicar">Aplicar</button></p>
+    </div>
+
+    <p id="rangoAplicado" style="display:none; color:#0b5; font-weight:600;"></p>
+
+    <table>
+      <thead><tr><th>Fecha</th><th>Concepto</th><th>Importe</th></tr></thead>
+      <tbody id="tbodyMov"></tbody>
+    </table>
+
+    <p style="margin-top:16px"><button id="descargar">Descargar</button></p>
+  </section>
+
+</main>
+
+<div id="modalEmpresas">
+  <div class="caja">
+    <h3>Elegir empresa</h3>
+    <input id="buscarEmpresa" placeholder="Buscar...">
+    <div id="listaEmpresas"></div>
+    <p><button id="cerrarEmpresas" class="sec">Cerrar</button></p>
+  </div>
+</div>
+
+<script>
+// ---- datos de mentira, pero con forma real -------------------------------
+const EMPRESAS = ["MAGA MAS SA", "SPEEDMED SA", "FARMACIA DOMINICO SRL"];
+const MOVS = [
+  ["01/09/2026", "Transferencia recibida",        "150.000,00"],
+  ["03/09/2026", "Pago proveedores",             "-320.500,50"],
+  ["05/09/2026", "Deposito efectivo",             "800.000,00"],
+  ["10/09/2026", "Impuesto debito credito",        "-12.340,10"],
+  ["15/09/2026", "Pago sueldos",                "-1.100.000,00"],
+  ["22/09/2026", "Cobranza droguerias",           "640.000,00"],
+  ["28/09/2026", "Cheque 0001234",               "-450.000,00"],
+];
+let empresa = EMPRESAS[0], filtrados = MOVS;
+
+const $ = (s) => document.querySelector(s);
+const ver = (id) => {
+  document.querySelectorAll('.pantalla').forEach(p => p.classList.remove('activa'));
+  $(id).classList.add('activa');
+};
+const aFecha = (s) => { const [d,m,a] = s.split('/'); return new Date(+a, +m-1, +d); };
+
+function pintar() {
+  $('#tbodyMov').innerHTML = filtrados
+    .map(m => `<tr><td>${m[0]}</td><td>${m[1]}</td><td>${m[2]}</td></tr>`).join('');
+}
+
+// ---- login ---------------------------------------------------------------
+$('#ingresar').addEventListener('click', () => {
+  if (!$('#usuario').value || !$('#clave').value) {
+    $('#errLogin').textContent = 'Faltan datos'; return;
+  }
+  $('#saludo').textContent = 'Hola, ' + $('#usuario').value;
+  $('#empresaActiva').textContent = empresa;
+  ver('#pHome');
+});
+
+// ---- empresas ------------------------------------------------------------
+function pintarEmpresas(f) {
+  const q = (f || '').toLowerCase();
+  $('#listaEmpresas').innerHTML = EMPRESAS
+    .filter(e => e.toLowerCase().includes(q))
+    .map(e => `<div class="empresa" data-empresa="${e}">${e}</div>`).join('');
+}
+$('#btnEmpresas').addEventListener('click', () => {
+  pintarEmpresas(''); $('#modalEmpresas').style.display = 'block';
+});
+$('#buscarEmpresa').addEventListener('input', (e) => pintarEmpresas(e.target.value));
+$('#cerrarEmpresas').addEventListener('click', () => $('#modalEmpresas').style.display = 'none');
+$('#listaEmpresas').addEventListener('click', (e) => {
+  const d = e.target.closest('.empresa'); if (!d) return;
+  empresa = d.dataset.empresa;
+  $('#empresaActiva').textContent = empresa;
+  $('#modalEmpresas').style.display = 'none';
+});
+
+// ---- cuenta / saldo ------------------------------------------------------
+$('#irCuentas').addEventListener('click', () => ver('#pCuentas'));
+document.querySelectorAll('.verSaldo').forEach(b =>
+  b.addEventListener('click', () => { filtrados = MOVS; pintar(); ver('#pMovimientos'); }));
+
+// ---- filtro de fechas ----------------------------------------------------
+$('#btnFiltros').addEventListener('click', () => {
+  const f = $('#filtros'); f.style.display = f.style.display === 'none' ? 'block' : 'none';
+});
+$('#aplicar').addEventListener('click', () => {
+  const d = $('#fDesde').value, h = $('#fHasta').value;
+  if (!d || !h) return;
+  const dd = aFecha(d), hh = aFecha(h);
+  filtrados = MOVS.filter(m => { const f = aFecha(m[0]); return f >= dd && f <= hh; });
+  pintar();
+  const r = $('#rangoAplicado');
+  r.textContent = 'Filtro aplicado: ' + d + ' al ' + h;
+  r.style.display = 'block';
+});
+
+// ---- descarga ------------------------------------------------------------
+$('#descargar').addEventListener('click', () => {
+  const filas = [['Fecha','Concepto','Importe']].concat(filtrados);
+  const csv = filas.map(f => f.join(';')).join('\n');
+  const url = URL.createObjectURL(new Blob([csv], {type: 'text/csv'}));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'Movimientos_CC0123456.csv';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+});
+</script>
+</body>
+</html>

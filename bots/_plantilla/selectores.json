@@ -1,0 +1,75 @@
+{
+  "_comentario": "PLANTILLA para un banco nuevo. Copiar esta carpeta como bots/<banco>/ y completar. Todo lo que diga '>>> COMPLETAR' se ignora hasta que se reemplace por un selector de verdad, asi la ficha a medio llenar no rompe nada: simplemente falla ese paso con un mensaje claro.",
+
+  "_como_se_completa": [
+    "1. Correr: python scripts/explorar_dom.py --banco <banco>",
+    "2. Entrar al home banking a mano y apretar ENTER en cada pantalla.",
+    "3. Abrir el .md que queda en salidas/dom/ y copiar los selectores sugeridos.",
+    "4. Verificar sin tocar el banco: python bots/generico/validar.py --banco <banco>"
+  ],
+
+  "_orden_de_preferencia": "Al elegir un selector: data-testid > id > name > aria-label > texto. Los dos ultimos son los que mas se rompen cuando el banco cambia el frente, por eso conviene poner 2 o 3 candidatos y dejar el fragil al final.",
+
+  "nombre": ">>> COMPLETAR: nombre lindo del banco",
+  "url": ">>> COMPLETAR: url del home banking",
+
+  "login": {
+    "cerrar_banner": [">>> OPCIONAL: boton de aceptar cookies, si aparece"],
+    "usuario": [">>> COMPLETAR: campo de usuario"],
+    "siguiente": [">>> OPCIONAL: solo si el banco pide usuario y clave en pantallas separadas"],
+    "clave": ["input[type='password']"],
+    "ingresar": [">>> COMPLETAR: boton de ingresar"],
+    "confirmacion": [">>> COMPLETAR: algo que SOLO aparece una vez adentro (ej: el saludo, el menu principal)"],
+    "_por_que_confirmacion": "Sin esto el bot no sabe si entro. Si el login falla, sigue clickeando sobre la pantalla de login y el error aparece tres pasos despues, diciendo cualquier cosa."
+  },
+
+  "empresas": {
+    "tiene": true,
+    "_nota_tiene": "Poner false si la empresa es una sola. El bot saltea todo este bloque.",
+    "activa": [">>> COMPLETAR: donde dice que empresa esta abierta"],
+    "abrir_selector": [">>> COMPLETAR: boton para cambiar de empresa"],
+    "buscador": [">>> OPCIONAL: campo de busqueda dentro del selector"],
+    "filas": [">>> COMPLETAR: cada fila/opcion de empresa de la lista"],
+    "cerrar": [">>> OPCIONAL: boton de cerrar el selector"]
+  },
+
+  "cuenta": {
+    "ir_a_cuentas": [">>> OPCIONAL: menu o link al listado de cuentas"],
+    "abrir_saldo": [">>> COMPLETAR: el 'apretar en saldo' que lleva a los movimientos"]
+  },
+
+  "saldos": {
+    "actual": [">>> COMPLETAR: el saldo actual"],
+    "disponible": [">>> OPCIONAL: el saldo disponible, si el banco lo muestra aparte"]
+  },
+
+  "fechas": {
+    "modo": "inputs",
+    "_modos": "'inputs' = se escribe la fecha en dos campos. 'calendario' = hay que clickear dias en un datepicker; eso no lo resuelve el generico y necesita un adaptador propio (ver bots/galicia/bot.py).",
+    "formato": "%d/%m/%Y",
+    "abrir_filtros": [">>> OPCIONAL: boton que despliega los filtros"],
+    "desde": [">>> COMPLETAR: campo desde"],
+    "hasta": [">>> COMPLETAR: campo hasta"],
+    "aplicar": [">>> COMPLETAR: boton de aplicar"],
+    "confirmacion": [">>> COMPLETAR: algo que confirme que el filtro se aplico"],
+    "_por_que_confirmacion": "Es el peor error silencioso posible: si el filtro no se aplica, el bot descarga el periodo por default, la descarga 'funciona', y nadie se entera hasta que faltan movimientos en la planilla."
+  },
+
+  "descarga": {
+    "boton": [">>> COMPLETAR: boton de descargar/exportar"],
+    "opcion": [">>> OPCIONAL: si se abre un menu para elegir CSV o Excel"],
+    "espera_ms": 30000,
+    "patron_cuenta_id": ">>> OPCIONAL: regex con un grupo para sacar el nro de cuenta del nombre del archivo, ej: (CC\\d+)"
+  },
+
+  "esperas": {
+    "_ayuda": "Milisegundos de espera despues de cada paso. Los defaults del bot alcanzan casi siempre; tocar solo si el banco es lento.",
+    "despues_de_abrir": 2500,
+    "despues_de_login": 6000,
+    "menu_empresas": 2000,
+    "listado_cuentas": 3000,
+    "movimientos": 3500,
+    "filtros_abiertos": 1500,
+    "despues_de_aplicar": 4000
+  }
+}

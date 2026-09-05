@@ -30,16 +30,24 @@ un contrato que se genera a mano es una demo, no un producto.
 
 ## 1. Dónde estamos
 
-### Capa 1 — Bots (el eslabón que falta)
+### Capa 1 — Bots
+
+> **Bloqueado por acceso:** cambiaron las claves de todos los bancos. No se puede
+> probar nada contra un home banking real hasta que MAGA vuelva a dar acceso.
+> Por eso el trabajo se corrió a **dejar todo armado y probado sin banco**.
 
 | Pieza | Estado | Detalle |
 |---|---|---|
-| Bot Galicia (producción) | ✅ Andando | Corre solo a las 8:00 (`BotGaliciaExtractos`). Intacto. |
-| Bot Galicia (finauto) | 🟡 Sin probar | Portado a núcleo + adaptador. Compila, **nunca corrió contra el banco**. |
-| Bot Comafi | 🟡 Andamiaje | Falta una pasada de DOM en vivo (`# >>> TODO COMAFI`). |
-| Bot Santander | ⬜ Esqueleto | Solo el contrato de la clase. |
-| Bot cheques emitidos | ⬜ No existe | El parser sí; falta que el bot lo **baje solo**. |
-| Bot cobranzas (RAL) | ⬜ No existe | Hoy es un BUSCARV manual todos los lunes. |
+| **Bot genérico** | ✅ **Probado de punta a punta** | Un solo motor para casi cualquier banco, manejado por ficha. |
+| Banco de prueba | ✅ | Home banking falso local que reproduce el recorrido real. |
+| Validador de fichas | ✅ | Revisa una ficha sin tocar el banco. |
+| Ficha `prueba` | ✅ Completa | Ejemplo lleno de cómo se completa una ficha. |
+| Ficha `comafi` | 🟡 Armada, vacía | Espera la pasada de DOM. |
+| Ficha `santander` | 🟡 Armada, vacía | Ídem. |
+| Bot Galicia (producción) | ✅ Andando | Corre solo a las 8:00. Intacto. |
+| Bot Galicia (finauto) | 🟡 Sin probar | Adaptador propio (calendario react-datepicker). |
+| Bot cheques emitidos | ⬜ No existe | El parser sí; falta que el bot lo baje. |
+| Bot cobranzas (RAL) | ⬜ No existe | Hoy BUSCARV manual los lunes. |
 
 ### Capa 2 — Los datos
 
@@ -63,7 +71,7 @@ un contrato que se genera a mano es una demo, no un producto.
 | Dashboard "Caja al Día" | 🟡 Mockup, sin conectar |
 | Simulador web | 🟡 Mockup, sin conectar |
 
-**61 tests**, corren sin instalar nada: `python tests/test_motor.py`
+**63 tests del motor** + **20 del bot genérico** (contra el banco de prueba).
 
 ---
 
@@ -88,23 +96,62 @@ escenario siempre imprime qué está asumiendo).
 
 ---
 
+## 2.b El bot genérico: un banco = una ficha
+
+Thomas describió el recorrido que comparten casi todos los home banking:
+
+> cuenta principal → apretás en saldo → salen los movimientos → filtro de fecha
+> → aplicás → botón de descarga → listo
+
+Si el recorrido es siempre el mismo y solo cambian los nombres de los botones,
+un banco nuevo **no es un programa nuevo: es una ficha**.
+
+```
+bots/<banco>/selectores.json    <- lo único que se escribe por banco
+```
+
+Es la misma decisión que ya tomamos con los clientes: **lo que varía va en datos,
+no en código**. Sumar Santander pasa de ~600 líneas de Python a llenar un archivo.
+
+Cada paso tiene una **lista de candidatos** que se prueban en orden. No es
+comodidad: los bancos cambian el frente cada tanto, y tener 2 o 3 formas de
+encontrar el mismo botón es lo que evita que el bot se caiga un martes cualquiera.
+
+**Dos confirmaciones obligatorias**, porque son los dos errores silenciosos que
+más caro salen:
+- `login.confirmacion` — si el login falló, el bot sigue clickeando sobre la
+  pantalla de login y el error aparece tres pasos después diciendo cualquier cosa.
+- `fechas.confirmacion` — si el filtro no se aplicó, el bot descarga el período
+  por default, la descarga "funciona", y nadie se entera hasta que faltan
+  movimientos en la planilla.
+
+**Cuándo NO usarlo:** si un banco hace algo que no entra en el recorrido (un
+calendario tipo el de Galicia, un iframe raro, un segundo factor en cada paso),
+sigue existiendo la opción de un adaptador a mano. El genérico es el default,
+no una obligación.
+
+---
+
 ## 3. Qué falta
 
-**Ahora (la cadena, en orden):**
-1. **Comafi** — necesita una pasada de DOM con el banco abierto.
-2. **Galicia finauto** — probarlo de verdad contra el banco.
-3. **Bot de cheques emitidos** — el bot ya entra al banco; es casi el mismo trabajo.
-4. **Bot / cruce de cobranzas (RAL)** — y que marque las cobradas solas.
-5. Santander (cuando haga falta).
+**Bloqueado hasta que haya acceso a los bancos:**
+- Completar las fichas de Comafi y Santander (`scripts/explorar_dom.py`).
+- Probar el bot Galicia refactorizado contra el banco.
+- Bot que baje el listado de cheques emitidos.
 
-**Después:**
-6. Conectar el dashboard y el simulador web al contrato.
-7. Que el dash aconseje, no solo muestre.
+*Todo eso es ahora una tarde de trabajo, no una semana: el motor ya está probado
+y lo único que falta es llenar selectores.*
+
+**Se puede hacer sin bancos:**
+1. Conectar el dashboard y el simulador web al contrato.
+2. Que el dash aconseje, no solo muestre.
+3. Cruce de cobranzas (RAL) — el BUSCARV de los lunes.
+4. Cartera de cheques.
 
 **Para escalar a otros clientes:**
-8. **Reconocedor de planillas** — el cuello de botella del negocio.
+5. **Reconocedor de planillas** — el cuello de botella del negocio.
 
-**Sin tocar todavía:** cartera de cheques, análisis EERR.
+**Sin tocar todavía:** análisis EERR.
 
 ---
 
@@ -112,7 +159,7 @@ escenario siempre imprime qué está asumiendo).
 
 | Tema | Estado |
 |---|---|
-| **Honorarios DJ: ¿"DJ" son las iniciales de D.Jaimovich?** | ❓ **Pregunta abierta.** En la planilla conviven "honorarios DJ", "honorarios D.jaimovich" y "honorarios junio D.Jaimovich". Hoy solo se marca `DJ` como palabra suelta (criterio conservador: marca de menos, no de más). |
+| Honorarios DJ | ✅ **Resuelto.** Thomas confirmó que DJ = D.Jaimovich. Los tres conceptos son monto variable ($202.737.150). Al aplicarlo apareció que `DJ` también es *Declaración Jurada* en los impuestos: de ahí salió `solo_tipos` en las excepciones. |
 | Cargas sociales cargadas como `SUELDO` | El catálogo tiene `VEP_AFIP`, la planilla usa `SUELDO`. Ambos rígidos, así que no cambia ningún número. Anotado. |
 | PAMI | Queda **manual**. No modelar todavía. |
 | Venta diaria automática | Requiere histórico de ventas por farmacia. |
@@ -220,8 +267,15 @@ python simulador/consejo.py --contrato c.json --minimo 200000000 --estres 20
 # Memoria
 python memoria/registro.py guardar --contrato c.json
 
+# Bancos: validar una ficha sin tocar el banco
+python bots/generico/validar.py --todos
+
+# Relevar un banco nuevo (interactivo: entras y navegas vos)
+python scripts/explorar_dom.py --banco comafi
+
 # Tests
-python tests/test_motor.py
+python tests/test_motor.py           # 63 del motor
+python tests/test_bot_generico.py    # el bot, contra el banco de prueba
 ```
 
 ---
