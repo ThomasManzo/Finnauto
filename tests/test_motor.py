@@ -802,13 +802,27 @@ def test_rigido_y_endoso():
     ok("Sueldos" in det, "y dice de que se trata")
 
     # La cartera de cheques: opciones dentro de la ventana.
+    # RECIBIDO = todavia sin decidir. Es el unico estado que sigue siendo
+    # palanca: los otros ya se resolvieron.
     c2 = {"cartera_cheques": [
-        {"fecha": "2026-09-12", "importe": 300.0, "estado": "DEPOSITADO"},
-        {"fecha": "2026-11-20", "importe": 800.0, "estado": "DEPOSITADO"},
+        {"fecha": "2026-09-12", "importe": 300.0, "estado": "RECIBIDO"},
+        {"fecha": "2026-11-20", "importe": 800.0, "estado": "RECIBIDO"},
     ]}
     chs = PR.cheques_endosables(c2, hoy, 7)
     ok(len(chs) == 1 and chs[0]["importe"] == 300.0,
        "solo los cheques que vencen en la ventana", str(len(chs)))
+
+    # Un cheque YA depositado fue caja y uno YA endosado bajo deuda: ninguno
+    # sigue siendo una palanca. En los datos reales de MAGA el estado que marca
+    # "todavia sin decidir" es RECIBIDO, y son 6 de 365.
+    c3 = {"cartera_cheques": [
+        {"fecha": "2026-09-12", "importe": 100.0, "estado": "RECIBIDO"},
+        {"fecha": "2026-09-12", "importe": 200.0, "estado": "DEPOSITADO"},
+        {"fecha": "2026-09-12", "importe": 300.0, "estado": "ENDOSADO"},
+        {"fecha": "2026-09-12", "importe": 400.0, "estado": "ANULADO"},
+    ]}
+    ids = [x["importe"] for x in PR.cheques_endosables(c3, hoy, 7)]
+    ok(ids == [100.0], "solo los que todavia no se decidieron", str(ids))
 
     an = [{"proveedor": "SUIZO", "vencido": 400.0, "por_vencer": 100.0,
            "tolerancia": 3, "margen": 1.0, "atraso_semanas": 2.0}]
@@ -817,10 +831,22 @@ def test_rigido_y_endoso():
        str(c["libre"]))
     txt = " ".join(p["texto"] for p in c["pasos"])
     ok("no se pueden mover" in txt, "el consejo arranca por lo rigido")
-    ok("endosarlo a SUIZO" in txt,
-       "y propone endosar el cheque al proveedor mas urgente", txt[-90:])
+    ok("endosas a SUIZO" in txt,
+       "y propone endosar contra el proveedor mas urgente", txt[-90:])
     # 500 de deuda menos un cheque de 300 -> queda 200
     ok("200" in txt, "diciendo en cuanto queda la deuda despues", txt[-90:])
+    ok(any(p["tipo"] == "alternativa" for p in c["pasos"]),
+       "y muestra la otra cara: depositarlos en vez de endosarlos")
+
+    # Los endosos son ACUMULATIVOS. La primera version calculaba cada cheque
+    # contra la misma deuda base, como si hubiera que elegir uno solo.
+    dos = [{"fecha": "2026-09-12", "importe": 100.0, "estado": "RECIBIDO"},
+           {"fecha": "2026-09-13", "importe": 150.0, "estado": "RECIBIDO"}]
+    c4 = PR.consejo(an, caja=1000.0, cobros=0.0, rigido=0.0, cheques=dos)
+    paso = [p for p in c4["pasos"] if p["tipo"] == "endoso"][0]
+    ok(abs(paso["total"] - 250.0) < 0.01, "suma todos los cheques, no uno solo",
+       str(paso["total"]))
+    ok("250" in paso["texto"], "y lo dice en el texto")
 
     # Si no alcanza ni para lo rigido, eso se dice primero y fuerte.
     c2 = PR.consejo(an, caja=100.0, cobros=50.0, rigido=500.0, cheques=[])

@@ -267,6 +267,13 @@ def cheques_endosables(contrato, hoy, dias):
         f = c.get("fecha")
         if not f or f < h or f > hasta:
             continue
+        # Solo los que TODAVIA NO SE DECIDIERON. Un cheque ya depositado fue
+        # caja y uno ya endosado bajo deuda: ninguno de los dos es una palanca
+        # disponible. En los datos reales de MAGA los estados son RECIBIDO (sin
+        # decidir), DEPOSITADO, ENDOSADO, ANULADO y negociado.
+        est = (c.get("estado") or "").strip().upper()
+        if est and est not in ("RECIBIDO", "EN CARTERA", "PENDIENTE"):
+            continue
         out.append(c)
     return sorted(out, key=lambda x: (x["fecha"], -abs(float(x.get("importe") or 0))))
 
@@ -301,20 +308,40 @@ def consejo(analisis, caja, cobros, rigido, cheques):
         })
 
     # Se endosa contra el proveedor con menos margen: es el que puede cortar.
+    #
+    # OJO: los endosos son ACUMULATIVOS, no alternativas. La primera version
+    # calculaba cada cheque contra la misma deuda base, como si hubiera que
+    # elegir uno. Se endosan todos y la deuda baja por la suma.
     urgente = conTol[0] if conTol else None
-    restante = libre
-    for ch in cheques:
-        imp = abs(float(ch.get("importe") or 0))
-        if not urgente:
-            break
+    if urgente and cheques:
         destino = urgente["proveedor"]
         deuda_u = urgente["vencido"] + urgente["por_vencer"]
+        total_ch = sum(abs(float(c.get("importe") or 0)) for c in cheques)
+        queda = max(0.0, deuda_u - total_ch)
+
+        detalle = ", ".join("%s el %s" % (_m(abs(float(c.get("importe") or 0))),
+                                          c["fecha"][8:10] + "/" + c["fecha"][5:7])
+                            for c in cheques[:4])
+        if len(cheques) > 4:
+            detalle += " y %d mas" % (len(cheques) - 4)
+
         pasos.append({
             "tipo": "endoso",
-            "cheque": ch,
-            "texto": ("El cheque de %s con fecha %s podes endosarlo a %s: no entra "
-                      "plata, pero la deuda con ellos queda en %s."
-                      % (_m(imp), ch["fecha"], destino, _m(max(0.0, deuda_u - imp)))),
+            "cheques": cheques,
+            "total": total_ch,
+            "destino": destino,
+            "texto": ("Tenes %d cheque(s) en cartera por %s que vencen en la "
+                      "ventana (%s). Si los endosas a %s no entra un peso a la "
+                      "caja, pero la deuda con ellos pasa de %s a %s."
+                      % (len(cheques), _m(total_ch), detalle, destino,
+                         _m(deuda_u), _m(queda))),
+        })
+        # La otra cara: si en vez de endosarlos se depositan, es plata.
+        pasos.append({
+            "tipo": "alternativa",
+            "texto": ("La otra opcion con esos mismos cheques es depositarlos: "
+                      "ahi si entran %s a la caja, pero la deuda con %s queda "
+                      "igual en %s." % (_m(total_ch), destino, _m(deuda_u))),
         })
 
     return {"deuda_total": deuda, "disponible": disponible, "rigido": rigido,
