@@ -133,8 +133,10 @@ def _bloque(f, titulo, items, campos=("texto",)):
         f.write(linea + "\n")
 
 
-def escribir(paso, nombre, foto, f):
+def escribir(paso, nombre, foto, f, metodo=""):
     f.write("\n\n---\n\n## Paso %d — %s\n\n" % (paso, nombre))
+    if metodo:
+        f.write("> Completa el metodo **`%s`** del contrato `BotBanco`.\n\n" % metodo)
     f.write("- URL: `%s`\n- Titulo: %s\n" % (foto["url"], foto["titulo"]))
     if foto["iframes"]:
         f.write("\n> [!] La pagina tiene %d iframe(s). Si un control no aparece aca, "
@@ -154,15 +156,28 @@ def escribir(paso, nombre, foto, f):
     f.flush()
 
 
-PASOS_SUGERIDOS = [
-    "Pantalla de login (antes de entrar)",
-    "Ya adentro: pantalla principal / home",
-    "Selector de EMPRESAS abierto",
-    "Listado de cuentas",
-    "Cuenta abierta: saldos a la vista",
-    "Filtro de FECHAS abierto",
-    "Pantalla de movimientos con el boton de DESCARGA a la vista",
-    "Listado de CHEQUES EMITIDOS",
+# Los pasos NO son una lista cualquiera: cada uno corresponde a un metodo del
+# contrato BotBanco (bots/base.py). Asi el relevamiento de CUALQUIER banco da
+# siempre la misma informacion, y el bot nuevo se completa llenando huecos en
+# vez de empezar de cero. Si una empresa usa Comafi y otra Santander, el resto
+# del sistema no se entera: cambia el adaptador, no el nucleo.
+PASOS = [
+    ("Pantalla de login (ANTES de entrar)", "hacer_login",
+     "campos de usuario y clave, boton de ingresar"),
+    ("Ya adentro: home", "capturar_empresa_activa",
+     "donde dice que empresa quedo abierta (encabezado, perfil)"),
+    ("Selector de EMPRESAS abierto", "descubrir_empresas / cambiar_a_empresa",
+     "como se abre el selector y como son las filas de cada empresa"),
+    ("Listado de cuentas", "ir_a_cuenta",
+     "menu o link para entrar a saldos y movimientos"),
+    ("Cuenta abierta: saldos a la vista", "capturar_saldos",
+     "las etiquetas de saldo ACTUAL y DISPONIBLE"),
+    ("Filtro de FECHAS abierto", "aplicar_filtro_fechas",
+     "si es calendario o inputs de texto, y en que formato"),
+    ("Movimientos con el boton de DESCARGA visible", "descargar_csv",
+     "boton de exportar y si hay que elegir CSV/Excel en un menu"),
+    ("Listado de CHEQUES EMITIDOS", "(bot de cheques, pendiente)",
+     "como se llega y si se puede exportar"),
 ]
 
 
@@ -194,22 +209,40 @@ def main():
     print("=" * 70)
 
     fotos = []
+    saltados = []
     with abrir_navegador(perfil, desc, headless=False) as page:
         if args.url:
             page.goto(args.url)
         with io.open(ruta_md, "w", encoding="utf-8") as f:
             f.write("# Pasada de DOM — %s\n\n_%s_\n\n" % (args.banco, sello))
             f.write("Generado por `scripts/explorar_dom.py`. Solo estructura de "
-                    "controles: no incluye valores tipeados ni campos de clave.\n")
+                    "controles: no incluye valores tipeados ni campos de clave.\n\n")
+            f.write("Cada paso corresponde a un metodo del contrato `BotBanco` "
+                    "(`bots/base.py`): todos los bancos se relevan igual, asi el "
+                    "adaptador nuevo se completa llenando huecos.\n")
             paso = 0
             while True:
-                sug = PASOS_SUGERIDOS[paso] if paso < len(PASOS_SUGERIDOS) else "otra pantalla"
+                if paso < len(PASOS):
+                    sug, metodo, mirar = PASOS[paso]
+                else:
+                    sug, metodo, mirar = "otra pantalla", "", ""
+                print("")
+                print("  [%d/%d] %s" % (paso + 1, len(PASOS), sug))
+                if mirar:
+                    print("         mira: %s" % mirar)
+                    print("         (esto completa: %s)" % metodo)
                 try:
-                    r = input("\n  [%d] %s  ->  ENTER para capturar (o 'fin'): " % (paso + 1, sug))
+                    r = input("         ENTER para capturar  |  'saltar'  |  'fin': ")
                 except (EOFError, KeyboardInterrupt):
                     break
                 if r.strip().lower() in ("fin", "f", "salir", "q"):
                     break
+                if r.strip().lower() in ("saltar", "s"):
+                    # Un banco puede no tener esa pantalla (ej: una sola empresa).
+                    f.write("\n\n---\n\n## Paso %d — %s\n\n_SALTEADO: este banco no tiene esa pantalla._\n" % (paso + 1, sug))
+                    saltados.append((paso + 1, sug, metodo))
+                    paso += 1
+                    continue
                 nombre = r.strip() or sug
                 try:
                     foto = page.evaluate(JS_FOTO)
@@ -219,12 +252,26 @@ def main():
                 paso += 1
                 foto["paso"] = paso
                 foto["nombre"] = nombre
+                foto["metodo"] = metodo
                 fotos.append(foto)
-                escribir(paso, nombre, foto, f)
+                escribir(paso, nombre, foto, f, metodo)
                 print("      OK: %d botones, %d links, %d inputs, %d tablas%s" % (
                     len(foto["botones"]), len(foto["links"]), len(foto["inputs"]),
                     len(foto["tablas"]),
                     "  [ojo: hay iframes]" if foto["iframes"] else ""))
+
+    # Checklist final: que metodos quedaron cubiertos y cuales no. Sin esto es
+    # facil terminar la pasada creyendo que esta completa y descubrir el hueco
+    # recien cuando el bot falla a las 8 de la manana.
+    cubiertos = set(x.get("metodo", "") for x in fotos)
+    with io.open(ruta_md, "a", encoding="utf-8") as f:
+        f.write("\n\n---\n\n## Cobertura del contrato BotBanco\n\n")
+        for _, metodo, _ in PASOS:
+            marca = "[x]" if metodo in cubiertos else "[ ]"
+            f.write("- %s `%s`\n" % (marca, metodo))
+        if saltados:
+            f.write("\nSalteados a proposito: %s\n" %
+                    ", ".join("%s (paso %d)" % (m, n) for n, _, m in saltados))
 
     with io.open(ruta_json, "w", encoding="utf-8") as f:
         f.write(json.dumps(fotos, ensure_ascii=False, indent=2))
