@@ -271,6 +271,7 @@ function exportarContratoEnLog() {
   Logger.log('URL     : %s', archivo.getUrl());
   Logger.log('Movimientos: %s | Saldos: %s | Caja hoy: %s',
              payload.movimientos.length, payload.saldos.length, payload.caja_hoy);
+  Logger.log('Cartera de cheques: %s', (payload.cartera_cheques || []).length);
   Logger.log('Cobros previstos: %s | Deuda drog.: %s | A cobrar drog.: %s',
              (payload.cobros_previstos || []).length,
              (payload.deuda_droguerias || []).length,
@@ -333,6 +334,7 @@ function _construirPayload_() {
     caja_hoy: cajaHoy,
     caja_por_unidad: caja.por_unidad,
     referencias_del_cliente: _leerReferencias_(ss, avisos),
+    cartera_cheques: _leerCarteraCheques_(ss, avisos),
     caja_efectivo: caja.efectivo,
     catalogo_tipos: EXP_TIPOS,
     catalogo_ingresos: EXP_INGRESOS,
@@ -668,6 +670,112 @@ function _leerReferencias_(ss, avisos) {
                 EXP_HOJAS_REFERENCIA.join(', ') + '). Sin eso, el informe no ' +
                 'tiene contra que compararse.');
   }
+  return out;
+}
+
+/**
+ * LA CARTERA DE CHEQUES: no es un ingreso, es una OPCION.
+ *
+ * Thomas: "vas a ver que la mayoria tiene estado depositado, porque son
+ * futuros; una vez que llega la fecha de cobro se toma la decision de endosar o
+ * depositar".
+ *
+ * O sea que "depositado" es lo ESPERADO, no lo decidido. Cada cheque en cartera
+ * es una palanca disponible para la semana en que vence:
+ *
+ *     depositar -> entra plata al banco
+ *     endosar   -> NO entra un peso, pero baja la deuda con esa drogueria
+ *
+ * Y esa eleccion es justo la que se toma al decidir a quien pagarle:
+ *
+ *     "Si recibimos un cheque de Suizo de 100 y nosotros le debemos hace dos
+ *      semanas 250, y esos 100 justo no los necesitamos para lo inmediato, se
+ *      endosa y listo."
+ *
+ * Por eso no alcanza con sumarlos como cobros: hay que llevarlos con su fecha,
+ * su importe y su estado, para poder ofrecer las dos opciones.
+ *
+ * Se lee sin asumir el layout: se busca la fila de encabezados y se mapea por
+ * nombre de columna. Si algo no aparece, se avisa con los encabezados que SI
+ * habia -- el mismo criterio que ya se usa con los bloques de droguerias.
+ */
+var EXP_CARTERA_HOJA = 'CARTERA DE CH';
+
+function _leerCarteraCheques_(ss, avisos) {
+  var out = [];
+  var sh = null, hojas = ss.getSheets();
+  for (var i = 0; i < hojas.length; i++) {
+    if (_norm_(hojas[i].getName()).indexOf(EXP_CARTERA_HOJA) > -1) { sh = hojas[i]; break; }
+  }
+  if (!sh) {
+    avisos.push('No encontre la solapa "' + EXP_CARTERA_HOJA + '". Sin ella no se ' +
+                'puede saber que cheques se pueden endosar en vez de depositar.');
+    return out;
+  }
+
+  var maxR = Math.min(sh.getLastRow(), 3000), maxC = Math.min(sh.getLastColumn(), 25);
+  if (maxR < 2) { avisos.push('La solapa "' + sh.getName() + '" esta vacia.'); return out; }
+  var grid = sh.getRange(1, 1, maxR, maxC).getValues();
+
+  // La fila de encabezados: la que mas texto tiene arriba de todo.
+  var enc = -1, mejor = 0;
+  for (var r = 0; r < Math.min(grid.length, 20); r++) {
+    var n = 0;
+    for (var c = 0; c < grid[r].length; c++) {
+      if (typeof grid[r][c] === 'string' && grid[r][c].trim()) n++;
+    }
+    if (n > mejor) { mejor = n; enc = r; }
+  }
+  if (enc < 0) { avisos.push('No encontre encabezados en "' + sh.getName() + '".'); return out; }
+
+  var cols = {}, nombres = [];
+  for (var c2 = 0; c2 < grid[enc].length; c2++) {
+    var t = _norm_(grid[enc][c2]);
+    if (!t) continue;
+    nombres.push(String(grid[enc][c2]).trim());
+    if (cols.fecha === undefined && t.indexOf('FECHA') > -1 && t.indexOf('CARGA') < 0) cols.fecha = c2;
+    if (cols.importe === undefined && (t.indexOf('IMPORTE') > -1 || t.indexOf('MONTO') > -1)) cols.importe = c2;
+    if (cols.estado === undefined && t.indexOf('ESTADO') > -1) cols.estado = c2;
+    if (cols.librador === undefined && (t.indexOf('LIBRADOR') > -1 || t.indexOf('EMISOR') > -1 ||
+        t.indexOf('CLIENTE') > -1)) cols.librador = c2;
+    if (cols.destino === undefined && (t.indexOf('ENDOS') > -1 || t.indexOf('DESTINO') > -1 ||
+        t.indexOf('A QUIEN') > -1)) cols.destino = c2;
+    if (cols.numero === undefined && (t.indexOf('NRO') > -1 || t.indexOf('NUMERO') > -1)) cols.numero = c2;
+  }
+
+  if (cols.fecha === undefined || cols.importe === undefined) {
+    avisos.push('En "' + sh.getName() + '" no encontre columna de fecha y/o importe. ' +
+                'Los encabezados que SI hay son: ' + nombres.join(' | '));
+    return out;
+  }
+
+  for (var rr = enc + 1; rr < grid.length; rr++) {
+    var f = _fechaCol_(grid[rr][cols.fecha]);
+    if (!f && grid[rr][cols.fecha] instanceof Date) {
+      f = Utilities.formatDate(grid[rr][cols.fecha], Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    }
+    var imp = _num_(grid[rr][cols.importe]);
+    if (!f || !imp) continue;
+    out.push({
+      fecha: f,
+      importe: imp,
+      estado: cols.estado !== undefined ? String(grid[rr][cols.estado] || '').trim() : '',
+      librador: cols.librador !== undefined ? String(grid[rr][cols.librador] || '').trim() : '',
+      destino: cols.destino !== undefined ? String(grid[rr][cols.destino] || '').trim() : '',
+      numero: cols.numero !== undefined ? String(grid[rr][cols.numero] || '').trim() : '',
+      origen: sh.getName()
+    });
+  }
+
+  var estados = {};
+  for (var k = 0; k < out.length; k++) {
+    var e = _norm_(out[k].estado) || '(sin estado)';
+    estados[e] = (estados[e] || 0) + 1;
+  }
+  var det = [];
+  for (var e2 in estados) det.push(e2 + ': ' + estados[e2]);
+  avisos.push('Cartera de cheques: ' + out.length + ' cheque(s). Estados -> ' +
+              det.join(', ') + '. Columnas usadas: ' + Object.keys(cols).join(', ') + '.');
   return out;
 }
 

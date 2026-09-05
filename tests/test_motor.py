@@ -715,6 +715,119 @@ def test_posicion_por_unidad():
        str(m2["debe"]))
 
 
+# ------------------------------------------- a quien le pago esta semana
+def test_proveedores():
+    print("\n== Tolerancia de proveedor, no caja minima ==")
+    from simulador import proveedores as PR
+
+    prov = {
+        "SUIZO": {"id": "SUIZO", "nombre": "Suizo", "vence": "jueves",
+                  "tolerancia_semanas": 3},
+        "DROG.DEL SUD": {"id": "DROG.DEL SUD", "nombre": "DDS", "vence": "viernes",
+                         "tolerancia_semanas": 3},
+    }
+    hoy = datetime.date(2026, 9, 10)
+    contrato = {"deuda_droguerias": [
+        # vencido hace 2 semanas
+        {"contraparte": "SUIZO ARGENTINA S.A. (00282)", "fecha": "2026-08-27",
+         "importe": 100.0, "unidad": "SPEEDMED", "estado": "PAGADO"},
+        # vence dentro de la ventana
+        {"contraparte": "SUIZO ARGENTINA S.A. (00282)", "fecha": "2026-09-17",
+         "importe": 200.0, "unidad": "SPEEDMED", "estado": "PENDIENTE"},
+        {"contraparte": "DROG.DEL SUD S.A (0013)", "fecha": "2026-09-11",
+         "importe": 300.0, "unidad": "SPEEDMED", "estado": "PENDIENTE"},
+        # una nota de credito: NO es deuda con tolerancia
+        {"contraparte": "NCR SUIZO", "fecha": "2026-09-15", "importe": -50.0,
+         "unidad": "SPEEDMED", "es_credito": True},
+        # la refinanciacion tampoco entra en el reparto semanal
+        {"contraparte": "REFINANCIACION", "fecha": "2026-09-25", "importe": 900.0,
+         "unidad": "SPEEDMED", "estado": "PENDIENTE"},
+    ]}
+
+    an = PR.analizar(contrato, prov, 1000.0, "SPEEDMED", hoy, 21)
+    por = dict((a["proveedor"], a) for a in an)
+
+    ok("SUIZO" in por and "DROG.DEL SUD" in por, "agrupa por proveedor", str(list(por)))
+    ok(por["SUIZO"]["vencido"] == 100.0, "separa lo vencido de lo que viene")
+    ok(por["SUIZO"]["por_vencer"] == 200.0, "y lo que vence en la ventana")
+
+    # El atraso se mide desde la factura MAS VIEJA sin pagar: es el tiempo que
+    # el proveedor lleva esperando.
+    ok(abs(por["SUIZO"]["atraso_semanas"] - 2.0) < 0.1,
+       "el atraso se mide desde la deuda mas vieja",
+       str(por["SUIZO"]["atraso_semanas"]))
+    ok(abs(por["SUIZO"]["margen"] - 1.0) < 0.1,
+       "el margen es la tolerancia menos el atraso", str(por["SUIZO"]["margen"]))
+
+    # Ordena por quien esta MAS CERCA de cortarte, no por quien mas debe.
+    ok(an[0]["proveedor"] == "SUIZO",
+       "primero el que menos margen le queda, aunque deba menos",
+       str([a["proveedor"] for a in an]))
+
+    ok(por["SUIZO"]["credito"] == 50.0, "las NCR van aparte, como credito a favor")
+    ok(por["REFINANCIACION"]["tolerancia"] is None,
+       "la refinanciacion no tiene tolerancia: es un acuerdo, no una factura")
+
+    # Los escenarios: ninguno es "el correcto", todos tienen costo.
+    esc = PR.escenarios(an, 500.0)
+    nombres = [e["nombre"] for e in esc]
+    ok(any("todo" in n.lower() for n in nombres), "ofrece pagar todo")
+    ok(any("nada" in n.lower() for n in nombres), "y no pagar nada")
+    todo = [e for e in esc if "todo" in e["nombre"].lower()][0]
+    ok(todo["caja_queda"] < 0, "y avisa cuando pagar todo no alcanza",
+       str(todo["caja_queda"]))
+    nada = [e for e in esc if "nada" in e["nombre"].lower()][0]
+    ok(all(sem > 0 for _, sem in nada["atrasos"]),
+       "no pagar nada suma una semana de atraso a todos")
+
+
+def test_rigido_y_endoso():
+    print("\n== Lo rigido primero, y el cheque como palanca ==")
+    from simulador import proveedores as PR
+
+    hoy = datetime.date(2026, 9, 10)
+    cat_tipos = {
+        "SUELDO": {"nombre": "Sueldos", "tolerancia": 0, "interno": False},
+        "PAGO": {"nombre": "Proveedores", "tolerancia": 15, "interno": False},
+        "TRANSFERENCIA": {"nombre": "Interna", "tolerancia": None, "interno": True},
+    }
+    contrato = {"movimientos": [
+        {"fecha": "2026-09-12", "tipo": "SUELDO", "importe": 500.0},
+        {"fecha": "2026-09-12", "tipo": "PAGO", "importe": 900.0},          # flexible
+        {"fecha": "2026-09-12", "tipo": "TRANSFERENCIA", "importe": 999.0},  # interno
+        {"fecha": "2026-10-30", "tipo": "SUELDO", "importe": 700.0},         # fuera
+    ]}
+    rig, det = PR.obligaciones_rigidas(contrato, cat_tipos, None, hoy, 7)
+    ok(rig == 500.0, "solo cuenta lo que no se puede mover", str(rig))
+    ok("Sueldos" in det, "y dice de que se trata")
+
+    # La cartera de cheques: opciones dentro de la ventana.
+    c2 = {"cartera_cheques": [
+        {"fecha": "2026-09-12", "importe": 300.0, "estado": "DEPOSITADO"},
+        {"fecha": "2026-11-20", "importe": 800.0, "estado": "DEPOSITADO"},
+    ]}
+    chs = PR.cheques_endosables(c2, hoy, 7)
+    ok(len(chs) == 1 and chs[0]["importe"] == 300.0,
+       "solo los cheques que vencen en la ventana", str(len(chs)))
+
+    an = [{"proveedor": "SUIZO", "vencido": 400.0, "por_vencer": 100.0,
+           "tolerancia": 3, "margen": 1.0, "atraso_semanas": 2.0}]
+    c = PR.consejo(an, caja=1000.0, cobros=200.0, rigido=500.0, cheques=chs)
+    ok(abs(c["libre"] - 700.0) < 0.01, "lo libre es caja + cobros - rigido",
+       str(c["libre"]))
+    txt = " ".join(p["texto"] for p in c["pasos"])
+    ok("no se pueden mover" in txt, "el consejo arranca por lo rigido")
+    ok("endosarlo a SUIZO" in txt,
+       "y propone endosar el cheque al proveedor mas urgente", txt[-90:])
+    # 500 de deuda menos un cheque de 300 -> queda 200
+    ok("200" in txt, "diciendo en cuanto queda la deuda despues", txt[-90:])
+
+    # Si no alcanza ni para lo rigido, eso se dice primero y fuerte.
+    c2 = PR.consejo(an, caja=100.0, cobros=50.0, rigido=500.0, cheques=[])
+    ok(any("OJO" in p["texto"] for p in c2["pasos"]),
+       "avisa cuando no alcanza ni para lo que no se puede mover")
+
+
 if __name__ == "__main__":
     print("=" * 62)
     print("  TESTS DEL MOTOR finauto")
@@ -735,6 +848,8 @@ if __name__ == "__main__":
     test_coherencia()
     test_completitud()
     test_posicion_por_unidad()
+    test_proveedores()
+    test_rigido_y_endoso()
     print("\n" + "=" * 62)
     if _fallos:
         print("  %d TEST(S) FALLARON: %s" % (len(_fallos), ", ".join(_fallos)))

@@ -223,6 +223,127 @@ def escenarios(analisis, caja):
     return out
 
 
+
+def obligaciones_rigidas(contrato, cat_tipos, unidad, hoy, dias):
+    """Lo que NO se puede mover: cheques a pagar, sueldos, impuestos.
+
+    Thomas fue tajante con esto: "un cheque no puede rebotar, no es un escenario
+    que se permite" y "nunca quedarte sin la plata suficiente para cubrir al
+    otro dia los cheques".
+
+    Por eso lo rigido se resta ANTES de repartir entre droguerias: es piso, no
+    una opcion mas del reparto.
+    """
+    hasta = (hoy + datetime.timedelta(days=dias)).isoformat()
+    h = hoy.isoformat()
+    total, detalle = 0.0, defaultdict(float)
+    for m in contrato.get("movimientos", []):
+        f = m.get("fecha")
+        if not f or f < h or f > hasta:
+            continue
+        tipo = (m.get("tipo") or "").upper().strip()
+        info = cat_tipos.get(tipo)
+        if not info or info.get("interno"):
+            continue
+        if info.get("tolerancia") != 0:      # solo lo que no se puede correr
+            continue
+        v = abs(float(m.get("importe") or 0))
+        total += v
+        detalle[info.get("nombre") or tipo] += v
+    return total, dict(detalle)
+
+
+def cheques_endosables(contrato, hoy, dias):
+    """Los cheques de la cartera que vencen en la ventana.
+
+    No son un ingreso: son una OPCION. Al llegar la fecha se decide depositar
+    (entra plata) o endosar (baja deuda con una drogueria). El estado que trae
+    la planilla es lo esperado, no lo decidido.
+    """
+    hasta = (hoy + datetime.timedelta(days=dias)).isoformat()
+    h = hoy.isoformat()
+    out = []
+    for c in contrato.get("cartera_cheques", []):
+        f = c.get("fecha")
+        if not f or f < h or f > hasta:
+            continue
+        out.append(c)
+    return sorted(out, key=lambda x: (x["fecha"], -abs(float(x.get("importe") or 0))))
+
+
+def consejo(analisis, caja, cobros, rigido, cheques):
+    """El consejo concreto, con la forma que pidio Thomas:
+
+        "Che, tenes x cantidad de deuda; con la caja que tenes cubris las
+         obligaciones; el cheque que tiene fecha de pago en 2 dias podes
+         endosarlo a x drogueria y dejas la deuda en x monto."
+
+    O sea: primero se asegura lo rigido, y recien despues se usa lo que sobra --
+    incluyendo los cheques como palanca -- contra el proveedor mas urgente.
+    """
+    conTol = [a for a in analisis if a["tolerancia"] is not None]
+    deuda = sum(a["vencido"] + a["por_vencer"] for a in conTol)
+    disponible = caja + cobros
+    libre = disponible - rigido
+
+    pasos = []
+    if rigido > 0:
+        pasos.append({
+            "tipo": "rigido",
+            "ok": libre >= 0,
+            "texto": ("Con %s de caja mas %s que cobras, cubris las obligaciones "
+                      "que no se pueden mover (%s) y te quedan %s."
+                      % (_m(caja), _m(cobros), _m(rigido), _m(libre)))
+                     if libre >= 0 else
+                     ("OJO: entre caja y cobros juntas %s, y lo que NO se puede "
+                      "mover suma %s. Faltan %s ANTES de pensar en droguerias."
+                      % (_m(disponible), _m(rigido), _m(-libre))),
+        })
+
+    # Se endosa contra el proveedor con menos margen: es el que puede cortar.
+    urgente = conTol[0] if conTol else None
+    restante = libre
+    for ch in cheques:
+        imp = abs(float(ch.get("importe") or 0))
+        if not urgente:
+            break
+        destino = urgente["proveedor"]
+        deuda_u = urgente["vencido"] + urgente["por_vencer"]
+        pasos.append({
+            "tipo": "endoso",
+            "cheque": ch,
+            "texto": ("El cheque de %s con fecha %s podes endosarlo a %s: no entra "
+                      "plata, pero la deuda con ellos queda en %s."
+                      % (_m(imp), ch["fecha"], destino, _m(max(0.0, deuda_u - imp)))),
+        })
+
+    return {"deuda_total": deuda, "disponible": disponible, "rigido": rigido,
+            "libre": libre, "pasos": pasos, "urgente": urgente}
+
+
+def imprimir_consejo(c, rig_detalle):
+    L = 78
+    print("\n" + "=" * L)
+    print("  EL CONSEJO")
+    print("=" * L)
+    print("  Debes %s a droguerias en la ventana.\n" % _m(c["deuda_total"]))
+    for p in c["pasos"]:
+        linea = "   . "
+        for palabra in p["texto"].split():
+            if len(linea) + len(palabra) + 1 > L - 2:
+                print(linea)
+                linea = "     "
+            linea += palabra + " "
+        print(linea.rstrip())
+    if rig_detalle:
+        print("\n  Lo que no se puede mover:")
+        for k, v in sorted(rig_detalle.items(), key=lambda kv: -kv[1])[:6]:
+            print("     %-30s %s" % (k[:30], _m(v)))
+    if not any(p["tipo"] == "endoso" for p in c["pasos"]):
+        print("\n  (No hay cheques en cartera venciendo en la ventana, o la solapa")
+        print("   'Cartera de CH' todavia no se esta exportando.)")
+
+
 # ------------------------------------------------------------------ salida
 def imprimir(analisis, esc, caja, unidad, hoy, cobros=0.0, detalle=None, dias=7):
     detalle = detalle or {}
@@ -328,6 +449,13 @@ def main():
     disponible = caja + cobros
     imprimir(an, escenarios(an, disponible), caja, args.unidad, hoy,
              cobros, detalle, args.dias)
+
+    from simulador.semana import cargar_catalogo
+    cat = cargar_catalogo(args.cliente)
+    rigido, rig_det = obligaciones_rigidas(contrato, cat["tipos"], args.unidad,
+                                           hoy, args.dias)
+    chs = cheques_endosables(contrato, hoy, args.dias)
+    imprimir_consejo(consejo(an, caja, cobros, rigido, chs), rig_det)
 
 
 if __name__ == "__main__":
