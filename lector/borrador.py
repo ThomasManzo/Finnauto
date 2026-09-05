@@ -49,6 +49,7 @@ if BASE_REPO not in sys.path:
     sys.path.insert(0, BASE_REPO)
 
 from lector.planilla import analizar, preguntas, _es_numero, _es_fecha, _vacio
+from lector.agrupar import proponer
 
 FALTA = ">>> COMPLETAR"
 
@@ -158,14 +159,34 @@ def armar(archivo, analisis=None):
         ])),
     ])
 
-    # --- catalogo: los valores de la columna de categoria, ordenados POR PLATA
-    tipos = []
+    # --- catalogo: los rubros, ordenados POR PLATA
+    tipos, deducidos = [], False
     if tipo is not None and imp is not None:
         tipos = _tipos_con_peso(archivo, hoja, tipo, imp)
     elif tipo is not None:
         tipos = [{"id": v, "movimientos": n} for v, n in tipo["valores"]]
+    elif concepto is not None and imp is not None:
+        # La planilla no tiene columna de categoria. Es el caso mas comun en una
+        # empresa chica, y sin rubros el motor se queda sin nada: el proyector
+        # cae del 93% al 4% de cobertura.
+        #
+        # Pero la informacion esta escrita en el concepto. Se proponen grupos
+        # mirando SOLO el texto. Medido sobre 1069 movimientos reales, agrupar
+        # asi da 87% de pureza contra los rubros de verdad.
+        #
+        # Son una PROPUESTA: van con nombre provisorio para que el cliente los
+        # confirme o los junte.
+        tipos = _tipos_deducidos(archivo, hoja, concepto, imp)
+        deducidos = True
 
     catalogo = OrderedDict([
+        ("_deducidos", deducidos),
+        ("_aviso_deducidos",
+         ("OJO: la planilla NO tiene columna de categoria. Estos rubros los "
+          "propuso el sistema agrupando por las palabras del concepto. Hay que "
+          "revisarlos CON EL CLIENTE: confirmar los que estan bien, juntar los "
+          "que son lo mismo y descartar los que no sirven. El campo '_ejemplos' "
+          "muestra que movimientos cayeron en cada grupo.") if deducidos else ""),
         ("_ayuda", "Un tipo por cada valor de la columna de categoria. "
                    "'dias_tolerancia' es LA pregunta: cuantos dias se puede correr "
                    "ese pago. 0 = no se puede mover. Ordenados por plata: en una "
@@ -196,9 +217,73 @@ def armar(archivo, analisis=None):
         ]),
         ("mapeo", mapeo),
         ("catalogo", catalogo),
-        ("preguntas_para_el_cliente", [
-            {"hoja": h, "pregunta": q, "respuesta": ""} for h, q in preguntas(analisis)]),
+        ("preguntas_para_el_cliente", _preguntas_todas(analisis, deducidos, tipos, hoja)),
     ])
+
+
+def _preguntas_todas(analisis, deducidos, tipos, hoja):
+    """Las preguntas de la radiografia, mas la que importa cuando no hay rubros."""
+    qs = [{"hoja": h, "pregunta": q, "respuesta": ""} for h, q in preguntas(analisis)]
+    if not deducidos:
+        return qs
+
+    # Cuando los rubros los dedujo el sistema, esta es LA pregunta de la reunion:
+    # va primera y con los grupos concretos adelante. Agrupando por texto es
+    # normal que quede un grupo por empleado en vez de uno de "sueldos"; eso lo
+    # junta una persona en diez segundos, pero hay que preguntarlo.
+    nombres = ", ".join(t["id"] for t in tipos[:10] if t["id"] != "SIN_AGRUPAR")
+    qs.insert(0, {
+        "hoja": hoja["hoja"],
+        "pregunta": ("Esta planilla NO tiene columna de rubro, asi que los agrupe "
+                     "mirando las palabras del concepto: %s. ¿Estan bien? ¿Cuales "
+                     "hay que juntar en uno solo (por ejemplo, varios grupos que "
+                     "en realidad son todos sueldos)? ¿Y como se llama cada uno?"
+                     % nombres),
+        "respuesta": ""})
+    sin = [t for t in tipos if t["id"] == "SIN_AGRUPAR"]
+    if sin and sin[0]["pct"] > 5:
+        qs.insert(1, {
+            "hoja": hoja["hoja"],
+            "pregunta": ("Hay %d movimientos (%.0f%% de la plata) que no comparten "
+                         "palabra con ningun otro y quedaron sin agrupar. ¿Son "
+                         "gastos de una sola vez o hay algo que se repite y se "
+                         "escribe distinto cada vez?" % (sin[0]["movimientos"],
+                                                         sin[0]["pct"])),
+            "respuesta": ""})
+    return qs
+
+
+def _tipos_deducidos(archivo, hoja, colc, coli):
+    """Rubros propuestos a partir del texto, cuando no hay columna de categoria."""
+    from lector.planilla import leer_hoja
+    import openpyxl
+    wb = openpyxl.load_workbook(archivo, data_only=True, read_only=True)
+    filas = leer_hoja(wb[hoja["hoja"]])
+    wb.close()
+    cuerpo = [f for f in filas[hoja["fila_encabezado"]:] if any(not _vacio(v) for v in f)]
+
+    movs = []
+    for f in cuerpo:
+        c = f[colc["col"]] if colc["col"] < len(f) else None
+        v = f[coli["col"]] if coli["col"] < len(f) else None
+        if _vacio(c):
+            continue
+        movs.append({"concepto": str(c).strip(), "importe": abs(_num(v))})
+
+    grupos, sueltos = proponer(movs)
+    total = sum(g["importe"] for g in grupos) + sum(
+        abs(m["importe"]) for m in sueltos) or 1.0
+    out = [{"id": g["palabra"], "movimientos": g["movimientos"],
+            "importe": g["importe"], "pct": 100.0 * g["importe"] / total,
+            "ejemplos": g["ejemplos"]}
+           for g in grupos]
+    if sueltos:
+        imp = sum(abs(m["importe"]) for m in sueltos)
+        out.append({"id": "SIN_AGRUPAR", "movimientos": len(sueltos), "importe": imp,
+                    "pct": 100.0 * imp / total,
+                    "ejemplos": [m["concepto"][:52] for m in
+                                 sorted(sueltos, key=lambda x: -abs(x["importe"]))[:3]]})
+    return out
 
 
 def _tipo_vacio(t):
@@ -208,6 +293,9 @@ def _tipo_vacio(t):
             t["movimientos"], _fmt(t["importe"]), t["pct"])
     else:
         d["_peso"] = "%d movimientos" % t["movimientos"]
+    if t.get("ejemplos"):
+        d["_ejemplos"] = t["ejemplos"]
+        d["_nota"] = "Rubro PROPUESTO por el sistema (la planilla no traia categoria). Confirmar el nombre con el cliente."
     d["dias_tolerancia"] = FALTA
     d["consecuencia"] = FALTA + ": que pasa si no se paga a tiempo"
     d["divisible"] = FALTA
