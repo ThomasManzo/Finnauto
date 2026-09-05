@@ -421,6 +421,83 @@ def test_proyeccion():
        pr31[0]["fecha"] if pr31 else "nada")
 
 
+# --------------------------------------------- proyeccion a N dias (horizonte)
+def test_horizonte():
+    print("\n== Proyeccion a N dias (los dos regimenes) ==")
+    from simulador import proyeccion as PR
+
+    # Solo dias habiles: el 98% de los movimientos reales cae de lunes a viernes,
+    # y proyectar fines de semana ensucia la curva.
+    h = PR._habiles(datetime.date(2026, 9, 5), datetime.date(2026, 9, 13))
+    ok(all(d.weekday() < 5 for d in h), "no proyecta sabados ni domingos")
+    ok(len(h) == 5, "cuenta bien los habiles (5 al 13/09: solo lun-vie del medio)",
+       str(len(h)))
+
+    # DIFUSO: algo que pasa casi todos los dias -> se modela como ritmo diario.
+    # EVENTO: algo que cae un dia puntual -> se modela como evento.
+    movs = []
+    f = datetime.date(2026, 6, 1)
+    while f < datetime.date(2026, 9, 1):
+        if f.weekday() < 5:
+            movs.append({"fecha": f.isoformat(), "tipo": "SERVICIO",
+                         "concepto": "s", "importe": 100.0})
+        if f.day == 10:
+            movs.append({"fecha": f.isoformat(), "tipo": "ALQUILER",
+                         "concepto": "a", "importe": 9000.0})
+        f += datetime.timedelta(days=1)
+
+    perf, _ = PR.perfilar(movs, datetime.date(2026, 9, 1))
+    ok(perf["SERVICIO"]["perfil"] == "difuso", "lo que pasa todos los dias es DIFUSO")
+    ok(perf["ALQUILER"]["perfil"] == "evento", "lo que cae un dia fijo es EVENTO")
+    ok(abs(perf["SERVICIO"]["por_dia_habil"] - 100.0) < 1.0,
+       "del difuso saca cuanto drena por dia habil",
+       str(perf["SERVICIO"]["por_dia_habil"]))
+
+    proy = PR.proyectar_horizonte(perf, datetime.date(2026, 9, 1), 45)
+    ok(all(datetime.date.fromisoformat(p["fecha"]).weekday() < 5 for p in proy),
+       "la proyeccion cae toda en dias habiles")
+    alq = [p for p in proy if p["clave"] == "ALQUILER"]
+    ok("2026-09-10" in [p["fecha"] for p in alq],
+       "el evento cae el dia que corresponde cuando es habil",
+       str([p["fecha"] for p in alq]))
+    ok(len(alq) == 2, "y una vez por mes en el tramo de 45 dias", str(len(alq)))
+    # El 10/10/2026 cae sabado: el pago no se pierde, se corre al viernes 9.
+    ok("2026-10-09" in [p["fecha"] for p in alq],
+       "un evento que cae fin de semana se corre al habil anterior",
+       str([p["fecha"] for p in alq]))
+
+    # EL ERROR QUE YA APARECIO: los eventos de dia VARIABLE se descartaban
+    # enteros y la proyeccion quedaba ~55% por debajo del real, siempre para el
+    # mismo lado. Ahora el dia puede fallar, pero la plata del mes esta.
+    var = []
+    for mes, dia in (("2026-06", 5), ("2026-07", 19), ("2026-08", 11)):
+        var.append({"fecha": "%s-%02d" % (mes, dia), "tipo": "DROGUERIA",
+                    "concepto": "d", "importe": 300.0})
+    perf2, _ = PR.perfilar(var, datetime.date(2026, 9, 1))
+    proy2 = PR.proyectar_horizonte(perf2, datetime.date(2026, 9, 1), 31)
+    total = sum(p["importe"] for p in proy2)
+    ok(abs(total - 300.0) < 1.0,
+       "un pago mensual de dia variable NO se pierde: proyecta el total del mes",
+       "proyecto %.0f de 300" % total)
+
+    # Un grupo que aparecio una sola vez no puede inventar un ritmo mensual.
+    uno = [{"fecha": "2026-06-10", "tipo": "UNICO", "concepto": "u", "importe": 50.0}]
+    p3, _ = PR.perfilar(uno, datetime.date(2026, 9, 1))
+    ok(p3["UNICO"]["meses"] == 1, "sabe que solo lo vio un mes")
+
+    # El backtest no puede espiar el tramo que esta prediciendo.
+    movs.append({"fecha": "2026-09-15", "tipo": "SORPRESA", "concepto": "z",
+                 "importe": 5000.0})
+    r = PR.backtest_horizonte(movs, datetime.date(2026, 9, 1), 45)
+    ok("SORPRESA" not in r["perfiles"], "no aprende del tramo que esta midiendo")
+    ok(r["total_real"] > 0, "y si compara contra lo que realmente paso")
+
+    # El desvio se mide contra el total del tramo. Si se midiera contra el
+    # acumulado del dia, el dia 1 daria cientos por ciento y no diria nada.
+    ok(r["peor_desvio"] < 1000, "el peor desvio es un numero interpretable",
+       "%.0f%%" % r["peor_desvio"])
+
+
 if __name__ == "__main__":
     print("=" * 62)
     print("  TESTS DEL MOTOR finauto")
@@ -436,6 +513,7 @@ if __name__ == "__main__":
     test_ajustes()
     test_formato()
     test_proyeccion()
+    test_horizonte()
     print("\n" + "=" * 62)
     if _fallos:
         print("  %d TEST(S) FALLARON: %s" % (len(_fallos), ", ".join(_fallos)))

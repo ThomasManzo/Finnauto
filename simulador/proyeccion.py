@@ -287,11 +287,215 @@ def imprimir_proyeccion(prop, mes):
     print("  mirarlo: es un gasto que cambia y el numero es apenas una referencia.")
 
 
+# ================================================================ horizonte
+# Proyectar 45 dias no es "proyectar un mes y medio". Mirando 4 meses de datos
+# reales aparecen dos comportamientos muy distintos, y tratarlos igual es lo que
+# hacia que el error de importe fuera del 50%:
+#
+#   DIFUSO  - pasa casi todos los dias habiles (sueldos, impuestos, servicios,
+#             efectivo). Preguntarse "que dia cae" no tiene sentido: lo que
+#             importa es cuanto drena por dia.
+#   EVENTO  - cae en dias puntuales del mes (alquiler, VEP AFIP, cuota de
+#             prestamo). Ahi si importa el dia, y el importe suele repetirse.
+#
+# Ademas, el 98% de los movimientos cae en dia habil: proyectar sabados y
+# domingos ensucia la curva justo donde se toman las decisiones.
+UMBRAL_DIFUSO = 0.35     # fraccion de dias habiles con movimiento
+
+
+def _habiles(desde, hasta):
+    out, f = [], desde
+    while f <= hasta:
+        if f.weekday() < 5:
+            out.append(f)
+        f += datetime.timedelta(days=1)
+    return out
+
+
+def perfilar(movimientos, hasta_fecha, meses_atras=6, nivel="tipo"):
+    """Perfil de cada grupo: difuso o evento, con su ritmo.
+
+    'hasta_fecha' no se incluye: todo lo que se aprende es anterior a esa fecha.
+    """
+    corte = hasta_fecha.isoformat()
+    desde = (hasta_fecha - datetime.timedelta(days=meses_atras * 31)).isoformat()
+    hist = [x for x in movimientos if x.get("fecha") and desde <= x["fecha"] < corte]
+    if not hist:
+        return {}, 0
+
+    f0 = datetime.date.fromisoformat(min(x["fecha"] for x in hist))
+    f1 = datetime.date.fromisoformat(max(x["fecha"] for x in hist))
+    n_habiles = max(1, len(_habiles(f0, f1)))
+
+    por = defaultdict(list)
+    for x in hist:
+        por[clave(x, nivel)].append(x)
+
+    perfiles = {}
+    for k, movs in por.items():
+        dias_con = set(x["fecha"] for x in movs)
+        cobertura = len(dias_con) / float(n_habiles)
+        total = sum(float(x.get("importe") or 0) for x in movs)
+        meses = set(x["fecha"][:7] for x in movs)
+
+        if cobertura >= UMBRAL_DIFUSO:
+            perfiles[k] = {
+                "clave": k, "perfil": "difuso",
+                "concepto": movs[0].get("concepto", ""),
+                "por_dia_habil": total / n_habiles,
+                "cobertura": cobertura, "n": len(movs), "meses": len(meses),
+            }
+        else:
+            # Un evento se proyecta SIEMPRE por su total mensual, repartido entre
+            # los dias en que suele caer.
+            #
+            # La version anterior se quedaba solo con los dias que se repetian en
+            # dos o mas meses, y descartaba el resto. Resultado: los pagos grandes
+            # de dia variable (droguerias, retiros) desaparecian de la proyeccion
+            # y el total quedaba ~55% por debajo del real, SIEMPRE para el mismo
+            # lado. Subestimar lo que vas a gastar es el peor error posible: te
+            # deja tranquilo justo cuando no tenes que estarlo.
+            #
+            # Ahora el dia puede estar mal, pero la PLATA DEL MES esta.
+            por_dia = defaultdict(float)
+            for x in movs:
+                por_dia[int(x["fecha"][8:10])] += abs(float(x.get("importe") or 0))
+            suma = sum(por_dia.values())
+            if suma > 0:
+                peso = dict((d, v / suma) for d, v in por_dia.items())
+            else:
+                peso = {15: 1.0}
+            por_mes = total / max(1, len(meses))
+            perfiles[k] = {
+                "clave": k, "perfil": "evento",
+                "concepto": movs[0].get("concepto", ""),
+                "peso": peso,                       # que fraccion del mes cae cada dia
+                "dias": dict((d, por_mes * w) for d, w in peso.items()),
+                "cobertura": cobertura, "n": len(movs),
+                "meses": len(meses), "por_mes": por_mes,
+            }
+    return perfiles, n_habiles
+
+
+def proyectar_horizonte(perfiles, desde, dias=45):
+    """Lista de {fecha, clave, importe, perfil} para los proximos N dias."""
+    hasta = desde + datetime.timedelta(days=dias - 1)
+    habiles = _habiles(desde, hasta)
+    out = []
+    for p in perfiles.values():
+        if p["perfil"] == "difuso":
+            for f in habiles:
+                out.append({"fecha": f.isoformat(), "clave": p["clave"],
+                            "importe": p["por_dia_habil"], "perfil": "difuso"})
+        else:
+            # Los eventos se recorren por dia CALENDARIO, no por habil: si el 10
+            # cae sabado, el pago no desaparece, se corre.
+            #
+            # BUG QUE ENCONTRARON LOS TESTS: antes se iteraba sobre los habiles y
+            # se preguntaba por f.day, asi que un evento que caia fin de semana
+            # se perdia entero. Con un alquiler es una fecha; con un pago a
+            # drogueria son millones que faltan en la curva -- y siempre para el
+            # lado de proyectar de menos.
+            f = desde
+            while f <= hasta:
+                imp = p["dias"].get(f.day)
+                if imp:
+                    # Se corre al habil ANTERIOR: suponer que la plata sale antes
+                    # es el lado seguro del error.
+                    g = f
+                    while g.weekday() >= 5:
+                        g -= datetime.timedelta(days=1)
+                    if g < desde:
+                        g = habiles[0] if habiles else f
+                    out.append({"fecha": g.isoformat(), "clave": p["clave"],
+                                "importe": imp, "perfil": "evento"})
+                f += datetime.timedelta(days=1)
+    return sorted(out, key=lambda x: x["fecha"])
+
+
+def backtest_horizonte(movimientos, corte, dias=45, nivel="tipo"):
+    """Proyecta N dias desde 'corte' y compara con lo que realmente paso.
+
+    La medida que importa NO es acertar cada movimiento, es que la CURVA
+    ACUMULADA se parezca: un pago que se corre un dia no cambia una decision,
+    una curva desviada 40% si.
+    """
+    perfiles, _ = perfilar(movimientos, corte, nivel=nivel)
+    proy = proyectar_horizonte(perfiles, corte, dias)
+    hasta = corte + datetime.timedelta(days=dias - 1)
+    reales = [x for x in movimientos if x.get("fecha")
+              and corte.isoformat() <= x["fecha"] <= hasta.isoformat()]
+
+    def acumular(items):
+        por_dia = defaultdict(float)
+        for x in items:
+            por_dia[x["fecha"]] += abs(float(x.get("importe") or 0))
+        acum, curva, f = 0.0, [], corte
+        while f <= hasta:
+            acum += por_dia.get(f.isoformat(), 0.0)
+            curva.append((f.isoformat(), acum))
+            f += datetime.timedelta(days=1)
+        return curva
+
+    cp, cr = acumular(proy), acumular(reales)
+    tp = cp[-1][1] if cp else 0.0
+    tr = cr[-1][1] if cr else 0.0
+
+    # El desvio se mide contra el TOTAL del tramo, no contra el acumulado de ese
+    # dia. Si se midiera contra el acumulado, el dia 1 (que arranca casi en cero)
+    # daria 300% por una diferencia de centavos y la metrica no diria nada.
+    peor, peor_dia = 0.0, None
+    base = tr if tr else 1.0
+    for (f, vp), (_, vr) in zip(cp, cr):
+        e = abs(vp - vr) / base * 100.0
+        if e > peor:
+            peor, peor_dia = e, f
+
+    return {"corte": corte.isoformat(), "dias": dias, "hasta": hasta.isoformat(),
+            "perfiles": perfiles, "n_proy": len(proy), "n_real": len(reales),
+            "total_proy": tp, "total_real": tr,
+            "err_total": (abs(tp - tr) / tr * 100.0) if tr else 0.0,
+            "peor_desvio": peor, "peor_dia": peor_dia,
+            "curva_proy": cp, "curva_real": cr}
+
+
+def imprimir_horizonte(r):
+    L = 76
+    print("=" * L)
+    print("  PROYECCION A %d DIAS  .  %s al %s" % (r["dias"], r["corte"], r["hasta"]))
+    print("=" * L)
+    dif = [p for p in r["perfiles"].values() if p["perfil"] == "difuso"]
+    eve = [p for p in r["perfiles"].values() if p["perfil"] == "evento"]
+    print("  Aprendio: %d grupos DIFUSOS (pasan casi todos los dias) + %d EVENTOS"
+          % (len(dif), len(eve)))
+    if dif:
+        print("    difusos: %s" % ", ".join(sorted(p["clave"] for p in dif)))
+    print("")
+    print("  TOTAL DE EGRESOS DEL TRAMO")
+    print("    Proyectado : %s" % _m(r["total_proy"]))
+    print("    Real       : %s" % _m(r["total_real"]))
+    print("    Error      : %.0f%%" % r["err_total"])
+    print("")
+    print("  CURVA ACUMULADA (es lo que se usa para decidir)")
+    print("    Peor desvio (sobre el total del tramo): %.0f%%%s" % (
+        r["peor_desvio"], ("  el %s" % r["peor_dia"]) if r["peor_dia"] else ""))
+    print("")
+    print("  %-12s %18s %18s %8s" % ("FECHA", "PROYECTADO", "REAL", "DESVIO"))
+    paso = max(1, len(r["curva_proy"]) // 9)
+    for i in range(0, len(r["curva_proy"]), paso):
+        f, vp = r["curva_proy"][i]
+        vr = r["curva_real"][i][1]
+        e = ("%+.0f%%" % ((vp - vr) / vr * 100.0)) if vr else "-"
+        print("  %-12s %18s %18s %8s" % (f, _m(vp), _m(vr), e))
+
+
 def main():
     ap = argparse.ArgumentParser(description="Proyeccion del mes deducida del historial")
     ap.add_argument("--contrato", required=True)
     ap.add_argument("--mes", help="mes a proyectar (aaaa-mm)")
     ap.add_argument("--backtest", help="mes YA pasado, para medir cuanto acierta")
+    ap.add_argument("--horizonte", type=int, help="proyectar N dias (ej: --horizonte 45)")
+    ap.add_argument("--desde", help="fecha de corte del horizonte (aaaa-mm-dd)")
     ap.add_argument("--nivel", choices=["tipo", "concepto"], default="tipo",
                     help="a que nivel buscar la repeticion (default: tipo)")
     ap.add_argument("--minimo", type=int, default=2,
@@ -300,6 +504,12 @@ def main():
 
     with io.open(args.contrato, encoding="utf-8") as f:
         movs = json.load(f).get("movimientos", [])
+
+    if args.horizonte:
+        corte = (datetime.date.fromisoformat(args.desde) if args.desde
+                 else datetime.date.today())
+        imprimir_horizonte(backtest_horizonte(movs, corte, args.horizonte, args.nivel))
+        return
 
     if args.backtest:
         imprimir_backtest(backtest(movs, args.backtest, args.minimo, args.nivel))
