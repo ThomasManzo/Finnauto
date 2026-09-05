@@ -22,6 +22,8 @@ from nucleo import fechas as F
 from simulador.semana import meta_de, _rigido
 from simulador import consejo as C
 from ingestas import cheques as CH
+from memoria import registro as MEM
+from simulador import ajustes as AJ
 
 _fallos = []
 
@@ -48,6 +50,9 @@ CAT = {
          "consecuencia": "financiera", "interno": False, "tiene_tolerancia": True},
         {"contiene": ["SPEEDMED"], "nombre": "Interno grupo", "tolerancia": None,
          "consecuencia": "", "interno": True, "tiene_tolerancia": False},
+        {"contiene": ["HONORARIOS DJ"], "nombre": "Honorarios DJ", "tolerancia": None,
+         "consecuencia": "", "interno": False, "tiene_tolerancia": False,
+         "monto_variable": True},
     ],
     "prioridad": ["PAGO", "RETIRO"],
 }
@@ -190,6 +195,170 @@ def test_internos_no_mueven_caja():
     ok(all(v == 500.0 for _, v in serie), "sin movimientos el saldo no cambia")
 
 
+# --------------------------------------------------- monto variable (2do eje)
+def test_monto_variable():
+    print("\n== Monto variable (eje aparte de la fecha) ==")
+
+    # Honorarios DJ: la FECHA es fija (se paga pasada la mitad del mes) pero el
+    # MONTO es el 10% del resultado del mes anterior. Confundir los dos ejes fue
+    # un error real: yo habia asumido que "variable" queria decir "pateable".
+    m = meta_de({"tipo": "SUELDO", "concepto": "HONORARIOS DJ agosto"}, CAT)
+    ok(m.get("monto_variable") is True, "una excepcion puede marcar el monto como estimado")
+    ok(_rigido(m), "y NO por eso se vuelve pateable: la fecha sigue siendo fija",
+       "tolerancia=%s" % m["tolerancia"])
+
+    m = meta_de({"tipo": "PAGO", "concepto": "proveedor comun"}, CAT)
+    ok(not m.get("monto_variable"), "un pago comun no queda marcado como estimado")
+
+    # El estres solo toca los variables, y con 0 no toca nada.
+    egr = [_egr("v", "2026-09-20", "SUELDO", 100.0, 0, True, False),
+           _egr("f", "2026-09-20", "PAGO", 100.0, 15, False, True)]
+    egr[0]["monto_variable"] = True
+    sin, extra0 = C.aplicar_estres([dict(e) for e in egr], 0)
+    ok(extra0 == 0 and sin[0]["importe"] == 100.0, "sin --estres no se inventa ningun numero")
+    con, extra = C.aplicar_estres([dict(e) for e in egr], 20)
+    ok(abs(con[0]["importe"] - 120.0) < 0.01, "el estres sube el monto variable")
+    ok(abs(con[1]["importe"] - 100.0) < 0.01, "y deja intacto el monto cierto")
+    ok(abs(extra - 20.0) < 0.01, "informa cuanto mas serian", "extra=%s" % extra)
+
+
+# --------------------------------------------------------------- memoria
+def _snap(proyectados, corte="2026-09-01"):
+    return {"version": 1, "cliente": "maga", "corte": corte, "hasta": "2026-10-01",
+            "etiqueta": "test", "caja_hoy": 0.0, "proyectados": proyectados}
+
+
+def _p(tipo, concepto, fecha, importe):
+    return {"ref": "x", "huella": MEM.huella({"tipo": tipo, "concepto": concepto}),
+            "fecha": fecha, "importe": importe, "tipo": tipo, "concepto": concepto,
+            "monto_variable": False, "tolerancia": 0}
+
+
+def test_memoria():
+    print("\n== Memoria interna (que se proyecto vs que paso) ==")
+    corte = datetime.date(2026, 9, 15)
+
+    # La huella tiene que sobrevivir a que cambie la fecha o el monto: es lo que
+    # permite decir "este pago se movio" en vez de "desaparecio uno y aparecio otro".
+    a = MEM.huella({"tipo": "pago", "concepto": "Drogueria  Suizo S.A."})
+    b = MEM.huella({"tipo": "PAGO", "concepto": "DROGUERIA SUIZO S.A."})
+    ok(a == b, "la huella ignora mayusculas, acentos y espacios de mas", "%s vs %s" % (a, b))
+
+    snap = _snap([
+        _p("PAGO", "igual", "2026-09-05", 100.0),
+        _p("PAGO", "corrido", "2026-09-05", 200.0),
+        _p("PAGO", "mas caro", "2026-09-05", 300.0),
+        _p("PAGO", "nunca paso", "2026-09-05", 400.0),
+        _p("PAGO", "todavia no vence", "2026-09-28", 500.0),
+    ])
+    real = {"movimientos": [
+        {"fecha": "2026-09-05", "tipo": "PAGO", "concepto": "igual", "importe": 100.0},
+        {"fecha": "2026-09-09", "tipo": "PAGO", "concepto": "corrido", "importe": 200.0},
+        {"fecha": "2026-09-05", "tipo": "PAGO", "concepto": "mas caro", "importe": 330.0},
+        {"fecha": "2026-09-07", "tipo": "PAGO", "concepto": "sorpresa", "importe": 900.0},
+    ]}
+    c = MEM.conciliar(snap, real, corte_real=corte, cat=CAT)
+    est = dict((f["concepto"], f["estado"]) for f in c["filas"])
+
+    ok(est.get("igual") == "CUMPLIO", "detecta el que salio igual", str(est))
+    ok(est.get("corrido") == "CAMBIO_FECHA", "detecta el que se corrio de fecha", str(est))
+    ok(est.get("mas caro") == "CAMBIO_MONTO", "detecta el que cambio de monto", str(est))
+    ok(est.get("nunca paso") == "NO_APARECIO", "detecta el que nunca ocurrio", str(est))
+
+    # Clave: lo que TODAVIA no vencio no se juzga. Contarlo como incumplido
+    # ensuciaria la estadistica con cosas que simplemente no pasaron aun.
+    ok("todavia no vence" not in est, "lo que aun no vencio no se cuenta", str(est))
+
+    f = [x for x in c["filas"] if x["concepto"] == "corrido"][0]
+    ok(f["desvio_dias"] == 4, "mide cuantos dias se corrio", str(f["desvio_dias"]))
+    f = [x for x in c["filas"] if x["concepto"] == "mas caro"][0]
+    ok(abs(f["desvio_monto"] - 30.0) < 0.01, "mide por cuanta plata se paso")
+
+    ok([s["concepto"] for s in c["sorpresas"]] == ["sorpresa"],
+       "lo que nadie proyecto queda aparte como sorpresa",
+       str([s["concepto"] for s in c["sorpresas"]]))
+
+    # Los internos no se proyectan; tampoco tienen que aparecer como sorpresa.
+    real2 = {"movimientos": real["movimientos"] + [
+        {"fecha": "2026-09-06", "tipo": "TRANSF", "concepto": "entre cuentas propias",
+         "importe": 1000.0}]}
+    c2 = MEM.conciliar(snap, real2, corte_real=corte, cat=CAT)
+    ok(len(c2["sorpresas"]) == 1, "un movimiento interno NO cuenta como sorpresa",
+       str([s["concepto"] for s in c2["sorpresas"]]))
+
+    r = dict((x["tipo"], x) for x in MEM.resumen([c]))
+    ok(r["PAGO"]["n"] == 4, "el resumen agrupa por tipo", str(r["PAGO"]))
+    ok(r["PAGO"]["no_aparecio"] == 1, "y cuenta los que no aparecieron")
+    ok(abs(r["PAGO"]["pct_cumplio"] - 25.0) < 0.01, "1 de 4 salio exacto = 25%",
+       str(r["PAGO"]["pct_cumplio"]))
+
+
+# ------------------------------------------------- ajustes manuales de dias
+def _e(concepto, tol, cons="comercial", imp=100.0):
+    return {"id": concepto, "fecha": "2026-09-20", "tipo": "PAGO", "nombre": "Pago",
+            "importe": imp, "tolerancia": tol, "rigido": (tol == 0), "divisible": True,
+            "concepto": concepto, "consecuencia": cons}
+
+
+def test_ajustes():
+    print("\n== Ajustes manuales: cuantos dias podes mover ESE pago ==")
+
+    # El catalogo dice lo que NORMALMENTE pasa; el ajuste, lo de esta semana.
+    egr = [_e("Drogueria Suizo", 15), _e("Otro proveedor", 15)]
+    out, cambios = AJ.aplicar(egr, AJ.desde_cli(["SUIZO=25"]))
+    d = dict((x["concepto"], x["tolerancia"]) for x in out)
+    ok(d["Drogueria Suizo"] == 25, "el ajuste pisa la tolerancia del catalogo", str(d))
+    ok(d["Otro proveedor"] == 15, "y no toca a los demas", str(d))
+    ok(len([c for c in cambios if c.get("concepto")]) == 1, "informa que cambio")
+
+    # Sin ajustes no se toca nada: el default nunca deja de ser el default.
+    out, cambios = AJ.aplicar([_e("X", 15)], [])
+    ok(out[0]["tolerancia"] == 15 and cambios == [], "sin ajustes no cambia nada")
+
+    # Tambien sirve al reves: acortar el plazo porque este mes aprietan.
+    out, _ = AJ.aplicar([_e("Suizo", 15)], AJ.desde_cli(["SUIZO=5"]))
+    ok(out[0]["tolerancia"] == 5, "tambien se puede acortar, no solo estirar")
+
+    # Poner 0 lo vuelve rigido, y el motor tiene que dejar de proponerlo.
+    out, _ = AJ.aplicar([_e("Suizo", 15)], AJ.desde_cli(["SUIZO=0"]))
+    ok(out[0]["rigido"] is True, "un ajuste a 0 dias lo vuelve rigido")
+    ok(C.candidatos(out, "2026-09-25", ["PAGO"]) == [], "y deja de proponerse")
+
+    # Guardarrail: estirar un cheque/sueldo/impuesto no es "estirar un pago".
+    try:
+        AJ.aplicar([_e("Cheque 123", 0, cons="BCRA")], AJ.desde_cli(["CHEQUE=10"]))
+        ok(False, "frena al intentar estirar algo con consecuencia grave")
+    except AJ.AjusteRiesgoso as ex:
+        ok("BCRA" in str(ex), "frena al intentar estirar algo con consecuencia grave", str(ex))
+
+    # Pero la decision es del dueno, no del software: con --forzar se puede.
+    out, _ = AJ.aplicar([_e("Cheque 123", 0, cons="BCRA")],
+                        AJ.desde_cli(["CHEQUE=10"]), permitir_graves=True)
+    ok(out[0]["tolerancia"] == 10, "con --forzar igual lo deja simular")
+
+    # Un ajuste mal escrito haria que el escenario salga bien por la razon
+    # equivocada. Tiene que avisar, no pasar en silencio.
+    _, cambios = AJ.aplicar([_e("Drogueria Suizo", 15)], AJ.desde_cli(["SUISO=25"]))
+    ok(any(c.get("sin_efecto") == "SUISO" for c in cambios),
+       "avisa cuando un ajuste no matcheo nada", str(cambios))
+
+    try:
+        AJ.desde_cli(["SUIZO"])
+        ok(False, "rechaza el formato invalido")
+    except ValueError:
+        ok(True, "rechaza el formato invalido")
+
+
+# ------------------------------------------------------- formato de moneda
+def test_formato():
+    print("\n== Formato de moneda (el mismo que la planilla) ==")
+    from simulador.semana import _m as fmt
+    ok(fmt(1183497652.34) == "$1.183.497.652,34", "miles con punto, decimales con coma",
+       fmt(1183497652.34))
+    ok(fmt(-114279666) == "-$114.279.666,00", "negativos", fmt(-114279666))
+    ok(fmt(0) == "$0,00", "cero")
+
+
 if __name__ == "__main__":
     print("=" * 62)
     print("  TESTS DEL MOTOR finauto")
@@ -200,6 +369,10 @@ if __name__ == "__main__":
     test_consejo()
     test_pago_parcial()
     test_internos_no_mueven_caja()
+    test_monto_variable()
+    test_memoria()
+    test_ajustes()
+    test_formato()
     print("\n" + "=" * 62)
     if _fallos:
         print("  %d TEST(S) FALLARON: %s" % (len(_fallos), ", ".join(_fallos)))
