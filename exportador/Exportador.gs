@@ -445,6 +445,7 @@ function _leerIngresosCashflow_(ss, avisos) {
     var sh = hojas[i];
     var nom = _norm_(sh.getName());
     if (nom.indexOf('CASH') < 0 || nom.indexOf('FLOW') < 0) continue;
+    hojasCashflow++;
     var unidad = (nom.indexOf('SPEED') > -1) ? 'SPEEDMED'
                : (nom.indexOf('MAGA') > -1) ? 'MAGA' : '';
     if (!unidad) continue;
@@ -522,8 +523,16 @@ function _leerIngresosCashflow_(ss, avisos) {
  *
  * Un monto con fecha PASADA que sigue ahí = esa droguería todavía no pagó (vencido).
  */
+/** La fecha mas lejana de un conjunto de filas: sirve para ver hasta donde
+ *  llega cargado un bloque, que es justo lo que no se estaba mirando. */
+function _ultimaFecha_(filas) {
+  var m = '';
+  for (var i = 0; i < filas.length; i++) if (filas[i].fecha > m) m = filas[i].fecha;
+  return m || '(sin fecha)';
+}
+
 function _leerBloquesDroguerias_(ss, avisos) {
-  var cobrar = [], deuda = [];
+  var cobrar = [], deuda = [], hojasCashflow = 0;
   var hoy = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
   var hojas = ss.getSheets();
 
@@ -531,8 +540,24 @@ function _leerBloquesDroguerias_(ss, avisos) {
     var sh = hojas[i];
     var nom = _norm_(sh.getName());
     if (nom.indexOf('CASH') < 0 || nom.indexOf('FLOW') < 0) continue;
-    var unidad = (nom.indexOf('SPEED') > -1) ? 'SPEEDMED' : (nom.indexOf('MAGA') > -1) ? 'MAGA' : '';
-    if (!unidad) continue;
+    // ERROR REAL (05/09/2026): esto decia
+    //     if (!unidad) continue;
+    // o sea que una hoja llamada "Cash Flow Diario" -- la de MAGA, sin la
+    // palabra MAGA en el nombre -- se salteaba EN SILENCIO. El export se
+    // llevaba solo la deuda de Speedmed, $2.690M, cuando la real entre las dos
+    // unidades era $5.466M. Faltaba el 51% de la deuda y no habia un solo aviso.
+    //
+    // Ahora, si no se puede deducir la unidad, se usa el nombre de la hoja y se
+    // AVISA. Una hoja de cashflow que existe y no se lee es lo peor que puede
+    // pasar: el numero final sale prolijo y esta a la mitad.
+    var unidad = (nom.indexOf('SPEED') > -1) ? 'SPEEDMED'
+               : (nom.indexOf('MAGA') > -1) ? 'MAGA' : '';
+    if (!unidad) {
+      unidad = sh.getName().trim();
+      avisos.push('La hoja "' + sh.getName() + '" parece un cashflow pero su ' +
+                  'nombre no dice SPEED ni MAGA. La lei igual y le puse la ' +
+                  'unidad "' + unidad + '". Verificar que sea correcto.');
+    }
 
     var maxR = sh.getLastRow(), maxC = sh.getLastColumn();
     if (maxR < 2 || maxC < 2) continue;
@@ -553,17 +578,34 @@ function _leerBloquesDroguerias_(ss, avisos) {
     }
 
     // NOS DEBEN: si la fecha ya pasó y el monto sigue ahí, es que NO cobramos -> VENCIDO.
-    cobrar = cobrar.concat(_filasDeBloque_(grid, cols, 'COBRANZA DROGUERIA',
+    var cobrarHoja = _filasDeBloque_(grid, cols, 'COBRANZA DROGUERIA',
       ['DEUDA DROGUERIA'], unidad, sh.getName(), hoy,
-      { pasado: 'VENCIDO', futuro: 'A_VENCER' }));
+      { pasado: 'VENCIDO', futuro: 'A_VENCER' });
+    cobrar = cobrar.concat(cobrarHoja);
 
     // LES DEBEMOS: si la fecha ya pasó, ese pago YA SE HIZO -> PAGADO (no es deuda viva).
-    deuda = deuda.concat(_filasDeBloque_(grid, cols, 'DEUDA DROGUERIA',
+    var deudaHoja = _filasDeBloque_(grid, cols, 'DEUDA DROGUERIA',
       ['COBRANZA DROGUERIA'], unidad, sh.getName(), hoy,
-      { pasado: 'PAGADO', futuro: 'PENDIENTE' }));
+      { pasado: 'PAGADO', futuro: 'PENDIENTE' });
+    deuda = deuda.concat(deudaHoja);
+
+    // SE INFORMA SIEMPRE, aunque haya salido todo bien.
+    //
+    // El export anterior solo avisaba si no encontraba NADA. Como la hoja de
+    // Speed si daba resultados, el aviso nunca se disparaba y la ausencia
+    // completa de MAGA paso desapercibida. Un resumen de lo leido por hoja
+    // habria hecho evidente el agujero en el primer vistazo.
+    avisos.push('Cashflow "' + sh.getName() + '" (' + unidad + '): ' +
+                cobrarHoja.length + ' fila(s) de cobranza y ' +
+                deudaHoja.length + ' de deuda' +
+                (deudaHoja.length ? ', hasta ' + _ultimaFecha_(deudaHoja) : '') +
+                '. Columnas con fecha: ' + cols.length + '.');
   }
   if (!cobrar.length && !deuda.length) {
     avisos.push('No encontré los bloques "Cobranza Droguería" / "Deuda Droguería" en los cashflow.');
+  }
+  if (hojasCashflow === 0) {
+    avisos.push('No encontré NINGUNA hoja de cashflow (nombre con "cash" y "flow").');
   }
   return { cuentas_a_cobrar_droguerias: cobrar, deuda_droguerias: deuda };
 }
