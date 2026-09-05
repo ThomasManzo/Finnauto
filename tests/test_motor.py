@@ -983,6 +983,112 @@ def test_puentes_contraste():
        "y avisa cuando el numero del cliente no sale de una formula")
 
 
+def test_disponibilidad():
+    """EL PUENTE: de la caja de hoy a lo que se puede sacar.
+
+    El cliente ya tiene esta cuenta armada en su Calculadora, pero Thomas dejo
+    claro el rol de cada cosa:
+
+        "Tene en cuenta que la Calculadora en este nuevo software no va a ser el
+         faro. El faro lo va a ser el simulador, el dash y demas."
+
+    O sea que se rehace, no se copia. Estos tests fijan las cuatro cosas que el
+    motor hace distinto A PROPOSITO, para que nadie las "arregle" despues
+    creyendo que son bugs.
+    """
+    from simulador import disponibilidad as D
+
+    hoy = "2026-09-05"
+    dentro = "2026-09-20"
+    fuera = "2026-11-30"          # mas alla de los 45 dias
+
+    contrato = {
+        "generado": hoy + "T00:00:00Z",
+        "caja_hoy": 1000.0,
+        "caja_efectivo": 50.0,
+        "caja_por_unidad": {"MAGA": 600.0, "SPEEDMED": 350.0},
+        "cobros_previstos": [
+            {"fecha": dentro, "concepto": "Tarjeta y MP", "importe": 300.0,
+             "unidad": "MAGA"},
+            {"fecha": dentro, "concepto": "Cartera de CH", "importe": 200.0,
+             "unidad": "SPEEDMED"},
+            {"fecha": dentro, "concepto": "Transf MAGA+", "importe": 900.0,
+             "unidad": "SPEEDMED", "interno": True},
+            {"fecha": fuera, "concepto": "Tarjeta y MP", "importe": 700.0,
+             "unidad": "MAGA"},
+        ],
+        "cuentas_a_cobrar_droguerias": [
+            {"fecha": dentro, "contraparte": "DDS", "importe": 100.0,
+             "unidad": "SPEEDMED"},
+            {"fecha": "2026-08-20", "contraparte": "DDS", "importe": 40.0,
+             "unidad": "SPEEDMED"},
+        ],
+        "deuda_droguerias": [
+            {"fecha": "2026-09-01", "contraparte": "SUIZO", "importe": 80.0},
+            {"fecha": dentro, "contraparte": "SUIZO", "importe": 120.0},
+            {"fecha": dentro, "contraparte": "NCR SUIZO", "importe": -30.0,
+             "es_credito": True},
+            {"fecha": dentro, "contraparte": "REFINANCIACION", "importe": 60.0},
+            {"fecha": fuera, "contraparte": "SUIZO", "importe": 5000.0},
+        ],
+        "egresos_cashflow": [
+            {"fecha": dentro, "contraparte": "Sueldos", "importe": 90.0,
+             "unidad": "MAGA"},
+            {"fecha": fuera, "contraparte": "Sueldos", "importe": 4000.0,
+             "unidad": "MAGA"},
+        ],
+    }
+
+    p = D.puente(contrato, dias=45, minima=100.0)
+
+    # 1) EL HORIZONTE SE APLICA DE VERDAD.
+    # En la Calculadora del cliente, HORIZONTE_DIAS: 45 aparece una sola vez en
+    # todo el archivo: en el texto del subtitulo. No filtra nada -- suma todas
+    # las columnas futuras de la planilla. Aca es un parametro real.
+    ok(abs(p["entra_seguro"] - 400.0) < 0.01,
+       "el horizonte filtra: lo que cae despues no entra", str(p["entra_seguro"]))
+    ok(all(v < 1000 for _, v, _ in p["pagos"]),
+       "y tampoco entra en los pagos")
+
+    # 2) LOS CHEQUES EN CARTERA NO SON CAJA SEGURA.
+    # Sobre datos reales, el 45% de la cartera se endosa y nunca pasa por el
+    # banco. Contarla como caja infla justo la linea que decide un retiro.
+    ok(abs(p["entra_todo"] - p["entra_seguro"] - 200.0) < 0.01,
+       "los cheques en cartera van aparte, no como caja segura")
+    ok(any(not seguro for _, _, seguro in p["cobros"]),
+       "y quedan marcados como lo que son: una opcion")
+
+    # 3) LO INTERNO NO ES UN INGRESO: mueve plata de lugar.
+    ok(all("Transf" not in n for n, _, _ in p["cobros"]),
+       "una transferencia entre empresas del grupo no suma caja")
+
+    # 4) LAS NCR BAJAN DEUDA, NO SON UN COBRO.
+    # La Calculadora hace lo contrario: las suma a los cobros y deja la deuda
+    # entera. Son $915M contados dos veces al reves.
+    nombres = [n for n, _, _ in p["pagos"]]
+    ok(any("notas de credito" in n for n in nombres),
+       "las NCR aparecen del lado de los pagos, restando")
+    ok(abs(p["sale"] - (80.0 + 120.0 - 30.0 + 60.0 + 90.0)) < 0.01,
+       "y netean la deuda en vez de inflar los cobros", str(p["sale"]))
+
+    # 5) LA REFI VA EN SU PROPIA LINEA: es obligacion, pero no es una drogueria
+    # y no tiene tolerancia de proveedor.
+    ok(any("Refinanciacion" in n for n in nombres),
+       "la refinanciacion se muestra aparte de las droguerias")
+
+    # 6) LA COBRANZA VENCIDA NO SE CUENTA COMO SEGURA, pero se avisa.
+    ok(abs(p["cobranza_vencida"] - 40.0) < 0.01,
+       "lo que nos deben y ya vencio se informa aparte, sin sumarlo")
+
+    # 7) LA CAJA POR UNIDAD ES SOLO BANCOS.
+    # El efectivo de la grilla de SALDOS es un total del grupo y no dice de que
+    # empresa es. Repartirlo con un criterio inventado seria peor que avisar.
+    pu = D.puente(contrato, dias=45, unidad="MAGA")
+    ok(abs(pu["caja"] - 600.0) < 0.01, "por unidad, la caja es la del banco")
+    ok(abs(pu["efectivo_sin_asignar"] - 50.0) < 0.01,
+       "y el efectivo del grupo se avisa en vez de repartirse")
+
+
 if __name__ == "__main__":
     print("=" * 62)
     print("  TESTS DEL MOTOR finauto")
@@ -1007,6 +1113,7 @@ if __name__ == "__main__":
     test_rigido_y_endoso()
     test_deuda_vencida()
     test_puentes_contraste()
+    test_disponibilidad()
     print("\n" + "=" * 62)
     if _fallos:
         print("  %d TEST(S) FALLARON: %s" % (len(_fallos), ", ".join(_fallos)))
