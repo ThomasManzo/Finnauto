@@ -267,12 +267,23 @@ def cheques_endosables(contrato, hoy, dias):
         f = c.get("fecha")
         if not f or f < h or f > hasta:
             continue
-        # Solo los que TODAVIA NO SE DECIDIERON. Un cheque ya depositado fue
-        # caja y uno ya endosado bajo deuda: ninguno de los dos es una palanca
-        # disponible. En los datos reales de MAGA los estados son RECIBIDO (sin
-        # decidir), DEPOSITADO, ENDOSADO, ANULADO y negociado.
+        # LO QUE DECIDE ES LA FECHA, NO EL ESTADO.
+        #
+        # Thomas lo aclaro dos veces y la segunda me corrigio: "recibido es que
+        # ingresan y se hacen caja; depositado no es un estado, al menos no en
+        # el ultimo tiempo; solo se toma recibido como depositado y endosado
+        # como endosado".
+        #
+        #     RECIBIDO  -> entro a la caja        (= DEPOSITADO, ya en desuso)
+        #     ENDOSADO  -> bajo deuda
+        #
+        # Y antes habia dicho: "una vez que llega la fecha de cobro se toma la
+        # decision de endosar o depositar". O sea que el estado es lo que PASO,
+        # y solo se sabe cuando llega la fecha. Un cheque con fecha futura
+        # todavia no se decidio, tenga el estado que tenga cargado: ESE es el
+        # que sirve de palanca.
         est = (c.get("estado") or "").strip().upper()
-        if est and est not in ("RECIBIDO", "EN CARTERA", "PENDIENTE"):
+        if est in ("ANULADO",):
             continue
         out.append(c)
     return sorted(out, key=lambda x: (x["fecha"], -abs(float(x.get("importe") or 0))))
