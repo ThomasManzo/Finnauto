@@ -812,17 +812,25 @@ def test_rigido_y_endoso():
     ok(len(chs) == 1 and chs[0]["importe"] == 300.0,
        "solo los cheques que vencen en la ventana", str(len(chs)))
 
-    # Un cheque YA depositado fue caja y uno YA endosado bajo deuda: ninguno
-    # sigue siendo una palanca. En los datos reales de MAGA el estado que marca
-    # "todavia sin decidir" es RECIBIDO, y son 6 de 365.
+    # LO QUE DECIDE ES LA FECHA, NO EL ESTADO.
+    #
+    # Thomas me corrigio: "recibido es que ingresan y se hacen caja; depositado
+    # no es un estado en el ultimo tiempo; solo se toma recibido como depositado
+    # y endosado como endosado". Y antes: "una vez que llega la fecha de cobro
+    # se toma la decision de endosar o depositar".
+    #
+    # O sea que el estado es lo que YA PASO. Un cheque con fecha futura todavia
+    # no se decidio, tenga el estado que tenga cargado.
     c3 = {"cartera_cheques": [
         {"fecha": "2026-09-12", "importe": 100.0, "estado": "RECIBIDO"},
         {"fecha": "2026-09-12", "importe": 200.0, "estado": "DEPOSITADO"},
         {"fecha": "2026-09-12", "importe": 300.0, "estado": "ENDOSADO"},
         {"fecha": "2026-09-12", "importe": 400.0, "estado": "ANULADO"},
     ]}
-    ids = [x["importe"] for x in PR.cheques_endosables(c3, hoy, 7)]
-    ok(ids == [100.0], "solo los que todavia no se decidieron", str(ids))
+    ids = sorted(x["importe"] for x in PR.cheques_endosables(c3, hoy, 7))
+    ok(ids == [100.0, 200.0, 300.0],
+       "con fecha futura sigue siendo palanca, sea cual sea el estado", str(ids))
+    ok(400.0 not in ids, "salvo los anulados, que ya no existen")
 
     an = [{"proveedor": "SUIZO", "vencido": 400.0, "por_vencer": 100.0,
            "tolerancia": 3, "margen": 1.0, "atraso_semanas": 2.0}]
