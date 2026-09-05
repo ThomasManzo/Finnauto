@@ -115,6 +115,40 @@ Qué empresa termina pagando **depende de a quién le dé a favor esa semana**.
 > cobranza no son dos números independientes. Y la compensación puede cruzar
 > entre empresas del grupo.
 
+### La deuda vencida — cómo se lee en la planilla
+
+**Un monto con fecha anterior a hoy que sigue en la celda es deuda VENCIDA, no
+un pago hecho.**
+
+> *"Si hay un monto en la parte de deuda con droguerías con fecha pasada a la de
+> hoy es porque claramente está vencido. (...) Son montos que justamente venció
+> y no se pagaron. Todo monto anterior al 5/9 que aparezca es vencido."*
+
+La razón está en cómo se imputa: **todo pago o endoso se aplica al resumen más
+viejo**, y esa celda queda en **cero**. Así que un importe que sobrevive a su
+fecha es, por definición, lo que no se pagó.
+
+Ejemplo del 05/09/2026 en MAGA: $190M en Cofaloza con fecha 28-8 y $206M en
+Suizo con fecha 27-8. Las dos cosas son deuda vencida.
+
+> **Generalizable:** en una planilla de flujo, la celda que se limpia al saldar
+> convierte "quedó un número" en "no se pagó". Vale para cualquier cliente que
+> impute contra el comprobante más viejo — que es lo normal.
+
+**Y la distinción importa más que el total:** lo vencido es lo que hace que un
+proveedor te corte la compra. Lo por vencer todavía no aprieta.
+
+### La refinanciación no es deuda con droguerías
+
+Está en el mismo bloque de la planilla porque se paga junto con lo demás, pero:
+
+> *"La refi se puede patear, pero es una obligación, aunque no tiene nada que
+> ver con las droguerías."*
+
+Sumarla al total de droguerías infla la cifra y mezcla dos cosas distintas: una
+deuda que tiene **tolerancia de proveedor** con una que no la tiene.
+
+
 ---
 
 ## 4 · De dónde entra la plata

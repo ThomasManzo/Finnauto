@@ -862,6 +862,65 @@ def test_rigido_y_endoso():
        "avisa cuando no alcanza ni para lo que no se puede mover")
 
 
+def test_deuda_vencida():
+    """UN MONTO CON FECHA PASADA ES DEUDA VENCIDA, NO UN PAGO HECHO.
+
+    Error real (05/09/2026): el exportador marcaba PAGADO todo lo que tuviera
+    fecha anterior a hoy, y el motor lo descartaba. Thomas lo corrigio:
+
+        "si hay un monto en la parte de deuda con droguerias con fecha pasada a
+         la de hoy es porque claramente esta vencido (...) son montos que
+         justamente vencio y no se pagaron."
+
+    Se perdian $2.526M de deuda vencida -- justo la que decide si una drogueria
+    te corta la compra. La razon de fondo: la planilla pone la celda en CERO
+    cuando se salda, asi que un importe que sobrevive a su fecha es, por
+    definicion, lo que no se pago.
+    """
+    from simulador import semana as SEM
+    from auditoria import contraste as CT
+
+    hoy = datetime.date.today()
+    ayer = (hoy - datetime.timedelta(days=9)).isoformat()
+    manana = (hoy + datetime.timedelta(days=9)).isoformat()
+
+    contrato = {"generado": hoy.isoformat() + "T00:00:00Z", "deuda_droguerias": [
+        {"fecha": ayer,   "contraparte": "SUIZO",          "importe": 100.0},
+        {"fecha": manana, "contraparte": "SUIZO",          "importe": 400.0},
+        {"fecha": ayer,   "contraparte": "REFINANCIACION", "importe": 700.0},
+        {"fecha": ayer,   "contraparte": "MAGA+", "importe": 999.0,
+         "intercompany": True},
+    ]}
+
+    por_vencer, vencido, por_c = SEM.deuda_resumen(contrato)
+    ok(abs(vencido - 800.0) < 0.01,
+       "lo que tiene fecha pasada cuenta como vencido, no como pagado",
+       str(vencido))
+    ok(abs(por_vencer - 400.0) < 0.01, "y lo futuro queda como por vencer",
+       str(por_vencer))
+    ok("MAGA+" not in por_c, "lo intercompany no es deuda con terceros")
+
+    # La refi vive en el mismo bloque de la planilla, pero Thomas fue claro:
+    # "no tiene nada que ver con las droguerias". Sumarla al total de droguerias
+    # infla la cifra y mezcla una deuda con tolerancia de proveedor con otra
+    # que no la tiene.
+    ok(abs(CT._deuda(contrato, True, hoy.isoformat()) - 100.0) < 0.01,
+       "el contraste deja la refinanciacion afuera de la deuda con droguerias",
+       str(CT._deuda(contrato, True, hoy.isoformat())))
+
+    # El corte vencido/por-vencer se hace con la fecha DEL EXPORT. Si se usara
+    # el reloj de la maquina, contrastar un archivo de ayer moveria la linea y
+    # apareceria una diferencia que no existe.
+    ok(CT._hoy({"generado": "2026-09-05T21:59:30.962Z"}) == "2026-09-05",
+       "el corte usa la fecha del export, no la del reloj")
+
+    viejo = {"generado": "2026-09-05T00:00:00Z", "deuda_droguerias": [
+        {"fecha": "2026-09-04", "contraparte": "SUIZO", "importe": 100.0},
+        {"fecha": "2026-09-06", "contraparte": "SUIZO", "importe": 400.0}]}
+    ok(abs(CT._deuda(viejo, True, CT._hoy(viejo)) - 100.0) < 0.01,
+       "asi el mismo archivo da siempre el mismo resultado")
+
+
 if __name__ == "__main__":
     print("=" * 62)
     print("  TESTS DEL MOTOR finauto")
@@ -884,6 +943,7 @@ if __name__ == "__main__":
     test_posicion_por_unidad()
     test_proveedores()
     test_rigido_y_endoso()
+    test_deuda_vencida()
     print("\n" + "=" * 62)
     if _fallos:
         print("  %d TEST(S) FALLARON: %s" % (len(_fallos), ", ".join(_fallos)))

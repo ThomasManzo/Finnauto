@@ -34,11 +34,23 @@ import io
 import os
 import sys
 import json
+import datetime
 import argparse
 
 BASE_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_REPO not in sys.path:
     sys.path.insert(0, BASE_REPO)
+
+
+def _hoy(contrato):
+    """La fecha DEL CONTRATO, no la de hoy.
+
+    Contrastar un export de ayer contra el reloj de hoy corre la linea entre
+    vencido y por vencer y hace aparecer diferencias que no existen. Ademas deja
+    el contraste reproducible: el mismo archivo da siempre el mismo resultado.
+    """
+    g = str(contrato.get("generado") or "")
+    return g[:10] if len(g) >= 10 else datetime.date.today().isoformat()
 
 
 def _m(v):
@@ -47,13 +59,51 @@ def _m(v):
 
 
 def referencias(contrato):
-    """Aplana las solapas de referencia en {etiqueta_normalizada: valor}."""
+    """Aplana las solapas de referencia en {etiqueta_normalizada: valor}.
+
+    Se guarda tambien la FORMULA de la celda cuando el exportador la trajo: sin
+    eso, una diferencia es un misterio y se pierden horas adivinando de donde
+    sale el numero del cliente.
+    """
     out = {}
     for hoja, filas in (contrato.get("referencias_del_cliente") or {}).items():
         for f in filas:
             et = " ".join(str(f.get("etiqueta") or "").upper().split())
-            out.setdefault(et, {"hoja": hoja, "valor": float(f.get("valor") or 0)})
+            out.setdefault(et, {"hoja": hoja, "valor": float(f.get("valor") or 0),
+                                "formula": f.get("formula") or "",
+                                "depende_de": f.get("depende_de") or []})
     return out
+
+
+# La refinanciacion no es deuda con droguerias.
+#
+# Thomas: "la refi se puede patear, pero es una obligacion, aunque NO TIENE NADA
+# QUE VER CON LAS DROGUERIAS".
+#
+# Vive en el mismo bloque de la planilla porque se paga junto con lo demas, pero
+# meterla en el total de droguerias infla la cifra y, peor, mezcla una deuda que
+# tiene tolerancia de proveedor con una que no la tiene.
+def _es_refi(x):
+    return "REFINANC" in str(x.get("contraparte") or "").upper()
+
+
+def _deuda(contrato, vencida, hoy):
+    """Deuda con droguerias, por fecha y no por estado.
+
+    LA FECHA ES LA QUE MANDA: la planilla pone la celda en cero cuando se salda
+    ("todo pago o endoso se aplica al resumen mas viejo"), asi que un importe que
+    sobrevive a su fecha es exactamente lo que no se pago.
+    """
+    t = 0.0
+    for x in contrato.get("deuda_droguerias", []):
+        if x.get("intercompany") or _es_refi(x):
+            continue
+        f = x.get("fecha") or ""
+        if not f:
+            continue
+        if (f < hoy) == bool(vencida):
+            t += float(x.get("importe") or 0)
+    return t
 
 
 def _suma(contrato, clave, estados, unidad=None):
@@ -72,13 +122,12 @@ COMPARACIONES = [
      lambda c: float(c.get("caja_hoy") or 0),
      "Sale de la misma grilla de SALDOS: si no coincide, algo se lee mal."),
     ("Deuda con droguerias por vencer", "DEUDA DROGUERIAS A VENCER",
-     lambda c: _suma(c, "deuda_droguerias", ("PENDIENTE",)),
-     "Lo que todavia hay que pagar."),
+     lambda c: _deuda(c, False, _hoy(c)),
+     "Lo que todavia no vencio. Sin refinanciacion: esa va aparte."),
     ("Deuda con droguerias ya vencida", "DEUDA DROGUERIAS VENCIDA",
-     lambda c: _suma(c, "deuda_droguerias", ("PAGADO",)),
-     "OJO: el motor marca PAGADO lo que tiene fecha pasada, siguiendo la regla "
-     "de Thomas ('fecha pasada en deuda = ya se pago'). La Calculadora tiene "
-     "'vencida' como categoria propia. Puede que no sean lo mismo."),
+     lambda c: _deuda(c, True, _hoy(c)),
+     "Monto con fecha anterior a hoy que sigue en la planilla = no se pago. "
+     "Es la deuda que aprieta: la que puede hacer que te corten la compra."),
     ("Cuentas a cobrar a droguerias", "COBRANZA DROGUERIAS (SPEED)",
      lambda c: _suma(c, "cuentas_a_cobrar_droguerias", ("VENCIDO", "A_VENCER")),
      None),
@@ -100,8 +149,20 @@ def contrastar(contrato):
         pct = (100.0 * dif / suyo) if suyo else 0.0
         out.append({"nombre": nombre, "etiqueta": etiqueta, "hoja": r["hoja"],
                     "mio": mio, "suyo": suyo, "dif": dif, "pct": pct,
-                    "coincide": abs(pct) <= TOLERANCIA, "nota": nota})
+                    "coincide": abs(pct) <= TOLERANCIA, "nota": nota,
+                    "formula": r.get("formula") or "",
+                    "depende_de": r.get("depende_de") or []})
     return out, ref
+
+
+def _parrafo(txt, L, sangria="     "):
+    linea = sangria
+    for p in txt.split():
+        if len(linea) + len(p) + 1 > L - 2:
+            print(linea)
+            linea = sangria
+        linea += p + " "
+    print(linea.rstrip())
 
 
 def imprimir(filas, ref):
@@ -129,13 +190,18 @@ def imprimir(filas, ref):
         for f in difs:
             print("   . %s: %s de diferencia" % (f["nombre"], _m(abs(f["dif"]))))
             if f["nota"]:
-                linea = "     "
-                for p in f["nota"].split():
-                    if len(linea) + len(p) + 1 > L - 2:
-                        print(linea)
-                        linea = "     "
-                    linea += p + " "
-                print(linea.rstrip())
+                _parrafo(f["nota"], L)
+            # DE DONDE SALE EL NUMERO DEL CLIENTE.
+            # Es lo primero que hace falta para decidir si la diferencia es un
+            # error del motor, una definicion distinta o un error de la planilla.
+            if f["depende_de"]:
+                _parrafo("Su numero se calcula con: " + ", ".join(f["depende_de"])
+                         + ".", L)
+            if f["formula"]:
+                print("     %s!%s" % (f["hoja"], f["formula"][:200]))
+            elif not f["depende_de"]:
+                print("     (sin formula capturada: correr el exportador "
+                      "actualizado)")
     else:
         print("\n  Todo coincide dentro del %.0f%%." % TOLERANCIA)
 

@@ -191,24 +191,38 @@ def cheques_ventana(ruta_csv, desde, hasta):
 
 
 def deuda_resumen(contrato):
-    """Deuda VIVA con droguerías (terceros).
+    """Deuda VIVA con droguerías (terceros), separando lo vencido de lo que viene.
 
-    OJO: en el bloque de deuda, una fecha PASADA significa que ese pago YA SE HIZO.
-    Así que la deuda que todavía hay que pagar es solo la que está PENDIENTE.
+    UNA FECHA PASADA NO ES UN PAGO HECHO: ES DEUDA VENCIDA.
+
+    Esto estaba al revés y lo corrigió Thomas el 05/09/2026:
+
+        "si hay un monto en la parte de deuda con droguerías con fecha pasada a
+         la de hoy es porque claramente está vencido (...) son montos que
+         justamente venció y no se pagaron."
+
+    La planilla no deja el importe cuando se salda: todo pago o endoso se aplica
+    al resumen más viejo y esa celda queda en cero. Así que un monto que
+    sobrevive a su fecha es, por definición, lo que no se pagó.
+
+    Y la distinción importa más que el total: lo vencido es lo que hace que una
+    droguería te corte la compra. Es la deuda que aprieta, no la que viene.
+
     Las NCR vienen con signo invertido (restan), así que la suma ya las contempla.
     """
-    pendiente, pagado, por_c = 0.0, 0.0, defaultdict(float)
+    hoy = datetime.date.today().isoformat()
+    vencido, por_vencer, por_c = 0.0, 0.0, defaultdict(float)
     for d in contrato.get("deuda_droguerias", []):
         if d.get("intercompany"):
             continue
         imp = float(d.get("importe") or 0)
-        est = d.get("estado")
-        if est in ("PAGADO",):
-            pagado += imp
-            continue
-        pendiente += imp
+        f = d.get("fecha") or ""
+        if f and f < hoy:
+            vencido += imp
+        else:
+            por_vencer += imp
         por_c[d.get("contraparte", "?")] += imp
-    return pendiente, pagado, dict(por_c)
+    return por_vencer, vencido, dict(por_c)
 
 
 # ------------------------------------------------------------------ cálculo
@@ -325,14 +339,18 @@ def imprimir(res, rigidos, flexibles, fijos, variables, internos, desde, hasta, 
     print("     sin depender de ingresos variables:       %20s" % _m(max(0, res["margen_seguro"])))
     print("     si además pateás todo lo flexible:        %20s" % _m(max(0, res["margen_max"])))
 
-    pendiente, pagado, por_c = deuda
+    por_vencer, vencido, por_c = deuda
     if por_c:
         print("\n  ── DEUDA VIVA CON DROGUERÍAS (lo que falta pagar) ──────────")
         for c, v in sorted(por_c.items(), key=lambda kv: -kv[1]):
             etiqueta = c + ("  (nota de crédito, resta)" if v < 0 else "")
             print("     %-42s %20s" % (etiqueta[:42], _m(v)))
-        print("     %-42s %20s" % ("TOTAL PENDIENTE", _m(pendiente)))
-        print("     (ya pagado en el período: %s)" % _m(pagado))
+        print("     %-42s %20s" % ("YA VENCIDA", _m(vencido)))
+        print("     %-42s %20s" % ("POR VENCER", _m(por_vencer)))
+        print("     %-42s %20s" % ("TOTAL", _m(vencido + por_vencer)))
+        if vencido > 0:
+            print("     La vencida es la que aprieta: es la que puede hacer")
+            print("     que te corten la compra.")
 
 
 def main():
