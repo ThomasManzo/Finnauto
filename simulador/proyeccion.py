@@ -327,6 +327,19 @@ def perfilar(movimientos, hasta_fecha, meses_atras=6, nivel="tipo"):
     f1 = datetime.date.fromisoformat(max(x["fecha"] for x in hist))
     n_habiles = max(1, len(_habiles(f0, f1)))
 
+    # Cuantos meses de historia hay DE VERDAD. Dos correcciones en una:
+    #
+    #  . contar "meses distintos que aparecen" inflaba el divisor cuando la
+    #    historia empieza o termina a mitad de mes (del 1/6 al 14/7 son dos
+    #    meses distintos pero mes y medio de datos), y la proyeccion salia
+    #    ~25% corta, siempre para el mismo lado;
+    #  . medir el span de CADA GRUPO lo inflaba al reves: algo que aparecio dos
+    #    veces con 3 dias de diferencia quedaba como si gastara eso cada medio
+    #    mes. Un gasto que se vio una sola vez en 3 meses NO es mensual.
+    #
+    # El divisor correcto es el mismo para todos: los meses observados.
+    span_meses = max(0.5, ((f1 - f0).days + 1) / 30.44)
+
     por = defaultdict(list)
     for x in hist:
         por[clave(x, nivel)].append(x)
@@ -365,7 +378,15 @@ def perfilar(movimientos, hasta_fecha, meses_atras=6, nivel="tipo"):
                 peso = dict((d, v / suma) for d, v in por_dia.items())
             else:
                 peso = {15: 1.0}
-            por_mes = total / max(1, len(meses))
+            # Se divide por los MESES REALES de historia, no por la cantidad de
+            # meses distintos que aparecen.
+            #
+            # BUG: si la historia va del 1/6 al 14/7, aparecen dos meses (junio y
+            # julio) pero solo hay mes y medio. Dividir por 2 hacia que el ritmo
+            # mensual saliera ~25% mas bajo, y la proyeccion quedaba corta SIEMPRE
+            # para el mismo lado. Lo delato un cliente nuevo cuya historia
+            # arrancaba a mitad de mes.
+            por_mes = total / span_meses
             perfiles[k] = {
                 "clave": k, "perfil": "evento",
                 "concepto": movs[0].get("concepto", ""),

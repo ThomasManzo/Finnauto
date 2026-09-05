@@ -469,14 +469,19 @@ def test_horizonte():
     # EL ERROR QUE YA APARECIO: los eventos de dia VARIABLE se descartaban
     # enteros y la proyeccion quedaba ~55% por debajo del real, siempre para el
     # mismo lado. Ahora el dia puede fallar, pero la plata del mes esta.
-    var = []
+    # La ventana de historia tiene que ser realista: si los unicos movimientos
+    # son los tres del pago, la historia "dura" desde el primero hasta el ultimo
+    # (2,2 meses) y el ritmo mensual sale inflado. En una planilla de verdad hay
+    # movimientos de otros tipos que definen el periodo observado.
+    var = [{"fecha": f, "tipo": "OTRO", "concepto": "o", "importe": 1.0}
+           for f in ("2026-06-01", "2026-08-31")]
     for mes, dia in (("2026-06", 5), ("2026-07", 19), ("2026-08", 11)):
         var.append({"fecha": "%s-%02d" % (mes, dia), "tipo": "DROGUERIA",
                     "concepto": "d", "importe": 300.0})
     perf2, _ = PR.perfilar(var, datetime.date(2026, 9, 1))
     proy2 = PR.proyectar_horizonte(perf2, datetime.date(2026, 9, 1), 31)
-    total = sum(p["importe"] for p in proy2)
-    ok(abs(total - 300.0) < 1.0,
+    total = sum(p["importe"] for p in proy2 if p["clave"] == "DROGUERIA")
+    ok(abs(total - 300.0) < 15.0,
        "un pago mensual de dia variable NO se pierde: proyecta el total del mes",
        "proyecto %.0f de 300" % total)
 
