@@ -122,31 +122,59 @@ def analizar(contrato, caja, dias, minimo):
 
 
 def posicion(contrato):
-    """Caja + lo que le deben - lo que debe.
+    """Caja + lo que le deben - lo que debe, SEPARADO POR UNIDAD.
 
-    ERROR QUE HABIA: el informe mostraba la caja proyectada y listo. En una
-    farmacia eso es una aberracion, porque el grueso del negocio esta en la
-    cuenta corriente con las droguerias: se les debe y ellas deben. Decirle a
-    alguien "vas a quedar con $6.840M" cuando debe $2.690M y le deben $7.176M
-    no es incompleto, es enganoso.
+    ERROR CONCEPTUAL QUE HABIA (05/09/2026). Thomas:
 
-    Esos saldos NO son caja y no se suman como si lo fueran: por eso van en su
-    propia linea y con su propio nombre. Pero tampoco se pueden ignorar, porque
-    son exactamente lo que decide si el mes que viene se puede comprar.
+        "estas tomando deuda y cobranzas de Speed. MAGA es farmacia, no le vende
+         a las droguerias, le COMPRA. Speed es drogueria: le vende y le compra.
+         Si bien el dueno es el mismo, los negocios son distintos."
 
-    Solo cuenta lo PENDIENTE y lo que no es intercompany: la deuda entre
-    empresas del mismo grupo no es plata que salga.
+    El informe sumaba todo en una sola posicion y mostraba "te deben las
+    droguerias $6.264M" al lado de la deuda de MAGA. Pero a MAGA no le debe
+    ninguna drogueria: MAGA es el comprador. Esas cobranzas son de Speedmed.
+
+    Consolidar dos negocios con logicas distintas no es una simplificacion: es
+    un numero que no existe. Una farmacia con deuda y una distribuidora con
+    cuenta corriente se leen distinto, y el dueno lo sabe aunque la caja sea del
+    mismo grupo.
+
+    Por eso ahora se devuelve una posicion POR UNIDAD, y el total solo como
+    referencia de caja.
     """
-    def suma(clave, estados):
+    # Solo cuenta lo PENDIENTE y lo que no es intercompany: la deuda entre
+    # empresas del mismo grupo no es plata que salga del grupo.
+    def suma(clave, estados, unidad=None):
         return sum(float(x.get("importe") or 0) for x in contrato.get(clave, [])
-                   if not x.get("intercompany") and x.get("estado") in estados)
+                   if not x.get("intercompany") and x.get("estado") in estados
+                   and (unidad is None or (x.get("unidad") or "") == unidad))
 
     caja = float(contrato.get("caja_hoy") or 0)
+    caja_u = contrato.get("caja_por_unidad") or {}
     debe = suma("deuda_droguerias", ("PENDIENTE",))
     cobrar = suma("cuentas_a_cobrar_droguerias", ("VENCIDO", "A_VENCER"))
     vencido = suma("cuentas_a_cobrar_droguerias", ("VENCIDO",))
     if not debe and not cobrar:
         return None
+
+    # Una posicion por unidad. La que no tiene cuentas a cobrar simplemente no
+    # las muestra -- no es que falte un dato, es que ese negocio no vende.
+    unidades = sorted(set(
+        [(x.get("unidad") or "").strip() for x in contrato.get("deuda_droguerias", [])] +
+        [(x.get("unidad") or "").strip() for x in contrato.get("cuentas_a_cobrar_droguerias", [])] +
+        [k.strip() for k in caja_u]))
+    por_unidad = []
+    for u in unidades:
+        if not u:
+            continue
+        d_u = suma("deuda_droguerias", ("PENDIENTE",), u)
+        c_u = suma("cuentas_a_cobrar_droguerias", ("VENCIDO", "A_VENCER"), u)
+        v_u = suma("cuentas_a_cobrar_droguerias", ("VENCIDO",), u)
+        k_u = float(caja_u.get(u) or 0)
+        if not (d_u or c_u or k_u):
+            continue
+        por_unidad.append({"unidad": u, "caja": k_u, "debe": d_u, "cobrar": c_u,
+                           "vencido": v_u, "neto": k_u + c_u - d_u})
 
     # HASTA QUE FECHA LLEGA CARGADA LA DEUDA.
     #
@@ -177,7 +205,8 @@ def posicion(contrato):
                      "por_dia": total / dias}
 
     return {"caja": caja, "debe": debe, "cobrar": cobrar, "vencido": vencido,
-            "neto": caja + cobrar - debe, "cobertura": cobertura}
+            "neto": caja + cobrar - debe, "cobertura": cobertura,
+            "por_unidad": por_unidad}
 
 
 # ------------------------------------------------------------------ html
@@ -314,20 +343,36 @@ def _pagina_dueno(cliente, a):
     p = a.get("posicion")
     if p:
         h.append('<h2>Como estas parado hoy</h2>')
-        h.append('<div class="cajas">')
-        h.append('<div class="caja"><div class="rot">En el banco</div>'
-                 '<div class="val">%s</div></div>' % _m(p["caja"]))
-        h.append('<div class="caja ok"><div class="rot">Te deben las droguerias</div>'
-                 '<div class="val">%s</div></div>' % _m(p["cobrar"]))
-        h.append('<div class="caja alerta"><div class="rot">Les debes</div>'
-                 '<div class="val">%s</div></div>' % _m(p["debe"]))
-        h.append('<div class="caja %s"><div class="rot">Posicion</div>'
-                 '<div class="val">%s</div></div>'
-                 % ("ok" if p["neto"] >= 0 else "alerta", _m(p["neto"])))
-        h.append('</div>')
+        # UNA POSICION POR NEGOCIO. Consolidar una farmacia (que solo le compra a
+        # las droguerias) con una distribuidora (que les compra Y les vende) da
+        # un numero que no le sirve a nadie.
+        for u in p.get("por_unidad", []):
+            h.append('<h3>%s</h3>' % _e(u["unidad"]))
+            h.append('<div class="cajas">')
+            if u["caja"]:
+                h.append('<div class="caja"><div class="rot">En el banco</div>'
+                         '<div class="val">%s</div></div>' % _m(u["caja"]))
+            if u["cobrar"]:
+                h.append('<div class="caja ok"><div class="rot">Le deben</div>'
+                         '<div class="val">%s</div></div>' % _m(u["cobrar"]))
+            if u["debe"]:
+                h.append('<div class="caja alerta"><div class="rot">Le debe a droguerias</div>'
+                         '<div class="val">%s</div></div>' % _m(u["debe"]))
+            h.append('<div class="caja %s"><div class="rot">Posicion</div>'
+                     '<div class="val">%s</div></div>'
+                     % ("ok" if u["neto"] >= 0 else "alerta", _m(u["neto"])))
+            h.append('</div>')
+            if not u["cobrar"] and u["debe"]:
+                h.append('<p class="sub">Este negocio le COMPRA a las droguerias y '
+                         'no les vende, asi que no tiene cuentas a cobrar con '
+                         'ellas.</p>')
+            if u["vencido"]:
+                h.append('<p class="sub">De lo que le deben, <strong>%s ya esta '
+                         'vencido</strong>.</p>' % _m(u["vencido"]))
         h.append('<p class="sub">Lo que te deben y lo que debes NO es plata en el '
-                 'banco: es cuenta corriente. Pero es lo que decide si el mes que '
-                 'viene podes seguir comprando.</p>')
+                 'banco: es cuenta corriente. Y va separado por negocio: una '
+                 'farmacia y una distribuidora no se leen igual aunque el dueno '
+                 'sea el mismo.</p>')
 
         # Si la deuda cargada no llega hasta el final del periodo, decirlo ACA,
         # al lado del numero, y no en una nota al pie que nadie lee.
