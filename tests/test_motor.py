@@ -921,6 +921,68 @@ def test_deuda_vencida():
        "asi el mismo archivo da siempre el mismo resultado")
 
 
+def test_puentes_contraste():
+    """UNA DIFERENCIA SIN EXPLICAR NO SIRVE DE NADA.
+
+    Decir "hay 18% de diferencia contra la planilla del cliente" deja la
+    discusion abierta para siempre. Lo unico que la cierra es mostrar, al peso,
+    DE QUE esta hecha esa diferencia.
+
+    Sobre datos reales del 05/09/2026 las dos diferencias resultaron ser:
+
+      . la refinanciacion, que la Calculadora suma como deuda con droguerias
+        (fila fija de la planilla) y el motor separa
+      . las notas de credito, que la Calculadora NO descuenta del saldo y el
+        motor si, porque una NCR baja deuda
+
+    Sumando las dos al numero del motor da exactamente el del cliente.
+    """
+    from auditoria import contraste as CT
+
+    contrato = {"generado": "2026-09-05T00:00:00Z", "deuda_droguerias": [
+        {"fecha": "2026-09-01", "contraparte": "SUIZO",          "importe": 100.0},
+        {"fecha": "2026-09-20", "contraparte": "SUIZO",          "importe": 400.0},
+        {"fecha": "2026-09-01", "contraparte": "REFINANCIACION", "importe": 70.0},
+        {"fecha": "2026-09-20", "contraparte": "REFINANCIACION", "importe": 30.0},
+        {"fecha": "2026-09-20", "contraparte": "NCR SUIZO", "importe": -50.0,
+         "es_credito": True},
+        # Un ajuste negativo DENTRO de una fila normal: el cliente ya lo tiene
+        # (suma la fila entera con signo), asi que no es un puente. Contarlo
+        # hacia que la cuenta cerrara "por poco", que es peor que no cerrar:
+        # parece redondeo y no lo es.
+        {"fecha": "2026-09-20", "contraparte": "SUIZO", "importe": -7.0},
+    ]}
+    hoy = CT._hoy(contrato)
+
+    ok(abs(CT._refi(contrato, True, hoy) - 70.0) < 0.01,
+       "el puente de la refi separa lo vencido de lo que viene")
+    ok(abs(CT._ncr(contrato, False, hoy) - 50.0) < 0.01,
+       "el puente de las NCR cuenta solo las filas rotuladas como nota de credito",
+       str(CT._ncr(contrato, False, hoy)))
+
+    # Lo que de verdad importa: que cierre.
+    for vencida, suyo in ((True, 170.0), (False, 423.0)):
+        mio = CT._deuda(contrato, vencida, hoy)
+        p = sum(x[1] for x in CT._puentes_deuda(contrato, vencida))
+        ok(abs(mio + p - suyo) < 0.01,
+           "los puentes cierran al peso (%s)" % ("vencida" if vencida else "a vencer"),
+           "motor %s + puentes %s != %s" % (mio, p, suyo))
+
+    # Y el contraste tiene que DECIR que cierra, no dejarlo como pendiente.
+    contrato["referencias_del_cliente"] = {"Calculadora": [
+        {"etiqueta": "Deuda droguerias VENCIDA",   "valor": 170.0},
+        {"etiqueta": "Deuda droguerias a vencer",  "valor": 423.0}]}
+    filas, _ = CT.contrastar(contrato)
+    ok(len(filas) == 2 and all(f["cierra"] for f in filas),
+       "y el contraste las marca como explicadas, no como pendientes")
+
+    # Un numero escrito por un script, sin formula, puede estar viejo: la
+    # "deuda vencida" de la Calculadora paso de $1.456M a $2.526M entre dos
+    # exports del mismo dia, con los mismos datos abajo.
+    ok(all(not f["formula"] for f in filas),
+       "y avisa cuando el numero del cliente no sale de una formula")
+
+
 if __name__ == "__main__":
     print("=" * 62)
     print("  TESTS DEL MOTOR finauto")
@@ -944,6 +1006,7 @@ if __name__ == "__main__":
     test_proveedores()
     test_rigido_y_endoso()
     test_deuda_vencida()
+    test_puentes_contraste()
     print("\n" + "=" * 62)
     if _fallos:
         print("  %d TEST(S) FALLARON: %s" % (len(_fallos), ", ".join(_fallos)))
