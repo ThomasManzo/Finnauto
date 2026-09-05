@@ -183,8 +183,12 @@ def test_agrupar_a_ciegas():
     print("\n== Proponer rubros mirando solo el concepto ==")
     from lector.agrupar import proponer, tokens, pureza
 
-    ok("PROVEEDOR" in tokens("Pago proveedor Acindar 07/26"),
+    ok("ACINDAR" in tokens("Pago proveedor Acindar 07/26"),
        "saca las palabras utiles del concepto")
+    # PROVEEDOR describe el ROL, no a quien: agrupar por ahi juntaria a todos
+    # los proveedores en un solo rubro y no serviria para nada.
+    ok("PROVEEDOR" not in tokens("Pago proveedor Acindar"),
+       "y descarta las que nombran el rol en vez de la contraparte")
     ok("PAGO" not in tokens("Pago proveedor Acindar"),
        "descarta las genericas: PAGO esta en todos lados y no distingue")
     ok("JULIO" not in tokens("Sueldos julio Marcelo"),
@@ -298,6 +302,31 @@ def test_borrador_sin_columna_de_rubro():
     ok("juntar" in q0, "y pregunta cuales hay que juntar")
 
 
+def test_agrupar_es_deterministico():
+    print("\n== El mismo dato tiene que dar SIEMPRE el mismo grupo ==")
+    from lector.agrupar import proponer
+
+    # BUG REAL: cuando dos palabras tienen la misma frecuencia, el desempate se
+    # hacia recorriendo un set, y en Python ese orden cambia entre corridas. La
+    # misma planilla daba grupos distintos dos veces seguidas. Adelante de un
+    # cliente eso es indefendible.
+    movs = ([{"concepto": "Pago proveedor Acindar %d" % i, "importe": 900000.0}
+             for i in range(8)] +
+            [{"concepto": "Alquiler local %d" % i, "importe": 800000.0}
+             for i in range(4)])
+    r1 = [g["palabra"] for g in proponer(movs)[0]]
+    for _ in range(20):
+        ok_igual = [g["palabra"] for g in proponer(list(movs))[0]] == r1
+        if not ok_igual:
+            break
+    ok(ok_igual, "20 corridas seguidas dan exactamente el mismo resultado", str(r1))
+
+    # Y el orden de las filas en la planilla no puede cambiar los grupos.
+    r2 = [g["palabra"] for g in proponer(list(reversed(movs)))[0]]
+    ok(sorted(r1) == sorted(r2), "ni cambia si las filas vienen en otro orden",
+       "%s vs %s" % (r1, r2))
+
+
 if __name__ == "__main__":
     print("=" * 62)
     print("  LECTOR DE PLANILLAS  ·  contra planillas desconocidas")
@@ -308,6 +337,7 @@ if __name__ == "__main__":
     test_preguntas()
     test_dos_columnas_de_importe()
     test_agrupar_a_ciegas()
+    test_agrupar_es_deterministico()
     test_pureza()
     test_borrador_sin_columna_de_rubro()
     print("\n" + "=" * 62)
