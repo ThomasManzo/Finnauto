@@ -271,6 +271,21 @@ function exportarContratoEnLog() {
   Logger.log('URL     : %s', archivo.getUrl());
   Logger.log('Movimientos: %s | Saldos: %s | Caja hoy: %s',
              payload.movimientos.length, payload.saldos.length, payload.caja_hoy);
+  Logger.log('Cobros previstos: %s | Deuda drog.: %s | A cobrar drog.: %s',
+             (payload.cobros_previstos || []).length,
+             (payload.deuda_droguerias || []).length,
+             (payload.cuentas_a_cobrar_droguerias || []).length);
+
+  // LOS AVISOS SE IMPRIMEN SIEMPRE.
+  //
+  // Sin esto el log decia "1104 movimientos, exportado OK" y uno se iba
+  // tranquilo, cuando adentro faltaba la mitad de la deuda. El resumen lindo
+  // sin el detalle de que se leyo es exactamente como no darse cuenta.
+  var av = payload.avisos || [];
+  Logger.log('===== QUE LEYO (%s aviso/s) =====', av.length);
+  for (var i = 0; i < av.length; i++) Logger.log('  . %s', av[i]);
+  if (!av.length) Logger.log('  (ninguno: revisar, porque siempre deberia informar las hojas)');
+
   Logger.log('Está en tu Drive, en "Mi unidad".');
   return archivo.getUrl();
 }
@@ -333,6 +348,12 @@ function _construirPayload_() {
 /** Lee la solapa MOVIMIENTOS buscando el encabezado (no por posición). */
 function _leerMovimientos_(ss, avisos) {
   var hojas = ss.getSheets();
+
+  // Se listan TODAS las hojas. Cuando algo no se lee, lo primero que hace falta
+  // saber es que habia para leer.
+  var _nom = [];
+  for (var z = 0; z < hojas.length; z++) _nom.push(hojas[z].getName());
+  avisos.push('Hojas del archivo (' + hojas.length + '): ' + _nom.join(' | '));
   for (var i = 0; i < hojas.length; i++) {
     var sh = hojas[i];
     var ubic = _ubicarEncabezado_(sh);
@@ -448,10 +469,18 @@ function _leerIngresosCashflow_(ss, avisos) {
     var sh = hojas[i];
     var nom = _norm_(sh.getName());
     if (nom.indexOf('CASH') < 0 || nom.indexOf('FLOW') < 0) continue;
-    hojasCashflow++;
     var unidad = (nom.indexOf('SPEED') > -1) ? 'SPEEDMED'
                : (nom.indexOf('MAGA') > -1) ? 'MAGA' : '';
-    if (!unidad) continue;
+    // MISMO PROBLEMA QUE EN LA DEUDA, y aca afecta a los INGRESOS: una hoja de
+    // cashflow cuyo nombre no diga SPEED ni MAGA se descartaba en silencio. Si
+    // esa hoja existe, se pierde toda la plata que entra por ella y el contrato
+    // sale igual de prolijo.
+    if (!unidad) {
+      unidad = sh.getName().trim();
+      avisos.push('Ingresos: la hoja "' + sh.getName() + '" parece un cashflow '+
+                  'pero su nombre no dice SPEED ni MAGA. La lei igual con la '+
+                  'unidad "' + unidad + '".');
+    }
     encontradas++;
 
     var maxR = sh.getLastRow(), maxC = sh.getLastColumn();
@@ -534,6 +563,46 @@ function _ultimaFecha_(filas) {
   return m || '(sin fecha)';
 }
 
+/**
+ * COMO ESTA DELIMITADO EL BLOQUE DE DROGUERIAS EN CADA HOJA.
+ *
+ * No todas las planillas arman el bloque igual, y eso no es un error de nadie:
+ * son planillas que crecieron aparte. En este Cash conviven dos formas:
+ *
+ *   Cash Flow Diario-Speed  -> tiene encabezados propios
+ *        Cobranza Drogueria / DDS, SUIZO, COFALOZA
+ *        Deuda Drogueria    / SUIZO ARGENTINA, REFINANCIACION, DROG.DEL SUD
+ *
+ *   Cash Flow Diario -MAGA  -> NO tiene encabezado. Las droguerias cuelgan
+ *        directo entre "Saldo cierre" y "Saldo con pago a droguerias".
+ *
+ * Por eso ninguna busqueda por rotulo iba a encontrar el de MAGA: no es que
+ * este escrito distinto, es que no existe. Se declara donde empieza y donde
+ * termina, y listo.
+ *
+ * Para un cliente nuevo se agrega una entrada aca y no se toca una linea de
+ * codigo. La clave es el nombre de la hoja normalizado (mayusculas, sin
+ * acentos); si no figura, se usa _default.
+ */
+var EXP_BLOQUES = {
+  _default: {
+    cobranza: { desde: 'COBRANZA DROGUERIA', hasta: ['DEUDA DROGUERIA'] },
+    deuda:    { desde: 'DEUDA DROGUERIA',    hasta: ['COBRANZA DROGUERIA'] }
+  },
+
+  // OJO - SUPUESTO A VERIFICAR (05/09/2026):
+  // en la hoja de MAGA se toman como DEUDA las filas entre "Saldo cierre" y
+  // "Saldo con pago a droguerias" (COFALOZA, SUIZO y las NCR). Se asume que es
+  // lo que MAGA LES DEBE, porque la linea siguiente es "saldo CON PAGO a
+  // droguerias" -- o sea, el saldo si les pagara. Las NCR restan, como en el
+  // resto del exportador.
+  // Thomas dijo que la deuda de MAGA es ~$1.513M: si el numero que sale se
+  // parece, el supuesto esta bien. Si no, revisar aca.
+  'CASH FLOW DIARIO -MAGA': {
+    deuda: { desde: 'SALDO CIERRE', hasta: ['SALDO CON PAGO A DROGUERIAS'] }
+  }
+};
+
 function _leerBloquesDroguerias_(ss, avisos) {
   var cobrar = [], deuda = [], hojasCashflow = 0;
   var hoy = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
@@ -543,6 +612,7 @@ function _leerBloquesDroguerias_(ss, avisos) {
     var sh = hojas[i];
     var nom = _norm_(sh.getName());
     if (nom.indexOf('CASH') < 0 || nom.indexOf('FLOW') < 0) continue;
+    hojasCashflow++;
     // ERROR REAL (05/09/2026): esto decia
     //     if (!unidad) continue;
     // o sea que una hoja llamada "Cash Flow Diario" -- la de MAGA, sin la
@@ -581,15 +651,26 @@ function _leerBloquesDroguerias_(ss, avisos) {
     }
 
     // NOS DEBEN: si la fecha ya pasó y el monto sigue ahí, es que NO cobramos -> VENCIDO.
-    var cobrarHoja = _filasDeBloque_(grid, cols, 'COBRANZA DROGUERIA',
-      ['DEUDA DROGUERIA'], unidad, sh.getName(), hoy,
-      { pasado: 'VENCIDO', futuro: 'A_VENCER' });
+    // Que bloques tiene ESTA hoja y como estan delimitados.
+    var def = EXP_BLOQUES[_norm_(sh.getName())] || EXP_BLOQUES._default;
+    var defCobranza = def.cobranza || null;
+    var defDeuda = def.deuda || null;
+
+    var cobrarHoja = [];
+    if (defCobranza) {
+      cobrarHoja = _filasDeBloque_(grid, cols, defCobranza.desde,
+        defCobranza.hasta, unidad, sh.getName(), hoy,
+        { pasado: 'VENCIDO', futuro: 'A_VENCER' });
+    }
     cobrar = cobrar.concat(cobrarHoja);
 
     // LES DEBEMOS: si la fecha ya pasó, ese pago YA SE HIZO -> PAGADO (no es deuda viva).
-    var deudaHoja = _filasDeBloque_(grid, cols, 'DEUDA DROGUERIA',
-      ['COBRANZA DROGUERIA'], unidad, sh.getName(), hoy,
-      { pasado: 'PAGADO', futuro: 'PENDIENTE' });
+    var deudaHoja = [];
+    if (defDeuda) {
+      deudaHoja = _filasDeBloque_(grid, cols, defDeuda.desde,
+        defDeuda.hasta, unidad, sh.getName(), hoy,
+        { pasado: 'PAGADO', futuro: 'PENDIENTE' });
+    }
     deuda = deuda.concat(deudaHoja);
 
     // SE INFORMA SIEMPRE, aunque haya salido todo bien.
@@ -602,7 +683,18 @@ function _leerBloquesDroguerias_(ss, avisos) {
                 cobrarHoja.length + ' fila(s) de cobranza y ' +
                 deudaHoja.length + ' de deuda' +
                 (deudaHoja.length ? ', hasta ' + _ultimaFecha_(deudaHoja) : '') +
-                '. Columnas con fecha: ' + cols.length + '.');
+                '. Columnas con fecha: ' + cols.length +
+                '. Bloques: ' + (EXP_BLOQUES[_norm_(sh.getName())] ?
+                   'definicion propia' : 'definicion por defecto') + '.');
+
+    // Una hoja de cashflow con columnas de fecha pero SIN filas es la senal de
+    // que el rotulo del bloque se llama distinto. En vez de dejar que alguien lo
+    // adivine mirando la planilla, se listan los rotulos que si tiene.
+    if (!cobrarHoja.length && !deudaHoja.length && cols.length > 3) {
+      avisos.push('  OJO: "' + sh.getName() + '" tiene ' + cols.length +
+                  ' columnas de fecha pero no encontre los bloques. Los rotulos ' +
+                  'que SI tiene son: ' + _rotulosDe_(grid).join(' | '));
+    }
   }
   if (!cobrar.length && !deuda.length) {
     avisos.push('No encontré los bloques "Cobranza Droguería" / "Deuda Droguería" en los cashflow.');
@@ -616,16 +708,65 @@ function _leerBloquesDroguerias_(ss, avisos) {
 /** Lee las filas de un bloque etiquetado, hasta otra etiqueta o 3 filas vacías.
  *  etiquetasEstado = {pasado: '...', futuro: '...'} porque el significado de una
  *  fecha pasada cambia según el bloque (ver comentario más abajo). */
-function _filasDeBloque_(grid, cols, etiquetaInicio, etiquetasFin, unidad, hoja, hoy, etiquetasEstado) {
-  var out = [], inicio = -1;
+/**
+ * Ubica un bloque por su rotulo, con tolerancia.
+ *
+ * POR QUE NO ALCANZA LA IGUALDAD EXACTA EN LA COLUMNA A:
+ * el export encontro la hoja "Cash Flow Diario -MAGA" con sus 217 columnas de
+ * fecha y devolvio CERO filas de cobranza y CERO de deuda, cuando esa hoja
+ * tiene deuda. El bloque esta; lo que no coincidia era como se busca el rotulo.
+ *
+ * Un rotulo se escribe distinto en cada planilla: "Deuda Drogueria", "Deuda
+ * Droguerias", con la etiqueta corrida una columna, con un espacio de mas. Nada
+ * de eso deberia costar una jornada de diagnostico.
+ *
+ * Devuelve {fila, col} o null.
+ */
+function _buscarBloque_(grid, etiqueta) {
+  var COLS = 4;   // el rotulo puede estar corrido a la derecha
+  // 1) igual, que es lo mas seguro
   for (var r = 0; r < grid.length; r++) {
-    if (_norm_(grid[r][0]) === etiquetaInicio) { inicio = r; break; }
+    for (var c = 0; c < Math.min(COLS, grid[r].length); c++) {
+      if (_norm_(grid[r][c]) === etiqueta) return { fila: r, col: c };
+    }
   }
-  if (inicio < 0) return out;
+  // 2) empieza con el rotulo: cubre plurales y sufijos ("Deuda Drogueria (Speed)")
+  for (var r2 = 0; r2 < grid.length; r2++) {
+    for (var c2 = 0; c2 < Math.min(COLS, grid[r2].length); c2++) {
+      var v = _norm_(grid[r2][c2]);
+      if (v && v.indexOf(etiqueta) === 0) return { fila: r2, col: c2 };
+    }
+  }
+  return null;
+}
+
+/** Los rotulos de texto que hay en una hoja: para poder decir que SI habia
+ *  cuando no se encuentra el que se buscaba. */
+function _rotulosDe_(grid) {
+  var out = [], vistos = {};
+  for (var r = 0; r < grid.length; r++) {
+    for (var c = 0; c < Math.min(3, grid[r].length); c++) {
+      var v = String(grid[r][c] == null ? '' : grid[r][c]).trim();
+      if (v.length < 4 || v.length > 40) continue;
+      if (!isNaN(Number(v.replace(/[.,$]/g, '')))) continue;   // no numeros
+      if (vistos[v]) continue;
+      vistos[v] = 1;
+      out.push(v);
+      if (out.length >= 40) return out;
+    }
+  }
+  return out;
+}
+
+function _filasDeBloque_(grid, cols, etiquetaInicio, etiquetasFin, unidad, hoja, hoy, etiquetasEstado) {
+  var out = [];
+  var pos = _buscarBloque_(grid, etiquetaInicio);
+  if (!pos) return out;
+  var inicio = pos.fila, colEtq = pos.col;
 
   var vacios = 0;
   for (var rr = inicio + 1; rr < grid.length; rr++) {
-    var etiqueta = String(grid[rr][0] == null ? '' : grid[rr][0]).trim();
+    var etiqueta = String(grid[rr][colEtq] == null ? '' : grid[rr][colEtq]).trim();
     if (!etiqueta) {
       vacios++;
       if (vacios >= 3) break;   // se terminó el bloque

@@ -586,6 +586,78 @@ def test_coherencia():
        "sin datos de un lado no inventa un aviso")
 
 
+# ------------------------------------------------ completitud de los datos
+def test_completitud():
+    print("\n== Detectar datos que FALTAN (no errores de calculo) ==")
+    from auditoria.revisar import completitud
+
+    def tipos(c):
+        return set(t for t, _ in completitud(c))
+
+    # 1) Una unidad con caja pero sin datos: es el caso MAGA. La hoja no se
+    #    leia y el contrato salia prolijo con la mitad de la deuda afuera.
+    c = {"caja_por_unidad": {"SPEEDMED": 100.0, "MAGA": 200.0},
+         "movimientos": [{"fecha": "2026-09-01", "unidad": "SPEEDMED",
+                          "tipo": "PAGO", "importe": 10.0}],
+         "cobros_previstos": []}
+    ok("FALTA UNA UNIDAD" in tipos(c),
+       "avisa cuando una unidad tiene caja pero ningun movimiento", str(tipos(c)))
+
+    # Con las dos unidades presentes NO tiene que avisar: si no, el aviso
+    # pierde sentido y se ignora.
+    c2 = dict(c, movimientos=c["movimientos"] + [
+        {"fecha": "2026-09-01", "unidad": "MAGA", "tipo": "PAGO", "importe": 10.0}])
+    ok("FALTA UNA UNIDAD" not in tipos(c2), "y no avisa cuando estan todas")
+
+    # 2) Un bloque que termina mucho antes que los demas: la deuda llegaba al
+    #    25/09 y el resto al 16/10, y sumarla daba la mitad.
+    c3 = {"movimientos": [{"fecha": "2026-10-31", "tipo": "PAGO", "importe": 10.0}],
+          "cobros_previstos": [{"fecha": "2026-10-30", "importe": 10.0}],
+          "deuda_droguerias": [{"fecha": "2026-09-25", "importe": 10.0}]}
+    ok("BLOQUE CORTO" in tipos(c3), "avisa cuando un bloque queda corto",
+       str(tipos(c3)))
+
+    c4 = dict(c3, deuda_droguerias=[{"fecha": "2026-10-29", "importe": 10.0}])
+    ok("BLOQUE CORTO" not in tipos(c4), "y tolera unos dias de diferencia")
+
+    # 3) Los dos lados desparejos. No se diagnostica -- puede ser que se cancele
+    #    por fuera de la caja (correcto) o que falten gastos (agujero).
+    c5 = {"movimientos": [{"fecha": "2026-09-01", "tipo": "PAGO", "importe": 100.0}],
+          "cobros_previstos": [{"fecha": "2026-09-01", "importe": 500.0}]}
+    ok("LADOS DESPAREJOS" in tipos(c5), "avisa si entra mucho mas de lo que sale")
+    c6 = {"movimientos": [{"fecha": "2026-09-01", "tipo": "PAGO", "importe": 500.0}],
+          "cobros_previstos": [{"fecha": "2026-09-01", "importe": 100.0}]}
+    ok("LADOS DESPAREJOS" in tipos(c6), "y tambien al reves")
+    c7 = {"movimientos": [{"fecha": "2026-09-01", "tipo": "PAGO", "importe": 100.0}],
+          "cobros_previstos": [{"fecha": "2026-09-01", "importe": 120.0}]}
+    ok("LADOS DESPAREJOS" not in tipos(c7), "un contrato equilibrado no hace ruido")
+
+    # 4) Movimientos sin tipo: el motor no los puede modelar.
+    c8 = {"movimientos": [{"fecha": "2026-09-01", "tipo": "", "importe": 50.0},
+                          {"fecha": "2026-09-01", "tipo": "PAGO", "importe": 50.0}],
+          "cobros_previstos": []}
+    ok("SIN CATEGORIA" in tipos(c8), "avisa por los movimientos sin categoria")
+
+    # 5) Un bloque vacio cuando el otro tiene datos: casi siempre es que no se
+    #    encontro, no que la empresa no deba nada.
+    c9 = {"movimientos": [], "cobros_previstos": [],
+          "cuentas_a_cobrar_droguerias": [{"fecha": "2026-09-01", "importe": 10.0}],
+          "deuda_droguerias": []}
+    ok("BLOQUE VACIO" in tipos(c9), "avisa si hay cuentas a cobrar y cero deuda")
+
+    # 6) Los avisos del propio export se repiten: viajaban en el contrato y
+    #    nadie los miraba.
+    c10 = {"movimientos": [], "cobros_previstos": [],
+           "avisos": ["OJO: la hoja X tiene columnas de fecha pero no encontre "
+                      "los bloques", "Todo bien por aca"]}
+    h = [t for t, _ in completitud(c10)]
+    ok(h.count("AVISO DEL EXPORT") == 1,
+       "repite los avisos del export que importan, y solo esos", str(h))
+
+    ok(completitud({"movimientos": [], "cobros_previstos": []}) == [],
+       "un contrato vacio no inventa hallazgos")
+
+
 if __name__ == "__main__":
     print("=" * 62)
     print("  TESTS DEL MOTOR finauto")
@@ -604,6 +676,7 @@ if __name__ == "__main__":
     test_horizonte()
     test_caja_completa()
     test_coherencia()
+    test_completitud()
     print("\n" + "=" * 62)
     if _fallos:
         print("  %d TEST(S) FALLARON: %s" % (len(_fallos), ", ".join(_fallos)))

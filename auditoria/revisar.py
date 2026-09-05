@@ -327,6 +327,153 @@ def margen_de_maniobra(movs, cat, desde, hasta):
 
 
 # ============================================================ main
+# ===========================================================================
+# CHEQUEOS DE COMPLETITUD
+#
+# Todos salen de errores REALES encontrados el 05/09/2026 en el Cash de MAGA.
+# Ninguno tiraba una excepcion: el contrato salia prolijo con la mitad de los
+# datos afuera, y eso es lo peor que puede pasar. Thomas lo puso asi: "no
+# importa arreglar errores, el tema es que esos errores sirvan para las demas
+# empresas".
+#
+# La forma de todos es la misma: comparar dos cosas que TIENEN que cuadrar. Si
+# no cuadran, falta un pedazo, aunque nadie haya fallado.
+# ===========================================================================
+
+def _suma(filas, filtro=None):
+    return sum(abs(float(x.get("importe") or 0)) for x in (filas or [])
+               if filtro is None or filtro(x))
+
+
+def _unidades(filas):
+    return set((x.get("unidad") or "").strip() for x in (filas or [])
+               if (x.get("unidad") or "").strip())
+
+
+def completitud(contrato):
+    """Los chequeos que detectan datos faltantes. Devuelve lista de hallazgos."""
+    out = []
+    mov = contrato.get("movimientos", [])
+    cob = contrato.get("cobros_previstos", [])
+    deuda = contrato.get("deuda_droguerias", [])
+    cobrar = contrato.get("cuentas_a_cobrar_droguerias", [])
+    por_unidad = contrato.get("caja_por_unidad") or {}
+
+    # --- 1) UNA UNIDAD QUE TIENE CAJA PERO NO TIENE DATOS ---------------
+    # El caso MAGA: la caja mostraba SPEEDMED y MAGA, y la deuda venia solo de
+    # SPEEDMED porque la hoja de MAGA se salteaba en silencio. Faltaba el 51%.
+    if por_unidad:
+        con_caja = set(k.strip().upper() for k in por_unidad if por_unidad[k])
+        for nombre, filas in (("movimientos", mov), ("cobros previstos", cob),
+                              ("deuda con droguerias", deuda),
+                              ("cuentas a cobrar", cobrar)):
+            if not filas:
+                continue
+            presentes = set(u.upper() for u in _unidades(filas))
+            if not presentes:
+                continue
+            faltan = con_caja - presentes
+            if faltan:
+                out.append(("FALTA UNA UNIDAD",
+                            "%s: hay caja de %s pero ningun dato de %s. "
+                            "Casi siempre significa que una hoja no se esta "
+                            "leyendo." % (nombre, ", ".join(sorted(con_caja)),
+                                          ", ".join(sorted(faltan)))))
+
+    # --- 2) UN BLOQUE QUE TERMINA ANTES QUE LOS DEMAS -------------------
+    # El caso deuda: llegaba al 25/09 mientras el resto llegaba al 16/10. Sumarlo
+    # como "la deuda" daba la mitad, y el informe decia que sobraba plata.
+    topes = {}
+    for nombre, filas in (("movimientos", mov), ("cobros previstos", cob),
+                          ("deuda con droguerias", deuda),
+                          ("cuentas a cobrar", cobrar)):
+        f = [x.get("fecha") for x in (filas or []) if x.get("fecha")]
+        if f:
+            topes[nombre] = max(f)
+    if len(topes) > 1:
+        mas_lejos = max(topes.values())
+        for nombre, tope in sorted(topes.items()):
+            dias = (datetime.date.fromisoformat(mas_lejos) -
+                    datetime.date.fromisoformat(tope)).days
+            if dias > 15:
+                out.append(("BLOQUE CORTO",
+                            "%s llega hasta %s, pero otros datos llegan hasta "
+                            "%s (%d dias mas). Si se proyecta ese periodo, este "
+                            "bloque va a quedar corto." % (nombre, tope,
+                                                           mas_lejos, dias)))
+
+    # --- 3) LOS DOS LADOS NO SON COMPARABLES ---------------------------
+    # Entra 2,5 veces lo que sale. Puede estar bien (compras que se cancelan por
+    # fuera de la caja) o puede faltar la mitad de los gastos. Se pregunta.
+    ti, te = _suma(cob), _suma(mov)
+    if ti and te:
+        if ti / te > 2.0:
+            out.append(("LADOS DESPAREJOS",
+                        "Entra %.1f veces lo que sale. Preguntar si hay compras "
+                        "que se cancelan sin pasar por el banco (notas de "
+                        "credito, endoso de cheques, compensacion) o si faltan "
+                        "gastos por cargar." % (ti / te)))
+        elif te / ti > 2.0:
+            out.append(("LADOS DESPAREJOS",
+                        "Sale %.1f veces lo que entra. O faltan ingresos por "
+                        "cargar, o la empresa se financia con algo que no "
+                        "figura." % (te / ti)))
+
+    # --- 4) MOVIMIENTOS SIN CATEGORIA ----------------------------------
+    # Sin tipo el motor no los puede modelar: no entran en ninguna proyeccion.
+    sin_tipo = [x for x in mov if not (x.get("tipo") or "").strip()]
+    if sin_tipo:
+        imp = _suma(sin_tipo)
+        pct = 100.0 * imp / te if te else 0
+        out.append(("SIN CATEGORIA",
+                    "%d movimiento(s) sin tipo, por %s (%.0f%% de los egresos). "
+                    "El motor no los puede clasificar ni proyectar."
+                    % (len(sin_tipo), _m(imp), pct)))
+
+    # --- 5) UN BLOQUE VACIO QUE DEBERIA TENER ALGO ---------------------
+    # Si hay cuentas a cobrar pero cero deuda (o al reves), suele ser que uno de
+    # los dos bloques no se encontro, no que la empresa no deba nada.
+    if cobrar and not deuda:
+        out.append(("BLOQUE VACIO",
+                    "Hay %d fila(s) de cuentas a cobrar pero NINGUNA de deuda. "
+                    "Es raro: revisar que el bloque de deuda se este leyendo."
+                    % len(cobrar)))
+    if deuda and not cobrar:
+        out.append(("BLOQUE VACIO",
+                    "Hay %d fila(s) de deuda pero NINGUNA de cuentas a cobrar. "
+                    "Revisar que ese bloque se este leyendo." % len(deuda)))
+
+    # --- 6) LOS AVISOS DEL PROPIO EXPORT --------------------------------
+    # Viajan en el contrato y nadie los miraba. Si el export tuvo algo para
+    # decir, la auditoria lo repite.
+    for a in (contrato.get("avisos") or []):
+        if "OJO" in a.upper() or "NO ENCONTRE" in a.upper() or "FALTA" in a.upper():
+            out.append(("AVISO DEL EXPORT", a))
+
+    return out
+
+
+def imprimir_completitud(hallazgos):
+    L = 74
+    print("=" * L)
+    print("  COMPLETITUD DE LOS DATOS")
+    print("=" * L)
+    if not hallazgos:
+        print("  Nada que reportar: los bloques cierran entre si.\n")
+        return
+    print("  Estos no son errores de calculo: son datos que FALTAN. Ninguno")
+    print("  hace fallar nada, y por eso son los que mas caro salen.\n")
+    for tipo, texto in hallazgos:
+        linea = "  [%s] " % tipo
+        for palabra in texto.split():
+            if len(linea) + len(palabra) + 1 > L - 2:
+                print(linea)
+                linea = "      "
+            linea += palabra + " "
+        print(linea.rstrip())
+        print("")
+
+
 def main():
     ap = argparse.ArgumentParser(description="Auditoria de calidad del contrato")
     ap.add_argument("--contrato", required=True)
@@ -348,6 +495,11 @@ def main():
         propias.append(_norm(u.get("id")))
         propias.append(_norm(u.get("nombre")))
     propias = sorted(set(p for p in propias if p and len(p) > 3))
+
+    # La completitud va PRIMERO. Si faltan datos, todo lo que venga despues
+    # opina sobre una foto incompleta -- que fue exactamente lo que paso el
+    # 05/09: el motor analizaba con la mitad de la deuda afuera.
+    imprimir_completitud(completitud(contrato))
 
     hall = []
     tipos_sin_catalogo(movs, cat, hall)
