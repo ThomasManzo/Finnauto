@@ -541,9 +541,15 @@ def test_coherencia():
     from simulador import proyeccion as PR
 
     # EL CASO REAL: en el contrato de MAGA entra 2,5 veces lo que sale, lo que
-    # daria +$3.078M por mes con una caja de $1.183M. No es que gane eso: faltan
-    # las compras a droguerias. Sin este chequeo la curva sube y sube, y decirle
-    # a alguien que le sobra plata cuando no le sobra es el error mas caro.
+    # daria +$3.078M por mes con una caja de $1.183M.
+    #
+    # OJO con la interpretacion. La primera version de este chequeo afirmaba
+    # "faltan egresos sin registrar" y estaba MAL: Thomas explico que las
+    # compras a droguerias se cancelan con notas de credito, endoso de cheques o
+    # compensacion con cuentas a cobrar, asi que nunca tocan la caja. No faltan.
+    #
+    # Pero en OTRA empresa la misma senal puede ser que no esten cargando los
+    # gastos, que si es un agujero. El chequeo detecta y PREGUNTA; no diagnostica.
     movs, cobros = [], []
     f = datetime.date(2026, 6, 1)
     while f < datetime.date(2026, 9, 1):
@@ -557,14 +563,18 @@ def test_coherencia():
     r = PR.revisar_coherencia({"caja_hoy": 1000.0, "movimientos": movs,
                                "cobros_previstos": cobros})
     ok(r and r["avisos"], "avisa cuando entra mucho mas de lo que sale")
-    ok(any("FALTEN EGRESOS" in a for a in r["avisos"]),
-       "y dice que lo mas probable es que falten egresos", str(r["avisos"])[:80])
+    ok(any("PREGUNTAR" in a for a in r["avisos"]),
+       "y en vez de diagnosticar, deja la pregunta", str(r["avisos"])[:80])
+    ok(any("endoso de cheques" in a for a in r["avisos"]),
+       "ofreciendo la explicacion inocente (se cancela por fuera de la caja)")
+    ok(any("no se estan cargando" in a for a in r["avisos"]),
+       "y tambien la preocupante (gastos sin cargar)")
 
     # Al reves tambien: una empresa que gasta el doble de lo que declara cobrar.
     r2 = PR.revisar_coherencia({"caja_hoy": 1000.0,
                                 "movimientos": [dict(m, importe=500.0) for m in movs],
                                 "cobros_previstos": [dict(c, importe=100.0) for c in cobros]})
-    ok(any("falta registrar ingresos" in a for a in r2["avisos"]),
+    ok(any("Sale" in a and "veces lo que entra" in a for a in r2["avisos"]),
        "y avisa el caso contrario", str(r2["avisos"])[:80])
 
     # Lo normal NO tiene que dar aviso, si no el aviso deja de significar algo.
