@@ -21,6 +21,23 @@ el chabon que heredo una cadena de farmacias y entiende mas la parte operativa".
         medianas ni margenes de error. La pregunta que contesta es "¿me alcanza
         la plata?" y, si no, "¿que hago?".
 
+        NO LLEVA UN SALDO DE CIERRE, a proposito. Thomas:
+
+            "un dueno no va a mirar al final del periodo, porque vos tenes
+             deuda a 45 dias porque le pagas a las droguerias a 30/45/60. Pero
+             vos tambien, como proveedor de otros, cobras a 30/45/60: o sea que
+             un periodo de 45 dias todavia no esta cerrado, y ahi esta la
+             importancia del timeline."
+
+        Un saldo al dia 45 es un corte arbitrario en el medio de un ciclo
+        abierto: ahi hay deuda que vence despues y cobranzas que entran despues.
+        Mostrarlo como resultado es inventar un final donde no lo hay.
+
+        Por eso la hoja muestra DOS cosas distintas:
+          . el DIA A DIA, que es con lo que se decide; y
+          . COMO CIERRA EL PERIODO, que es para entender, aclarando que el
+            periodo NO esta cerrado.
+
     PAGINA 2 - PARA THOMAS
         Todo lo que la primera pagina esconde a proposito: de donde sale cada
         numero, cuanto puede errar, que no se pudo determinar y que hay que
@@ -96,6 +113,7 @@ def analizar(contrato, caja, dias, minimo):
 
     return {"corte": corte, "caja": caja_r, "coherencia": coh,
             "posicion": posicion(contrato),
+            "fin_periodo": corte + datetime.timedelta(days=dias - 1),
             "critico": critico, "peor": peor, "dias_bajo": len(bajo),
             "minimo": minimo, "dias": dias, "meses_historia": meses_hist,
             "movimientos": len(contrato.get("movimientos", [])),
@@ -217,6 +235,67 @@ ul{padding-left:22px}li{margin:7px 0}
 """
 
 
+
+def _bloque_periodo(a):
+    """Como cierra el ciclo comercial. Va SIEMPRE, incluso cuando la caja no se
+    puede proyectar: si no se puede decir cuanta plata va a haber, saber si el
+    negocio cierra es justamente lo mas util que queda."""
+    p = a.get("posicion")
+    if not p:
+        return ""
+    h = []
+    # COMO CIERRA EL PERIODO. Es para entender, no para decidir -- y se dice.
+    h.append('<h2>Como cierra el periodo</h2>')
+    h.append('<p>Esto no es la caja: es el ciclo comercial. Vos le pagas a '
+             'las droguerias a 30, 45 o 60 dias, y a tus clientes les cobras '
+             'con los mismos plazos. Sirve para saber si el negocio cierra, '
+             'aunque no se decida con esto.</p>')
+    h.append('<div class="cajas">')
+    h.append('<div class="caja ok"><div class="rot">Vas a cobrar</div>'
+             '<div class="val">%s</div></div>' % _m(p["cobrar"]))
+    h.append('<div class="caja alerta"><div class="rot">Vas a pagar</div>'
+             '<div class="val">%s</div></div>' % _m(p["debe"]))
+    dif = p["cobrar"] - p["debe"]
+    h.append('<div class="caja %s"><div class="rot">Diferencia</div>'
+             '<div class="val">%s</div></div>'
+             % ("ok" if dif >= 0 else "alerta", _m(dif)))
+    h.append('</div>')
+    # Si la deuda esta cargada solo hasta la mitad del periodo, la diferencia
+    # NO se puede leer como conclusion: da favorable por construccion, porque
+    # falta la mitad de lo que se debe. Ya nos paso una vez y el informe decia
+    # que sobraba plata.
+    cob = p.get("cobertura")
+    incompleta = False
+    if cob:
+        try:
+            ult = datetime.date.fromisoformat(cob["hasta"])
+            incompleta = (a["fin_periodo"] - ult).days > 3
+        except Exception:
+            incompleta = False
+
+    if incompleta:
+        h.append('<p><strong>Esta diferencia NO se puede leer todavia.</strong> '
+                 'Lo que vas a pagar esta cargado solo hasta el %s, asi que da '
+                 'favorable por construccion: falta parte de lo que debes. '
+                 'Completando esas fechas, el numero cambia.</p>'
+                 % _fecha_larga(cob["hasta"]))
+    elif dif >= 0:
+        h.append('<p>Te deben mas de lo que debes. El ciclo cierra a favor, '
+                 'siempre que se cobre en fecha &mdash; que es otra cosa.</p>')
+    else:
+        h.append('<p><strong>Debes mas de lo que te deben.</strong> El ciclo '
+                 'no cierra solo: la diferencia hay que ponerla de la caja o '
+                 'financiarla.</p>')
+    if p["vencido"] > 0:
+        h.append('<p>Y de lo que te deben, <strong>%s ya esta vencido</strong>. '
+                 'Eso no es plazo comercial: es plata que tendrias que tener.</p>'
+                 % _m(p["vencido"]))
+    h.append('<p class="sub">Ninguno de los dos numeros se cierra dentro de '
+             'los %d dias de este informe: son plazos que siguen corriendo '
+             'despues. Por eso van aparte del dia a dia.</p>' % a["dias"])
+    return chr(10).join(h)
+
+
 def _pagina_dueno(cliente, a):
     c = a["caja"]
     fin = c["curva"][-1]["caja"] if c["curva"] else 0
@@ -334,6 +413,8 @@ def _pagina_dueno(cliente, a):
                  '<li>Si no las hay, revisar juntos que gastos no se estan '
                  'cargando en la planilla.</li>'
                  '<li>Con eso resuelto, la proyeccion de caja sale en el acto.</li></ul>')
+        # El ciclo comercial SI se puede mostrar: no depende de la caja.
+        h.append(_bloque_periodo(a))
         h.append('<div class="pie">Prefiero no darte un numero de caja antes de '
                  'aclarar esto. Un numero optimista es peor que ninguno.</div>')
         h.append('</div>')
@@ -366,14 +447,20 @@ def _pagina_dueno(cliente, a):
              '<div class="val">%s</div></div>' % _m(c["total_ingresos"]))
     h.append('<div class="caja alerta"><div class="rot">Vas a pagar</div>'
              '<div class="val">%s</div></div>' % _m(c["total_egresos"]))
-    h.append('<div class="caja %s"><div class="rot">Quedarias con</div>'
+    # NO va un "quedarias con". Ver el docstring: el dia 45 no cierra nada.
+    h.append('<div class="caja %s"><div class="rot">Dia mas ajustado</div>'
              '<div class="val">%s</div></div>'
-             % ("ok" if fin >= a["minimo"] else "alerta", _m(fin)))
+             % ("alerta" if a["critico"] else "ok", _m(a["peor"]["caja"])
+                if a["peor"] else _m(min(d["caja"] for d in c["curva"]))))
     h.append('</div>')
+    h.append('<p class="sub">No ponemos "con cuanto terminas" a proposito: a los '
+             '%d dias el periodo no esta cerrado. Hay deuda que vence despues y '
+             'cobranzas que entran despues. Lo que importa es el camino, no el '
+             'corte.</p>' % a["dias"])
 
-    h.append('<h2>Semana por semana</h2>')
+    h.append('<h2>El dia a dia (esto es con lo que se decide)</h2>')
     h.append('<table><tr><th>Semana del</th><th class="num">Entra menos sale</th>'
-             '<th class="num">Con cuanto quedas</th><th>&nbsp;</th></tr>')
+             '<th class="num">Como queda la caja</th><th>&nbsp;</th></tr>')
     tope = max(abs(d["caja"]) for d in c["curva"]) or 1
     for i in range(0, len(c["curva"]), 7):
         tramo = c["curva"][i:i + 7]
@@ -388,6 +475,8 @@ def _pagina_dueno(cliente, a):
                  % ("rojo" if baja else "", _fecha_larga(tramo[0]["fecha"]),
                     _m(mov), _m(d["caja"]), "baja" if baja else "", pct))
     h.append('</table>')
+
+    h.append(_bloque_periodo(a))
 
     h.append('<h2>Que conviene hacer</h2>')
     h.append('<ul>')
