@@ -448,26 +448,35 @@ def completitud(contrato):
                     "Hay %d fila(s) de deuda pero NINGUNA de cuentas a cobrar. "
                     "Revisar que ese bloque se este leyendo." % len(deuda)))
 
-    # --- 6) CHEQUES EN CARTERA QUE NUNCA SE RESOLVIERON -----------------
-    # Un cheque con fecha pasada y estado RECIBIDO es una de dos cosas: o sigue
-    # en el cajon, o alguien no actualizo el estado. Son cosas muy distintas y
-    # la diferencia puede ser mucha plata. En MAGA aparecieron 182 por
-    # $5.974.194.535.
+    # --- 6) EL EFECTO DE LA CARTERA DE CHEQUES --------------------------
+    # Un cheque no es siempre plata: RECIBIDO entra a la caja y ENDOSADO baja
+    # deuda con una drogueria. Saber la proporcion importa, porque tratarlos a
+    # todos como ingreso infla la caja proyectada.
+    #
+    # (Antes aca habia un chequeo que marcaba como "sin resolver" los cheques
+    # con fecha pasada y estado RECIBIDO. Era una falsa alarma de $5.974M:
+    # RECIBIDO significa que YA se hizo caja, no que este pendiente.)
     ch = contrato.get("cartera_cheques") or []
     if ch:
-        hoy_iso = datetime.date.today().isoformat()
-        sin_resolver = [x for x in ch
-                        if (x.get("estado") or "").strip().upper() in
-                        ("RECIBIDO", "EN CARTERA", "PENDIENTE", "")
-                        and (x.get("fecha") or "9999") < hoy_iso]
-        if sin_resolver:
-            imp = _suma(sin_resolver)
-            mas_viejo = min(x["fecha"] for x in sin_resolver)
-            out.append(("CHEQUES SIN RESOLVER",
-                        "%d cheque(s) por %s tienen fecha pasada y siguen como "
-                        "'recibido', el mas viejo del %s. O siguen en el cajon o "
-                        "quedo sin actualizar el estado: son cosas muy distintas."
-                        % (len(sin_resolver), _m(imp), mas_viejo)))
+        def _est(x):
+            return (x.get("estado") or "").strip().upper()
+        endos = _suma([x for x in ch if _est(x) == "ENDOSADO"])
+        caja_ch = _suma([x for x in ch if _est(x) in ("RECIBIDO", "DEPOSITADO")])
+        raros = sorted(set(_est(x) for x in ch)
+                       - {"RECIBIDO", "DEPOSITADO", "ENDOSADO", "ANULADO", ""})
+        if endos and caja_ch:
+            out.append(("CARTERA: CUANTO ES CAJA",
+                        "De la cartera de cheques, %s se endoso (baja deuda, no "
+                        "entra plata) y %s se hizo caja. El %.0f%% de esa plata "
+                        "NUNCA paso por el banco: contarla como ingreso infla la "
+                        "caja proyectada."
+                        % (_m(endos), _m(caja_ch),
+                           100.0 * endos / (endos + caja_ch))))
+        if raros:
+            out.append(("ESTADO DE CHEQUE DESCONOCIDO",
+                        "Hay cheques con estado %s. El motor no sabe si eso es "
+                        "caja o baja de deuda: preguntar."
+                        % ", ".join('"%s"' % r for r in raros[:5])))
 
     # --- 7) LOS AVISOS DEL PROPIO EXPORT --------------------------------
     # Viajan en el contrato y nadie los miraba. Si el export tuvo algo para
