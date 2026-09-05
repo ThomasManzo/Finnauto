@@ -292,7 +292,38 @@ Tres escenarios, todos "cobrando y pagando todo en fecha, sin atrasarse un día"
 | 2 | **Con** pago a droguerías | Cómo quedarías si pagaras todo en fecha. |
 | 3 | Con pago a droguerías **y MAGA pagándole a Speedmed** | Qué pasaría si Speedmed fuera un proveedor rígido más. **Muestra qué tan rentable es uno del otro.** |
 
-Está linkeada al Cash: se actualiza todo el tiempo.
+Está linkeada al Cash — pero **a la columna equivocada**.
+
+### El faro apunta al 1 de abril
+
+Verificado el 05/09/2026 leyendo las fórmulas de la solapa:
+
+| Celda | Apunta a | Rótulo de esa fila |
+|---|---|---|
+| Speedmed | `'Cash Flow Diario-Speed'!B50` | Saldo cierre |
+| MAGA | `'Cash Flow Diario -MAGA'!B51` | Saldo cierre |
+
+**La columna B de esos cashflow es el 1 de abril de 2026** (el export lo informa:
+*"Columnas con fecha: 214 (de B=2026-04-01 a HM=2026-10-31)"*).
+
+La prueba de que está mal está en la propia solapa: los escenarios "con pago a
+droguerías" y "sin pago" dan **el mismo número al peso** ($333.568.133 y
+$308.212.367 en los dos). A esa altura del año todavía no se habían separado.
+
+> **Generalizable:** una referencia a una celda fija envejece sin avisar. El
+> export captura la fórmula *y el rótulo de la fila apuntada*, para que esto se
+> vea solo en vez de descubrirse por casualidad.
+
+### El escenario 3 no se puede calcular todavía
+
+La deuda de MAGA con Speedmed **no está cargada en el cashflow de MAGA**. Lo
+único intercompany es una fila en la planilla de Speed ("MAGA+", $168.761.836 al
+25/09). Al estar de un solo lado, contarla hace que el total del grupo cambie —
+y un pago entre empresas del mismo grupo no puede cambiar el total.
+
+Es coherente con lo que ya sabíamos: *Speed le factura al costo pero sin
+necesidad de que MAGA pague*. Esa deuda no existe como obligación en ningún
+lado. **Para tener el escenario hay que cargarla.**
 
 ---
 
