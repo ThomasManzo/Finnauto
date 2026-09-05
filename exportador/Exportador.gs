@@ -332,6 +332,7 @@ function _construirPayload_() {
     generado: new Date().toISOString(),
     caja_hoy: cajaHoy,
     caja_por_unidad: caja.por_unidad,
+    referencias_del_cliente: _leerReferencias_(ss, avisos),
     caja_efectivo: caja.efectivo,
     catalogo_tipos: EXP_TIPOS,
     catalogo_ingresos: EXP_INGRESOS,
@@ -602,6 +603,73 @@ var EXP_BLOQUES = {
     deuda: { desde: 'SALDO CIERRE', hasta: ['SALDO CON PAGO A DROGUERIAS'] }
   }
 };
+
+/**
+ * SOLAPAS DE REFERENCIA: los numeros que el cliente ya calcula.
+ *
+ * Thomas: "tu faro moral para decir da o no da es la solapa de Posicion
+ * Consolidada; una esta con que MAGA le pague a Speed y la otra sin".
+ *
+ * Esto NO se usa para calcular nada. Se guarda para poder CONTRASTAR: si el
+ * motor dice una cosa y la planilla del cliente dice otra, hay que enterarse
+ * en el informe y no tres semanas despues.
+ *
+ * Es la mejor validacion que existe, porque no la escribi yo: es el numero que
+ * el dueno ya mira todos los dias y en el que confia. Cualquier cliente que
+ * tenga una hoja de resumen sirve igual -- solo hay que nombrarla aca.
+ *
+ * Se lee sin asumir ningun layout: se recorren las primeras columnas buscando
+ * etiquetas de texto y se toma el primer numero que haya a la derecha. Lo
+ * mismo que ya se hace con la grilla de SALDOS.
+ */
+var EXP_HOJAS_REFERENCIA = ['POSICION CONSOLIDADA', 'CALCULADORA DISPONIBILIDAD'];
+
+
+function _leerReferencias_(ss, avisos) {
+  var out = {};
+  var hojas = ss.getSheets();
+  for (var i = 0; i < hojas.length; i++) {
+    var sh = hojas[i];
+    var nom = _norm_(sh.getName());
+    var match = null;
+    for (var k = 0; k < EXP_HOJAS_REFERENCIA.length; k++) {
+      if (nom.indexOf(EXP_HOJAS_REFERENCIA[k]) > -1) { match = sh.getName(); break; }
+    }
+    if (!match) continue;
+
+    var maxR = Math.min(sh.getLastRow(), 200);
+    var maxC = Math.min(sh.getLastColumn(), 15);
+    if (maxR < 1 || maxC < 1) continue;
+    var grid = sh.getRange(1, 1, maxR, maxC).getValues();
+
+    var filas = [];
+    for (var r = 0; r < grid.length; r++) {
+      for (var c = 0; c < Math.min(maxC - 1, 6); c++) {
+        var et = String(grid[r][c] == null ? '' : grid[r][c]).trim();
+        if (et.length < 3 || et.length > 60) continue;
+        if (!isNaN(Number(et.replace(/[.,$%]/g, '')))) continue;   // no numeros
+        // el primer numero a la derecha
+        for (var k2 = c + 1; k2 < maxC; k2++) {
+          var v = grid[r][k2];
+          if (typeof v === 'number' && v !== 0) {
+            filas.push({ etiqueta: et, valor: v, fila: r + 1, col: k2 + 1 });
+            break;
+          }
+        }
+        break;   // una etiqueta por fila alcanza
+      }
+    }
+    out[match] = filas;
+    avisos.push('Referencia "' + match + '": ' + filas.length + ' valor(es) ' +
+                'capturados para contrastar contra el motor.');
+  }
+  if (!Object.keys(out).length) {
+    avisos.push('No encontre ninguna hoja de referencia (' +
+                EXP_HOJAS_REFERENCIA.join(', ') + '). Sin eso, el informe no ' +
+                'tiene contra que compararse.');
+  }
+  return out;
+}
 
 function _leerBloquesDroguerias_(ss, avisos) {
   var cobrar = [], deuda = [], hojasCashflow = 0;
