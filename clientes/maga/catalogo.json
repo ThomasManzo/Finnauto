@@ -428,5 +428,66 @@
     "consecuencia": "El Cash es un flujo de CAJA, no un estado de resultados. Que falte el egreso de una compra pagada por endoso NO es un error de carga: es que ese movimiento no existe en la caja.",
     "_no_intentar": "NO tratar de 'completar' el lado de los egresos con la deuda de droguerias. Ya se propuso una vez y estaba mal. Sumaria egresos que nunca se pagaron con plata, y la curva de caja pasaria a mentir para el otro lado.",
     "que_si_hay_que_hacer": "simulador/proyeccion.py revisar_coherencia() detecta el desbalance y PREGUNTA, sin diagnosticar. En MAGA la respuesta es 'se cancela por fuera'; en otro cliente la misma senal puede ser que no cargan los gastos, que si es un problema."
+  },
+  "proveedores": {
+    "_ayuda": "Los proveedores que financian al negocio. Esto es lo que reemplaza a la 'caja minima' como limite real: no pagarle a una drogueria no rompe nada, pero acumular mas atraso que su tolerancia hace que te bloqueen la compra.",
+    "_por_que_existe": "Thomas: 'si no le pagas, nada; despues de x tiempo te bloquean la compra, pero soles tener entre 1 y 2 o 3 semanas de tolerancia'. Y la decision que mas se repite en la semana es 'cuanto le pago a las droguerias que le debo'. El motor tiene que contestar ESA, no '¿me alcanza?'.",
+    "valores": [
+      {
+        "id": "SUIZO",
+        "nombre": "Suizo Argentina",
+        "vence": "jueves",
+        "tolerancia_semanas": 3,
+        "le_compra": [
+          "MAGA",
+          "SPEEDMED"
+        ],
+        "le_vende": [],
+        "plazo_dias": 45,
+        "_nota": "Le vende a las dos. Plazo 45 dias."
+      },
+      {
+        "id": "DROG.DEL SUD",
+        "nombre": "Drogueria del Sud (DDS)",
+        "vence": "viernes",
+        "tolerancia_semanas": 3,
+        "le_compra": [
+          "MAGA",
+          "SPEEDMED"
+        ],
+        "le_vende": [
+          "SPEEDMED"
+        ],
+        "plazo_dias": 38,
+        "compensa": "semanal",
+        "_nota": "Le vende a las dos Y le compra a Speedmed. Compensacion SEMANAL con Speedmed: se paga o se cobra la diferencia. Si Speed tiene mas a cobrar que la deuda de las dos juntas, el sobrante compensa a MAGA. Ademas es la contraparte de la REFINANCIACION."
+      },
+      {
+        "id": "COFALOZA",
+        "nombre": "Cofaloza",
+        "vence": "viernes",
+        "tolerancia_semanas": 3,
+        "le_compra": [
+          "MAGA"
+        ],
+        "le_vende": [
+          "SPEEDMED"
+        ],
+        "plazo_dias": null,
+        "compensa": "cruzada",
+        "_nota": "CORREGIDO POR THOMAS: Speedmed NO le compra a Cofaloza. Cofaloza le COMPRA a Speedmed y le VENDE a MAGA. Por eso la compensacion cruza entre las dos empresas: bajan las cuentas a cobrar de Speed y baja la deuda de MAGA al mismo tiempo."
+      }
+    ],
+    "_fuera_de_este_esquema": {
+      "REFINANCIACION": "Acuerdo con DDS por USD 219.000 mensuales. Se paga aparte y NO tiene la tolerancia de una factura comun: es un acuerdo. No entra en el reparto semanal.",
+      "LABORATORIOS": "Speedmed les compra a 30/35/40/45/50/55/60 y hasta 90 dias. Gran parte de los cheques a pagar de Speedmed son de laboratorios, y un cheque NO tiene tolerancia: no puede rebotar."
+    }
+  },
+  "_efecto_de_los_cobros": {
+    "_ayuda": "No todo lo que se cobra entra a la caja. Confirmado por Thomas.",
+    "caja": "Entra plata al banco. Efectivo, tarjeta/MP (acredita al dia siguiente), transferencias, y los cheques con estado DEPOSITADO.",
+    "menos_deuda": "NO entra un peso: baja lo que se debe. Hay que declarar A QUIEN se le baja.\n . cheques con estado ENDOSADO (se le pasan a la drogueria a la que se le debe)\n . notas de credito de obras sociales: PAMI le paga a MAGA una parte en DDS y otra en Suizo\n . compensaciones con Cofaloza y con DDS",
+    "cartera": "Entro un cheque pero todavia no es plata: se vuelve caja recien en su fecha, y solo si se deposita.",
+    "_pendiente_de_datos": "Hoy el exportador marca TODOS los cobros como efecto 'caja', incluida la Cartera de CH. Para distinguirlos hace falta leer la solapa 'Cartera de CH' con el estado de cada cheque, y las notas de credito con su contraparte."
   }
 }
