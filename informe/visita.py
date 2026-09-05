@@ -129,8 +129,37 @@ def posicion(contrato):
     vencido = suma("cuentas_a_cobrar_droguerias", ("VENCIDO",))
     if not debe and not cobrar:
         return None
+
+    # HASTA QUE FECHA LLEGA CARGADA LA DEUDA.
+    #
+    # Thomas: "hoy a 45 dias tenes mucha mas deuda con droguerias de la que
+    # calculaste". Tenia razon y el error era de bulto: yo sumaba las filas
+    # PENDIENTE y lo llamaba "deuda". Pero esas filas son los pagos YA
+    # PROGRAMADOS, y en el caso de MAGA llegaban hasta el 25/09 mientras la
+    # proyeccion iba hasta el 19/10. O sea que el 53% del horizonte no tenia
+    # NADA cargado, y la farmacia obviamente sigue comprando todos los dias.
+    #
+    # Medido: el ritmo cargado era $91.690.016 por dia. Los 24 dias sin cubrir
+    # son ~$2.200M de compras nuevas que no figuraban en ningun lado. La deuda
+    # real a 45 dias no era $2.690M sino ~$4.891M: casi el doble.
+    #
+    # No se extrapola sola. Se informa el hueco y su tamano, para que la persona
+    # decida. Inventar la cifra seria repetir el error con mejor cara.
+    filas = [x for x in contrato.get("deuda_droguerias", [])
+             if not x.get("intercompany") and x.get("fecha")]
+    cobertura = None
+    if filas:
+        f0 = min(x["fecha"] for x in filas)
+        f1 = max(x["fecha"] for x in filas)
+        d0 = datetime.date.fromisoformat(f0)
+        d1 = datetime.date.fromisoformat(f1)
+        dias = max(1, (d1 - d0).days + 1)
+        total = sum(float(x.get("importe") or 0) for x in filas)
+        cobertura = {"desde": f0, "hasta": f1, "dias": dias,
+                     "por_dia": total / dias}
+
     return {"caja": caja, "debe": debe, "cobrar": cobrar, "vencido": vencido,
-            "neto": caja + cobrar - debe}
+            "neto": caja + cobrar - debe, "cobertura": cobertura}
 
 
 # ------------------------------------------------------------------ html
@@ -220,6 +249,32 @@ def _pagina_dueno(cliente, a):
         h.append('<p class="sub">Lo que te deben y lo que debes NO es plata en el '
                  'banco: es cuenta corriente. Pero es lo que decide si el mes que '
                  'viene podes seguir comprando.</p>')
+
+        # Si la deuda cargada no llega hasta el final del periodo, decirlo ACA,
+        # al lado del numero, y no en una nota al pie que nadie lee.
+        cob = p.get("cobertura")
+        if cob:
+            fin = datetime.date.fromisoformat(c["hasta"])
+            ult = datetime.date.fromisoformat(cob["hasta"])
+            faltan = (fin - ult).days
+            if faltan > 3:
+                estimado = cob["por_dia"] * faltan
+                h.append('<div class="panel aviso">')
+                h.append('<p><strong>Ojo: el "les debes" de arriba esta '
+                         'incompleto.</strong></p>')
+                h.append('<p>Las compras a droguerias figuran cargadas hasta el %s, '
+                         'pero este informe llega hasta el %s. Faltan %d dias en los '
+                         'que vas a seguir comprando.</p>'
+                         % (_fecha_larga(cob["hasta"]), _fecha_larga(c["hasta"]), faltan))
+                h.append('<p>Al ritmo de los ultimos %d dias, en ese hueco se '
+                         'sumarian alrededor de <strong>%s</strong> mas de deuda. '
+                         'Con eso, lo que deberias al final del periodo estaria mas '
+                         'cerca de <strong>%s</strong> que de los %s de arriba.</p>'
+                         % (cob["dias"], _m(estimado), _m(p["debe"] + estimado),
+                            _m(p["debe"])))
+                h.append('<p>Es una cuenta gruesa, no un dato: sirve para no mirar '
+                         'el numero de arriba como si fuera todo.</p>')
+                h.append('</div>')
         if p["vencido"] > 0:
             h.append('<div class="panel aviso">')
             h.append('<p><strong>Hay %s vencido que todavia no cobraste.</strong></p>'
@@ -419,6 +474,28 @@ def _pagina_thomas(cliente, a, contrato, medicion):
         h.append('<tr><td><strong>Posicion</strong></td>'
                  '<td class="num"><strong>%s</strong></td></tr>' % _m(p["neto"]))
         h.append('</table>')
+        cob = p.get("cobertura")
+        if cob:
+            h.append('<h3>Hasta donde llega cargada la deuda</h3>')
+            h.append('<table>')
+            h.append('<tr><td>Filas de deuda, desde / hasta</td>'
+                     '<td class="num">%s a %s</td></tr>' % (cob["desde"], cob["hasta"]))
+            h.append('<tr><td>Ritmo observado</td><td class="num">%s por dia</td></tr>'
+                     % _m(cob["por_dia"]))
+            fin = datetime.date.fromisoformat(c["hasta"])
+            ult = datetime.date.fromisoformat(cob["hasta"])
+            faltan = max(0, (fin - ult).days)
+            h.append('<tr><td>Dias del horizonte sin deuda cargada</td>'
+                     '<td class="num">%d de %d</td></tr>' % (faltan, a["dias"]))
+            if faltan:
+                h.append('<tr><td>Compras nuevas estimadas en ese hueco</td>'
+                         '<td class="num">%s</td></tr>' % _m(cob["por_dia"] * faltan))
+            h.append('</table>')
+            h.append('<p class="sub">La extrapolacion es lineal a proposito y NO se '
+                     'usa para ningun calculo: solo para dimensionar el hueco. Si el '
+                     'ritmo de compra sigue otro patron (mas fuerte a fin de mes, '
+                     'atado a la venta), preguntarselo al cliente.</p>')
+
         h.append('<p class="sub">No se cuentan los saldos intercompany ni la deuda '
                  'ya marcada como PAGADO. Estos saldos no son caja: se muestran '
                  'aparte a proposito, pero omitirlos daria una foto irreal.</p>')
