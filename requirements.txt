@@ -3,3 +3,6 @@
 #            python -m playwright install chromium
 playwright>=1.40
 pywin32>=306
+
+# Lector de planillas (lector/planilla.py).
+openpyxl>=3.1
