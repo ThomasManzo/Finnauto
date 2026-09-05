@@ -178,6 +178,126 @@ def test_dos_columnas_de_importe():
        "avisa que hay dos columnas de numeros y pregunta cual es cual", str(qs))
 
 
+# ------------------------------------------------ agrupar sin columna de rubro
+def test_agrupar_a_ciegas():
+    print("\n== Proponer rubros mirando solo el concepto ==")
+    from lector.agrupar import proponer, tokens, pureza
+
+    ok("PROVEEDOR" in tokens("Pago proveedor Acindar 07/26"),
+       "saca las palabras utiles del concepto")
+    ok("PAGO" not in tokens("Pago proveedor Acindar"),
+       "descarta las genericas: PAGO esta en todos lados y no distingue")
+    ok("JULIO" not in tokens("Sueldos julio Marcelo"),
+       "y los meses, que si no agrupan por mes en vez de por rubro")
+    ok(all(len(t) >= 4 for t in tokens("Luz de la Sur")),
+       "ignora las palabras muy cortas")
+
+    movs = []
+    for i in range(8):
+        movs.append({"concepto": "Pago proveedor Acindar %d" % i, "importe": 900000.0})
+    for n in ("Marcelo", "Andrea"):
+        for i in range(5):
+            movs.append({"concepto": "Sueldo %s %d" % (n, i), "importe": 300000.0})
+    for i in range(4):
+        movs.append({"concepto": "Alquiler local %d" % i, "importe": 800000.0})
+    movs.append({"concepto": "Compra excepcional maquinaria", "importe": 50000.0})
+
+    grupos, sueltos = proponer(movs)
+    claves = [g["palabra"] for g in grupos]
+    ok("ACINDAR" in claves, "agrupa los pagos al mismo proveedor", str(claves))
+    ok("ALQUILER" in claves or "LOCAL" in claves, "y los alquileres", str(claves))
+
+    # Ordenar por PLATA y no por cantidad es lo que hace util la lista en una
+    # reunion de una hora: primero lo que mueve la aguja.
+    ok(grupos[0]["importe"] >= grupos[-1]["importe"], "ordena por plata")
+
+    ok(any("excepcional" in m["concepto"].lower() for m in sueltos),
+       "lo que no comparte palabra con nada queda aparte, no forzado a un grupo")
+
+    # LIMITACION CONOCIDA, y es la razon por la que esto es una PROPUESTA:
+    # agrupando por texto, cada empleado queda en su propio grupo en vez de uno
+    # solo de sueldos. Lo junta una persona en diez segundos, pero hay que
+    # preguntarlo, y por eso el borrador genera esa pregunta.
+    ok("MARCELO" in claves and "ANDREA" in claves,
+       "separa un grupo por empleado: por eso hace falta revisarlo con el cliente")
+
+
+def test_pureza():
+    print("\n== Medir si los grupos propuestos son coherentes ==")
+    from lector.agrupar import proponer, pureza
+
+    movs = ([{"concepto": "Pago Acindar %d" % i, "importe": 100.0, "tipo": "PROVEEDOR"}
+             for i in range(6)] +
+            [{"concepto": "Alquiler local %d" % i, "importe": 100.0, "tipo": "ALQUILER"}
+             for i in range(5)])
+    grupos, _ = proponer(movs)
+    filas, global_ = pureza(grupos)
+    ok(global_ == 1.0, "grupos limpios dan pureza 1", str(global_))
+
+    # Un grupo que mezcla rubros tiene que dar pureza baja: esa es la senal de
+    # "esto miralo vos".
+    # Contexto necesario: si TODOS los movimientos compartieran la palabra, esa
+    # palabra no separaria nada y se descarta -- que es lo correcto. Para probar
+    # un grupo impuro hace falta que ademas existan otros movimientos.
+    mezcla = [{"concepto": "Speedmed movimiento %d" % i, "importe": 100.0,
+               "tipo": t} for i, t in enumerate(["SUELDO", "PAGO", "IMPUESTO",
+                                                 "SUELDO", "ALQUILER"])]
+    mezcla += [{"concepto": "Alquiler local %d" % i, "importe": 100.0,
+                "tipo": "ALQUILER"} for i in range(6)]
+    grupos2, _ = proponer(mezcla, minimo=3)
+    grupos2 = [g for g in grupos2 if g["palabra"] == "SPEEDMED"]
+    if grupos2:
+        filas2, g2 = pureza(grupos2)
+        ok(g2 < 0.7, "un grupo que mezcla rubros da pureza baja", "%.2f" % g2)
+        ok(filas2[0]["distintos"] > 1, "y avisa cuantos rubros distintos junto")
+    else:
+        ok(False, "un grupo que mezcla rubros da pureza baja", "no armo grupos")
+
+
+def test_borrador_sin_columna_de_rubro():
+    print("\n== Borrador cuando la planilla no trae rubros ==")
+    from lector.borrador import armar
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Caja"
+    ws["A1"] = "FERRETERIA EL TORNILLO"
+    for i, e in enumerate(["Fecha", "Detalle", "Importe"], 1):
+        ws.cell(row=3, column=i, value=e)
+    # Los conceptos VARIAN (numero de factura): si se repitieran identicos, la
+    # columna se clasificaria como categoria y no se probaria el camino que
+    # importa, que es el de deducir los rubros.
+    r, nro = 4, 1000
+    for mes in (6, 7, 8):
+        for detalle, imp in (("Pago proveedor Acindar fact", 900000),
+                             ("Sueldo Marcelo quincena", 350000),
+                             ("Alquiler local contrato", 800000),
+                             ("Luz Edenor factura", 90000)):
+            for d in (5, 18):
+                nro += 1
+                ws.cell(row=r, column=1, value="%02d/%02d/2026" % (d, mes))
+                ws.cell(row=r, column=2, value="%s %d" % (detalle, nro))
+                ws.cell(row=r, column=3, value=imp)
+                r += 1
+    b = armar(_guardar(wb))
+
+    ok(b["catalogo"]["_deducidos"] is True, "marca que los rubros los dedujo el")
+    ok("NO tiene columna de categoria" in b["catalogo"]["_aviso_deducidos"],
+       "y lo avisa en el propio catalogo", b["catalogo"]["_aviso_deducidos"][:60])
+
+    tipos = b["catalogo"]["tipos"]["valores"]
+    ok(len(tipos) >= 3, "propone varios rubros", str(len(tipos)))
+    ok(all(t["dias_tolerancia"].startswith(">>>") for t in tipos),
+       "ninguno viene con tolerancia puesta: eso lo dice el cliente")
+    ok(all("_ejemplos" in t for t in tipos),
+       "cada rubro propuesto muestra ejemplos, para poder confirmarlo de un vistazo")
+
+    # LA pregunta de la reunion tiene que ir primera.
+    q0 = b["preguntas_para_el_cliente"][0]["pregunta"]
+    ok("NO tiene columna de rubro" in q0, "la pregunta clave va primera", q0[:60])
+    ok("juntar" in q0, "y pregunta cuales hay que juntar")
+
+
 if __name__ == "__main__":
     print("=" * 62)
     print("  LECTOR DE PLANILLAS  ·  contra planillas desconocidas")
@@ -187,6 +307,9 @@ if __name__ == "__main__":
     test_planilla_completa()
     test_preguntas()
     test_dos_columnas_de_importe()
+    test_agrupar_a_ciegas()
+    test_pureza()
+    test_borrador_sin_columna_de_rubro()
     print("\n" + "=" * 62)
     if _fallos:
         print("  %d TEST(S) FALLARON: %s" % (len(_fallos), ", ".join(_fallos)))
