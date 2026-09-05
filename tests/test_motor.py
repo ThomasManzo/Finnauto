@@ -658,6 +658,63 @@ def test_completitud():
        "un contrato vacio no inventa hallazgos")
 
 
+# ------------------------------------------------- posicion separada por unidad
+def test_posicion_por_unidad():
+    print("\n== La posicion va separada por negocio ==")
+    from informe.visita import posicion
+
+    # ERROR CONCEPTUAL REAL (05/09/2026). El informe consolidaba MAGA y
+    # Speedmed y mostraba "te deben las droguerias" al lado de la deuda de
+    # MAGA. Pero MAGA es FARMACIA: le compra a las droguerias, no les vende.
+    # Esas cobranzas son de Speedmed, que es la distribuidora.
+    #
+    # Consolidado daba -$677M. Separado: MAGA -$2.202M y Speedmed +$1.504M.
+    # Son dos situaciones opuestas, y el promedio no describe a ninguna.
+    contrato = {
+        "caja_hoy": 900.0,
+        "caja_por_unidad": {"MAGA": 600.0, "SPEEDMED": 300.0},
+        "deuda_droguerias": [
+            {"unidad": "MAGA", "fecha": "2026-09-10", "importe": 2000.0,
+             "estado": "PENDIENTE"},
+            {"unidad": "SPEEDMED", "fecha": "2026-09-10", "importe": 1000.0,
+             "estado": "PENDIENTE"},
+        ],
+        # Solo Speedmed tiene cuentas a cobrar: es la que vende.
+        "cuentas_a_cobrar_droguerias": [
+            {"unidad": "SPEEDMED", "fecha": "2026-09-15", "importe": 1500.0,
+             "estado": "A_VENCER"},
+            {"unidad": "SPEEDMED", "fecha": "2026-08-15", "importe": 500.0,
+             "estado": "VENCIDO"},
+        ],
+    }
+    p = posicion(contrato)
+    porU = dict((u["unidad"], u) for u in p["por_unidad"])
+
+    ok(set(porU) == {"MAGA", "SPEEDMED"}, "devuelve una posicion por unidad",
+       str(set(porU)))
+    ok(porU["MAGA"]["cobrar"] == 0,
+       "la farmacia no tiene cuentas a cobrar con droguerias")
+    ok(porU["MAGA"]["neto"] == 600.0 - 2000.0,
+       "su posicion es caja menos deuda", str(porU["MAGA"]["neto"]))
+    ok(porU["SPEEDMED"]["neto"] == 300.0 + 2000.0 - 1000.0,
+       "la distribuidora suma lo que le deben", str(porU["SPEEDMED"]["neto"]))
+    ok(porU["SPEEDMED"]["vencido"] == 500.0, "y separa lo vencido")
+
+    # Lo importante: los signos son OPUESTOS. Consolidar los promedia y borra
+    # justo el hecho que hay que mirar.
+    ok(porU["MAGA"]["neto"] < 0 < porU["SPEEDMED"]["neto"],
+       "los dos negocios pueden estar en situaciones opuestas")
+
+    # La deuda intercompany no cuenta: no sale plata del grupo.
+    c2 = dict(contrato, deuda_droguerias=contrato["deuda_droguerias"] + [
+        {"unidad": "MAGA", "fecha": "2026-09-10", "importe": 9999.0,
+         "estado": "PENDIENTE", "intercompany": True}])
+    p2 = posicion(c2)
+    m2 = [u for u in p2["por_unidad"] if u["unidad"] == "MAGA"][0]
+    ok(m2["debe"] == 2000.0, "la deuda entre empresas del grupo no se cuenta",
+       str(m2["debe"]))
+
+
 if __name__ == "__main__":
     print("=" * 62)
     print("  TESTS DEL MOTOR finauto")
@@ -677,6 +734,7 @@ if __name__ == "__main__":
     test_caja_completa()
     test_coherencia()
     test_completitud()
+    test_posicion_por_unidad()
     print("\n" + "=" * 62)
     if _fallos:
         print("  %d TEST(S) FALLARON: %s" % (len(_fallos), ", ".join(_fallos)))
