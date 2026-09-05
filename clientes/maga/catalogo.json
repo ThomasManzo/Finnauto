@@ -1,84 +1,204 @@
 {
   "_comentario": "CATALOGO del cliente: el vocabulario con el que se cargan los movimientos. Es POR CLIENTE: otra empresa puede tener otros tipos, otros bancos y otras unidades. El codigo no conoce estos valores; los lee de aca.",
-
   "_modelo_divisible": "divisible=true significa que se puede pagar UNA PARTE. A una drogueria le podes transferir 250M de los 500M que le debes; un CHEQUE en cambio es todo o nada (o lo cubris o rebota), y un sueldo tampoco se paga por mitades. Esto permite que el consejo sea preciso: en vez de patear el pago entero, difiere solo lo que falta.",
-
   "_modelo_flexibilidad": "En vez de un si/no, cada tipo tiene 'dias_tolerancia' (cuantos dias se puede patear sin consecuencia: 0 = no se mueve) y 'consecuencia' (que pasa si no se paga). Asi el simulador puede decir 'esto lo podes correr 3 dias' en vez de tratar todo como blanco o negro.",
-
   "unidades": {
     "_ayuda": "Valor de la columna EMPRESA. Define a que cash va cada movimiento.",
     "valores": [
-      { "id": "MAGA",     "nombre": "MAGA+",    "rubro": "farmacia" },
-      { "id": "SPEEDMED", "nombre": "Speedmed", "rubro": "drogueria" }
+      {
+        "id": "MAGA",
+        "nombre": "MAGA+",
+        "rubro": "farmacia"
+      },
+      {
+        "id": "SPEEDMED",
+        "nombre": "Speedmed",
+        "rubro": "drogueria"
+      }
     ]
   },
-
   "bancos": {
     "_ayuda": "Valor de la columna BANCO. EFVO (efectivo) se trata como un origen de fondos mas. Si un cliente quiere ver la caja de efectivo separada de la bancaria, se pone separar_caja_efectivo=true en el perfil.",
     "separar_caja_efectivo": false,
     "valores": [
-      { "id": "GALICIA",   "nombre": "Galicia",   "tipo": "banco" },
-      { "id": "COMAFI",    "nombre": "Comafi",    "tipo": "banco" },
-      { "id": "SANTANDER", "nombre": "Santander", "tipo": "banco" },
-      { "id": "PROVINCIA", "nombre": "Banco Provincia", "tipo": "banco",
-        "_nota": "Detectado en la grilla SALDOS real (15 farmacias). No estaba en la lista inicial." },
-      { "id": "EFVO",      "nombre": "Efectivo",  "tipo": "caja" }
+      {
+        "id": "GALICIA",
+        "nombre": "Galicia",
+        "tipo": "banco"
+      },
+      {
+        "id": "COMAFI",
+        "nombre": "Comafi",
+        "tipo": "banco"
+      },
+      {
+        "id": "SANTANDER",
+        "nombre": "Santander",
+        "tipo": "banco"
+      },
+      {
+        "id": "PROVINCIA",
+        "nombre": "Banco Provincia",
+        "tipo": "banco",
+        "_nota": "Detectado en la grilla SALDOS real (15 farmacias). No estaba en la lista inicial."
+      },
+      {
+        "id": "EFVO",
+        "nombre": "Efectivo",
+        "tipo": "caja"
+      }
     ]
   },
-
   "tipos": {
     "_ayuda": "Valor de la columna TIPO. dias_tolerancia = cuantos dias se puede correr el pago. 0 = intocable.",
     "valores": [
-      { "id": "CHEQUE",              "nombre": "Cheque a pagar",          "categoria": "proveedores", "dias_tolerancia": 0, "consecuencia": "BCRA",
-        "_nota": "EL intocable por excelencia: si no se cubre, la empresa va al BCRA. Se carga desde el listado de cheques emitidos del banco (ver ingestas/cheques.py)." },
-
-      { "id": "SUELDO",              "nombre": "Sueldos y cargas",        "categoria": "personal",   "dias_tolerancia": 0, "consecuencia": "laboral" },
-      { "id": "SUELDO_QUINTANA",     "nombre": "Sueldos Quintana",        "categoria": "personal",   "dias_tolerancia": 0, "consecuencia": "laboral" },
-
-      { "id": "VEP_AFIP",            "nombre": "Cargas sociales / VEP AFIP", "categoria": "personal", "dias_tolerancia": 0, "consecuencia": "fiscal",
-        "_nota": "Las cargas son un aporte sobre los sueldos -> categoria personal. Tiene dos partes: (a) las recurrentes del mes (~la mitad de los sueldos) y (b) los PLANES de AFIP (cuando no se llega a pagar la carga entera: se paga un adelanto y el resto va a plan). Los PLANES se debitan en FECHA EXACTA -> no se mueven." },
-
-      { "id": "IMPUESTO",            "nombre": "Impuestos",               "categoria": "impuestos",  "dias_tolerancia": 0, "consecuencia": "fiscal",
-        "_nota": "Se pagan si o si." },
-
-      { "id": "ALQUILER",            "nombre": "Alquileres",              "categoria": "fijo",       "dias_tolerancia": 0, "consecuencia": "contractual",
-        "_nota": "Tiene fecha de vencimiento; muy rara vez se puede patear." },
-      { "id": "SERVICIO",            "nombre": "Servicios",               "categoria": "fijo",       "dias_tolerancia": 0, "consecuencia": "corte_servicio",
-        "_nota": "Suele ser debito automatico." },
-
-      { "id": "COMISION",            "nombre": "Comisiones al personal",  "categoria": "personal",   "dias_tolerancia": 3, "consecuencia": "interna",
-        "_nota": "OJO: NO son comisiones bancarias. Son comisiones en EFECTIVO que se le pagan a encargados y farmaceuticos. Se pueden mover 1/2/3 dias." },
-
-      { "id": "HONORARIO",           "nombre": "Honorarios",              "categoria": "personal",   "dias_tolerancia": 0, "consecuencia": "contractual",
-        "_nota": "En la planilla real hay UN solo valor 'HONORARIO' (34 movimientos). Thomas distingue dos clases: los FIJOS se pagan junto con los sueldos (tolerancia 0) y los VARIABLES se pueden patear hasta 5 dias. Por ahora se toma el criterio conservador (0). PENDIENTE: separarlos, o en el desplegable, o deduciendolos del concepto." },
-
-      { "id": "RETIRO_SOCIO",        "nombre": "Retiro de socios",        "categoria": "socios",     "dias_tolerancia": 999, "consecuencia": "ninguna", "divisible": true,
-        "_nota": "La variable de ajuste por excelencia: es lo primero que se posterga." },
-
-      { "id": "EFECTIVO_VARIOS",     "nombre": "Efectivo varios",         "categoria": "varios",     "dias_tolerancia": 7, "consecuencia": "ninguna", "divisible": true },
-
-      { "id": "PAGO_DROGUE_TRANSF",  "nombre": "Pago a drogueria (transferencia)", "categoria": "proveedores", "dias_tolerancia": 15, "consecuencia": "comercial", "divisible": true,
-        "_nota": "Esta es la 'jugada' que se simula: cuanto le puedo transferir sin comprometer lo rigido." },
-      { "id": "PAGO",                "nombre": "Pago a proveedores",      "categoria": "proveedores", "dias_tolerancia": 15, "consecuencia": "comercial", "divisible": true },
-
-      { "id": "TRANSFERENCIA",       "nombre": "Transferencia interna",   "categoria": "interno", "interno": true, "consecuencia": "ninguna",
-        "_nota": "MOVIMIENTO INTERNO (confirmado por Thomas): plata que se mueve entre cuentas propias o entre MAGA y Speedmed. NO es un gasto: no sale del grupo. El simulador NO lo cuenta como egreso; si lo contara, mostraria MENOS plata de la que realmente hay." },
-      { "id": "DEPOSITO",            "nombre": "Deposito de efectivo",    "categoria": "interno", "interno": true, "consecuencia": "ninguna",
-        "_nota": "MOVIMIENTO INTERNO: se deposita el efectivo sobrante en el banco. Cambia la plata de lugar (caja -> banco), no la gasta." }
+      {
+        "id": "CHEQUE",
+        "nombre": "Cheque a pagar",
+        "categoria": "proveedores",
+        "dias_tolerancia": 0,
+        "consecuencia": "BCRA",
+        "_nota": "EL intocable por excelencia: si no se cubre, la empresa va al BCRA. Se carga desde el listado de cheques emitidos del banco (ver ingestas/cheques.py)."
+      },
+      {
+        "id": "SUELDO",
+        "nombre": "Sueldos y cargas",
+        "categoria": "personal",
+        "dias_tolerancia": 0,
+        "consecuencia": "laboral"
+      },
+      {
+        "id": "SUELDO_QUINTANA",
+        "nombre": "Sueldos Quintana",
+        "categoria": "personal",
+        "dias_tolerancia": 0,
+        "consecuencia": "laboral"
+      },
+      {
+        "id": "VEP_AFIP",
+        "nombre": "Cargas sociales / VEP AFIP",
+        "categoria": "personal",
+        "dias_tolerancia": 0,
+        "consecuencia": "fiscal",
+        "_nota": "Las cargas son un aporte sobre los sueldos -> categoria personal. Tiene dos partes: (a) las recurrentes del mes (~la mitad de los sueldos) y (b) los PLANES de AFIP (cuando no se llega a pagar la carga entera: se paga un adelanto y el resto va a plan). Los PLANES se debitan en FECHA EXACTA -> no se mueven."
+      },
+      {
+        "id": "IMPUESTO",
+        "nombre": "Impuestos",
+        "categoria": "impuestos",
+        "dias_tolerancia": 0,
+        "consecuencia": "fiscal",
+        "_nota": "Se pagan si o si."
+      },
+      {
+        "id": "ALQUILER",
+        "nombre": "Alquileres",
+        "categoria": "fijo",
+        "dias_tolerancia": 0,
+        "consecuencia": "contractual",
+        "_nota": "Tiene fecha de vencimiento; muy rara vez se puede patear."
+      },
+      {
+        "id": "SERVICIO",
+        "nombre": "Servicios",
+        "categoria": "fijo",
+        "dias_tolerancia": 0,
+        "consecuencia": "corte_servicio",
+        "_nota": "Suele ser debito automatico."
+      },
+      {
+        "id": "COMISION",
+        "nombre": "Comisiones al personal",
+        "categoria": "personal",
+        "dias_tolerancia": 3,
+        "consecuencia": "interna",
+        "_nota": "OJO: NO son comisiones bancarias. Son comisiones en EFECTIVO que se le pagan a encargados y farmaceuticos. Se pueden mover 1/2/3 dias."
+      },
+      {
+        "id": "HONORARIO",
+        "nombre": "Honorarios",
+        "categoria": "personal",
+        "dias_tolerancia": 0,
+        "consecuencia": "contractual",
+        "_nota": "La FECHA es fija (se paga junto con los sueldos, o pasada la mitad del mes en el caso de los DJ). Lo que puede variar es el MONTO, no la fecha: por eso la tolerancia es 0 y la variabilidad se marca con 'monto_variable' en la excepcion por concepto. CORRECCION: antes aca decia que los honorarios variables se podian patear 5 dias. Eso era una suposicion mia y Thomas la desmintio."
+      },
+      {
+        "id": "RETIRO_SOCIO",
+        "nombre": "Retiro de socios",
+        "categoria": "socios",
+        "dias_tolerancia": 999,
+        "consecuencia": "ninguna",
+        "divisible": true,
+        "_nota": "La variable de ajuste por excelencia: es lo primero que se posterga."
+      },
+      {
+        "id": "EFECTIVO_VARIOS",
+        "nombre": "Efectivo varios",
+        "categoria": "varios",
+        "dias_tolerancia": 7,
+        "consecuencia": "ninguna",
+        "divisible": true
+      },
+      {
+        "id": "PAGO_DROGUE_TRANSF",
+        "nombre": "Pago a drogueria (transferencia)",
+        "categoria": "proveedores",
+        "dias_tolerancia": 15,
+        "consecuencia": "comercial",
+        "divisible": true,
+        "_nota": "Esta es la 'jugada' que se simula: cuanto le puedo transferir sin comprometer lo rigido."
+      },
+      {
+        "id": "PAGO",
+        "nombre": "Pago a proveedores",
+        "categoria": "proveedores",
+        "dias_tolerancia": 15,
+        "consecuencia": "comercial",
+        "divisible": true
+      },
+      {
+        "id": "TRANSFERENCIA",
+        "nombre": "Transferencia interna",
+        "categoria": "interno",
+        "interno": true,
+        "consecuencia": "ninguna",
+        "_nota": "MOVIMIENTO INTERNO (confirmado por Thomas): plata que se mueve entre cuentas propias o entre MAGA y Speedmed. NO es un gasto: no sale del grupo. El simulador NO lo cuenta como egreso; si lo contara, mostraria MENOS plata de la que realmente hay."
+      },
+      {
+        "id": "DEPOSITO",
+        "nombre": "Deposito de efectivo",
+        "categoria": "interno",
+        "interno": true,
+        "consecuencia": "ninguna",
+        "_nota": "MOVIMIENTO INTERNO: se deposita el efectivo sobrante en el banco. Cambia la plata de lugar (caja -> banco), no la gasta."
+      }
     ]
   },
-
   "_confirmado_ok": [
     "COMISIONES dentro de SUELDO: van con sueldos (rigido). La auditoria las marca pero esta bien asi.",
     "ALQUILER QUINTANA: es el alquiler de una oficina en Quintana -> concepto ALQUILER. Nada que ver con SUELDO_QUINTANA.",
     "PAGO DE SERVICIOS: se trata como SERVICIO (la regla de impuestos va antes, asi 'PAGO DE SERVICIOS (IMP.AFIP)' cae en impuestos)."
   ],
-
   "excepciones_por_concepto": {
     "_ayuda": "EL TIPO NO SIEMPRE ALCANZA. Bajo un mismo TIPO puede haber cosas con flexibilidad muy distinta: en MAGA, bajo 'RETIRO_SOCIO' conviven el retiro real de los socios (se puede postergar) con la CUOTA DE UN PRESTAMO (no se puede). Estas reglas miran el CONCEPTO y pisan la tolerancia del tipo. Se evaluan en orden: la primera que matchea gana.",
     "reglas": [
       {
-        "contiene": ["PRESTAMO", "CUOTA"],
+        "contiene": [
+          "DJ"
+        ],
+        "nombre": "Honorarios DJ (10% del resultado)",
+        "categoria": "personal",
+        "dias_tolerancia": 0,
+        "consecuencia": "contractual",
+        "monto_variable": true,
+        "_nota": "CONFIRMADO por Thomas: aparece todos los meses pasada la mitad del mes, es el 10% del resultado del mes anterior -> VARIA EL VALOR, NO LA FECHA. Caso testigo del segundo eje. OJO 'palabra_completa': con matcheo por subcadena, 'D.J' pegaba adentro de 'honorarios D.Jaimovich' y ademas de forma inconsistente (no pegaba en 'honorarios junio D.Jaimovich'). PREGUNTA ABIERTA PARA THOMAS: ver _PENDIENTES.",
+        "palabra_completa": true
+      },
+      {
+        "contiene": [
+          "PRESTAMO",
+          "CUOTA"
+        ],
         "nombre": "Cuota de prestamo",
         "categoria": "financiero",
         "dias_tolerancia": 0,
@@ -86,7 +206,9 @@
         "_nota": "Se carga como RETIRO_SOCIO pero es la cuota de un prestamo que se tomo para adelantar ganancias a los socios. NO se puede patear."
       },
       {
-        "contiene": ["FINANCIERA"],
+        "contiene": [
+          "FINANCIERA"
+        ],
         "nombre": "Pago a financiera",
         "categoria": "financiero",
         "dias_tolerancia": 3,
@@ -94,21 +216,34 @@
         "_nota": "Confirmado por Thomas: el pago semanal a la financiera se puede correr 1 a 3 dias. NO es rigido como la cuota de prestamo."
       },
       {
-        "contiene": ["TRANSFERENCIA A TERCEROS"],
+        "contiene": [
+          "TRANSFERENCIA A TERCEROS"
+        ],
         "nombre": "Transferencia interna",
         "categoria": "interno",
         "interno": true,
         "_nota": "Confirmado por Thomas: 'transferencia a terceros' suele ser INTERNO. Son ~155 millones que aparecian cargados a veces como SERVICIO y a veces como TRANSFERENCIA. OJO: la excepcion seria una transferencia a una DROGUERIA (Thomas no cree que pase); si algun dia aparece, hay que sacarla de esta regla."
       },
       {
-        "contiene": ["SPEEDMED", "FARMACIA DOMINICO", "MAGA+"],
+        "contiene": [
+          "SPEEDMED",
+          "FARMACIA DOMINICO",
+          "MAGA+"
+        ],
         "nombre": "Movimiento interno (entre empresas del grupo)",
         "categoria": "interno",
         "interno": true,
         "_nota": "CONFIRMADO por Thomas: dentro del tipo PAGO habia ~458 millones de transferencias entre empresas del grupo (Speedmed, Farmacia Dominico). NO son gastos: la plata no sale del grupo. Contarlas como egreso hacia que el simulador mostrara MENOS plata de la que hay. Si aparecen otras farmacias del grupo como contraparte, agregarlas a esta lista."
       },
       {
-        "contiene": ["BIENES PERSONALES", "IMP.AFIP", "IMP AFIP", "SICORE", "ARBA", "INGRESOS BRUTOS"],
+        "contiene": [
+          "BIENES PERSONALES",
+          "IMP.AFIP",
+          "IMP AFIP",
+          "SICORE",
+          "ARBA",
+          "INGRESOS BRUTOS"
+        ],
         "nombre": "Impuestos",
         "categoria": "impuestos",
         "dias_tolerancia": 0,
@@ -116,7 +251,10 @@
         "_nota": "Venian cargados como PAGO pero son impuestos: se pagan si o si. OJO: esta regla va ANTES que la de servicios, porque hay conceptos tipo 'Pago de servicios (IMP.AFIP - Quilmes)' que en realidad son impuestos."
       },
       {
-        "contiene": ["SINDICATO", "HABERES"],
+        "contiene": [
+          "SINDICATO",
+          "HABERES"
+        ],
         "nombre": "Sueldos y cargas",
         "categoria": "personal",
         "dias_tolerancia": 0,
@@ -124,7 +262,9 @@
         "_nota": "El pago al sindicato es parte de los sueldos (confirmado por Thomas)."
       },
       {
-        "contiene": ["SERVICIO"],
+        "contiene": [
+          "SERVICIO"
+        ],
         "nombre": "Servicios",
         "categoria": "fijo",
         "dias_tolerancia": 0,
@@ -133,75 +273,150 @@
       }
     ]
   },
-
   "entidades_propias": {
     "_ayuda": "Empresas, locales y sociedades DEL PROPIO GRUPO. Si un pago nombra a alguna de estas, casi seguro es un movimiento INTERNO (la plata no sale del grupo) y no un gasto. La auditoria lo usa para detectar internos que quedaron sin marcar. Es dato del cliente: otra empresa pone los suyos.",
     "valores": [
-      "SPEEDMED", "MAGA+",
-      "FARMACIA DOMINICO", "AMERICANA", "NUEVA ESQUINA", "CRUCESITA",
-      "MAGA II", "BERNAL", "NUEVA ERA", "VARELA", "MALY", "TU FARMACIA",
-      "MORENO", "SARANDI", "DEL ESTE", "ROTONDA"
+      "SPEEDMED",
+      "MAGA+",
+      "FARMACIA DOMINICO",
+      "AMERICANA",
+      "NUEVA ESQUINA",
+      "CRUCESITA",
+      "MAGA II",
+      "BERNAL",
+      "NUEVA ERA",
+      "VARELA",
+      "MALY",
+      "TU FARMACIA",
+      "MORENO",
+      "SARANDI",
+      "DEL ESTE",
+      "ROTONDA"
     ]
   },
-
   "orden_de_pateo": {
     "_ayuda": "Cuando falta plata un dia, en que orden se proponen los pagos a postergar. Sale de como decide Thomas: PRIMERO las droguerias, y dentro de eso el que MAS DIAS aguanta, sin importar el monto.",
-    "prioridad_por_tipo": ["PAGO_DROGUE_TRANSF", "PAGO", "RETIRO_SOCIO", "EFECTIVO_VARIOS", "COMISION", "HONORARIO"],
+    "prioridad_por_tipo": [
+      "PAGO_DROGUE_TRANSF",
+      "PAGO",
+      "RETIRO_SOCIO",
+      "EFECTIVO_VARIOS",
+      "COMISION",
+      "HONORARIO"
+    ],
     "criterio_secundario": "mas_tolerancia_primero",
     "_regla_dura": "Solo se puede proponer mover un pago si su tolerancia alcanza para pasar el dia critico: fecha + dias_tolerancia >= dia_critico. Si no, moverlo no sirve."
   },
-
   "estados": {
     "_ayuda": "Valor de la columna ESTADO de MOVIMIENTOS.",
     "valores": [
-      { "id": "REAL",            "nombre": "Real",            "origen": "automatico" },
-      { "id": "PROYECCION",      "nombre": "Proyeccion",      "origen": "manual" },
-      { "id": "PROYECCION FIJA", "nombre": "Proyeccion fija", "origen": "manual", "no_borrar": true }
+      {
+        "id": "REAL",
+        "nombre": "Real",
+        "origen": "automatico"
+      },
+      {
+        "id": "PROYECCION",
+        "nombre": "Proyeccion",
+        "origen": "manual"
+      },
+      {
+        "id": "PROYECCION FIJA",
+        "nombre": "Proyeccion fija",
+        "origen": "manual",
+        "no_borrar": true
+      }
     ]
   },
-
   "ingresos": {
     "_ayuda": "Modelo de ingresos POR UNIDAD. La distincion FIJO/VARIABLE es la que usa el simulador: el escenario conservador solo cuenta los FIJOS.",
-
     "_ayuda_efecto": "OJO - CLAVE: no todo lo que parece ingreso es PLATA EN LA CAJA. Cada fuente tiene un 'efecto': 'caja' = entra plata al banco y sube el saldo; 'cartera' = entra un CHEQUE, que recien se vuelve caja en su fecha de cobro; 'menos_deuda' = no entra un peso, baja lo que debemos. El simulador solo puede usar para pagar lo que tiene efecto 'caja' en la fecha.",
-
-
     "MAGA": {
       "_rubro": "farmacia",
       "fuentes": [
-        { "id": "VENTA_DIARIA", "nombre": "Venta diaria (mostrador)", "naturaleza": "FIJO", "carga": "manual",
-          "_calculo": "Se proyecta sobre la venta del mes anterior +/- el % de variacion interanual del mismo periodo (ej: agosto vendio 100M; si el ano pasado de agosto a septiembre subio 6%, septiembre proyecta 106M). Cada cadena tiene su propia curva -> es lo mas dificil de automatizar." },
-        { "id": "TARJETA_MP",   "nombre": "Tarjeta y Mercado Pago",   "naturaleza": "FIJO",     "carga": "manual" },
-        { "id": "OBRA_SOCIAL",  "nombre": "Obras sociales",           "naturaleza": "VARIABLE", "carga": "manual",
-          "_nota": "OSDE paga 1 vez por mes, cerca del 15, sobre lo presentado. Las demas son mas impredecibles pero se calculan igual. TODAS pagan una parte en cheque/transferencia y otra en NOTAS DE CREDITO." },
-        { "id": "PAMI",         "nombre": "PAMI",                     "naturaleza": "VARIABLE", "carga": "manual",
-          "_nota": "El mas importante y el mas enredado. Paga 2 veces por mes (a veces 4), por QUINCENA PRESENTADA, pero cruzado: un pago cubre la 1ra quincena de un mes + la 2da del mes anterior. Ademas paga parte en notas de credito. PENDIENTE: modelar bien el calendario con Thomas/Andy." }
+        {
+          "id": "VENTA_DIARIA",
+          "nombre": "Venta diaria (mostrador)",
+          "naturaleza": "FIJO",
+          "carga": "manual",
+          "_calculo": "Se proyecta sobre la venta del mes anterior +/- el % de variacion interanual del mismo periodo (ej: agosto vendio 100M; si el ano pasado de agosto a septiembre subio 6%, septiembre proyecta 106M). Cada cadena tiene su propia curva -> es lo mas dificil de automatizar."
+        },
+        {
+          "id": "TARJETA_MP",
+          "nombre": "Tarjeta y Mercado Pago",
+          "naturaleza": "FIJO",
+          "carga": "manual"
+        },
+        {
+          "id": "OBRA_SOCIAL",
+          "nombre": "Obras sociales",
+          "naturaleza": "VARIABLE",
+          "carga": "manual",
+          "_nota": "OSDE paga 1 vez por mes, cerca del 15, sobre lo presentado. Las demas son mas impredecibles pero se calculan igual. TODAS pagan una parte en cheque/transferencia y otra en NOTAS DE CREDITO."
+        },
+        {
+          "id": "PAMI",
+          "nombre": "PAMI",
+          "naturaleza": "VARIABLE",
+          "carga": "manual",
+          "_nota": "El mas importante y el mas enredado. Paga 2 veces por mes (a veces 4), por QUINCENA PRESENTADA, pero cruzado: un pago cubre la 1ra quincena de un mes + la 2da del mes anterior. Ademas paga parte en notas de credito. PENDIENTE: modelar bien el calendario con Thomas/Andy."
+        }
       ]
     },
-
     "SPEEDMED": {
       "_rubro": "drogueria",
       "fuentes": [
-        { "id": "CARTERA_CH",   "nombre": "Cartera de cheques",       "naturaleza": "FIJO", "carga": "manual",
-          "_nota": "Lo unico verdaderamente fijo de la drogueria: el cheque ya esta en la mano con fecha. HOY SE CARGA A MANO -> deberia ser automatico (son ingresos)." },
-        { "id": "CTAS_COBRAR_FCIAS", "nombre": "Cuentas a cobrar - farmacias clientes", "naturaleza": "VARIABLE", "carga": "semi-automatica",
-          "_nota": "Se carga cliente, fecha de vto y monto. Si el estado pasa a PAGADO desaparece de cuentas a cobrar. Si transfieren, suma al saldo del dia siguiente; si pagan en cheque, va a CARTERA_CH. Origen: listado que se baja de RAL todos los lunes y se cruza con BUSCARV (manual). El bot de Cobranzas es el que pasa a PAGADO leyendo los PDF de una carpeta." },
-        { "id": "COBRANZA_DROGUERIAS", "nombre": "Cobranza a droguerias", "naturaleza": "VARIABLE", "carga": "manual", "efecto": "cartera",
-          "_nota": "Cada drogueria que debe tiene su linea (DDS, SUIZO, COFALOZA...). TODAS las droguerias pagan en CHEQUE -> el cobro entra a CARTERA_CH, no a la caja. Se vuelve caja recien en la fecha de cobro del cheque." },
-
-        { "id": "COMPENSACION", "nombre": "Compensacion con drogueria", "naturaleza": "VARIABLE", "carga": "manual", "efecto": "menos_deuda",
-          "_nota": "NO es un cobro: es un neteo. Si DDS nos debe 200 y nosotros le debemos 100, se compensan: BAJA DIRECTAMENTE LA DEUDA (vencida o a vencer) y el saldo a favor viene en cheque. No entra plata a la caja por la parte compensada." },
-
-        { "id": "NCR", "nombre": "Notas de credito", "naturaleza": "VARIABLE", "carga": "manual", "efecto": "menos_deuda",
-          "_nota": "Se cuentan como ingreso pero NO van dentro de 'ingresos estimados': son un tipo de ingreso APARTE. Se debitan directamente de la deuda que tengamos con las droguerias. Las obras sociales tambien pagan una parte en NCR." }
+        {
+          "id": "CARTERA_CH",
+          "nombre": "Cartera de cheques",
+          "naturaleza": "FIJO",
+          "carga": "manual",
+          "_nota": "Lo unico verdaderamente fijo de la drogueria: el cheque ya esta en la mano con fecha. HOY SE CARGA A MANO -> deberia ser automatico (son ingresos)."
+        },
+        {
+          "id": "CTAS_COBRAR_FCIAS",
+          "nombre": "Cuentas a cobrar - farmacias clientes",
+          "naturaleza": "VARIABLE",
+          "carga": "semi-automatica",
+          "_nota": "Se carga cliente, fecha de vto y monto. Si el estado pasa a PAGADO desaparece de cuentas a cobrar. Si transfieren, suma al saldo del dia siguiente; si pagan en cheque, va a CARTERA_CH. Origen: listado que se baja de RAL todos los lunes y se cruza con BUSCARV (manual). El bot de Cobranzas es el que pasa a PAGADO leyendo los PDF de una carpeta."
+        },
+        {
+          "id": "COBRANZA_DROGUERIAS",
+          "nombre": "Cobranza a droguerias",
+          "naturaleza": "VARIABLE",
+          "carga": "manual",
+          "efecto": "cartera",
+          "_nota": "Cada drogueria que debe tiene su linea (DDS, SUIZO, COFALOZA...). TODAS las droguerias pagan en CHEQUE -> el cobro entra a CARTERA_CH, no a la caja. Se vuelve caja recien en la fecha de cobro del cheque."
+        },
+        {
+          "id": "COMPENSACION",
+          "nombre": "Compensacion con drogueria",
+          "naturaleza": "VARIABLE",
+          "carga": "manual",
+          "efecto": "menos_deuda",
+          "_nota": "NO es un cobro: es un neteo. Si DDS nos debe 200 y nosotros le debemos 100, se compensan: BAJA DIRECTAMENTE LA DEUDA (vencida o a vencer) y el saldo a favor viene en cheque. No entra plata a la caja por la parte compensada."
+        },
+        {
+          "id": "NCR",
+          "nombre": "Notas de credito",
+          "naturaleza": "VARIABLE",
+          "carga": "manual",
+          "efecto": "menos_deuda",
+          "_nota": "Se cuentan como ingreso pero NO van dentro de 'ingresos estimados': son un tipo de ingreso APARTE. Se debitan directamente de la deuda que tengamos con las droguerias. Las obras sociales tambien pagan una parte en NCR."
+        }
       ]
     }
   },
-
   "_PENDIENTES": [
+    "HONORARIOS DJ: en la planilla conviven 'honorarios DJ', 'honorarios D.jaimovich' y 'honorarios junio D.Jaimovich'. Si DJ son las iniciales de D.Jaimovich, TODOS esos son el 10% del resultado y hay que marcarlos monto_variable. Si DJ es otra cosa (declaracion jurada?), la regla actual ya esta bien. Hoy SOLO se marca 'DJ' como palabra suelta: es lo conservador, marca de menos y no de mas.",
     "PAMI: por ahora queda CARGA MANUAL (Thomas tiene dudas sobre el calendario real de quincenas cruzadas). No modelar todavia.",
     "Venta diaria: automatizar la proyeccion (mes anterior +/- % interanual) requiere el historico de ventas por farmacia; hoy es manual.",
     "Cartera de CH: hoy se carga a mano y deberia ser automatica (son ingresos con fecha cierta).",
     "Cuentas a cobrar FCIAS: el cruce con el listado de RAL (hoy BUSCARV manual todos los lunes) deberia ser automatico. RAL solo funciona dentro de la red, pero el CRUCE si se puede automatizar."
-  ]
+  ],
+  "_modelo_certeza_monto": {
+    "_ayuda": "SEGUNDO EJE, independiente de la tolerancia de fecha. 'dias_tolerancia' dice cuanto se puede correr la FECHA. 'monto_variable' dice si el IMPORTE de la planilla es un numero cierto o una estimacion.",
+    "_ejemplo": "Honorarios DJ: se pagan pasada la mitad del mes SIEMPRE (fecha fija, tolerancia 0) pero el importe es el 10% del resultado del mes anterior, asi que el numero cargado es una estimacion.",
+    "_por_que_importa": "Un movimiento con monto_variable NO se puede patear, pero tampoco se puede confiar en su importe. El motor no debe proponerlo como palanca, y SI debe avisar que ese numero puede moverse. Correr el simulador con --estres N aumenta un N% los montos variables para ver si el plan aguanta igual."
+  }
 }

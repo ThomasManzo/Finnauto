@@ -30,6 +30,7 @@ if BASE_REPO not in sys.path:
 
 from simulador.semana import (cargar_contrato, cheques_ventana, meta_de, _rigido,
                               _m, cargar_catalogo)
+from simulador import ajustes as AJ
 
 
 # NOTA: el catalogo se carga en UN SOLO lugar (simulador/semana.py). Antes habia
@@ -53,13 +54,38 @@ def egresos(contrato, cat, desde, hasta, cheques):
                     "nombre": meta["nombre"], "importe": float(m.get("importe") or 0),
                     "tolerancia": meta["tolerancia"], "rigido": _rigido(meta),
                     "divisible": bool(meta.get("divisible")),
+                    "monto_variable": bool(meta.get("monto_variable")),
+                    "consecuencia": meta.get("consecuencia", ""),
                     "concepto": m.get("concepto", "")})
     for j, c in enumerate(cheques):
         out.append({"id": "ch%d" % j, "fecha": c["fecha"], "tipo": "CHEQUE",
                     "nombre": "Cheque a pagar", "importe": c["importe"],
                     "tolerancia": 0, "rigido": True, "divisible": False,
+                    "monto_variable": False, "consecuencia": "BCRA",
                     "concepto": ""})   # un cheque es todo o nada: o se cubre o rebota
     return out
+
+
+def aplicar_estres(egr, pct):
+    """Sube un pct% los egresos de MONTO VARIABLE.
+
+    No es un capricho: hay pagos con fecha fija cuyo importe es una estimacion
+    (Honorarios DJ = 10% del resultado del mes anterior). Como no se pueden
+    patear, la unica pregunta util es "si sale mas caro de lo cargado, ¿el plan
+    aguanta igual?". Con pct=0 no cambia nada, asi que el default es honesto:
+    el motor no inventa un numero salvo que se lo pidan.
+    """
+    if not pct:
+        return egr, 0.0
+    extra = 0.0
+    out = []
+    for e in egr:
+        if e.get("monto_variable"):
+            nuevo = e["importe"] * (1.0 + pct / 100.0)
+            extra += nuevo - e["importe"]
+            e = dict(e, importe=nuevo, estresado=True)
+        out.append(e)
+    return out, extra
 
 
 def cobros(contrato, desde, hasta):
@@ -139,10 +165,11 @@ def candidatos(egr, dia_critico, prioridad, piso=0):
 
 
 def armar_plan(egr, cob, caja, desde, hasta, minimo, prioridad, piso=0):
+    variables = [e for e in egr if e.get("monto_variable")]
     serie = saldos(caja, egr, cob, desde, hasta)
     dia, valor = primer_rojo(serie, minimo)
     if not dia:
-        return {"ok": True, "serie": serie}
+        return {"ok": True, "serie": serie, "variables": variables}
 
     faltante = minimo - valor
     cands = candidatos(egr, dia, prioridad, piso)
@@ -164,7 +191,7 @@ def armar_plan(egr, cob, caja, desde, hasta, minimo, prioridad, piso=0):
     return {"ok": False, "dia": dia, "valor": valor, "faltante": faltante,
             "plan": plan, "ganado": ganado, "serie": serie, "serie2": serie2,
             "resuelto": dia2 is None, "dia2": dia2, "valor2": valor2,
-            "candidatos": cands}
+            "candidatos": cands, "variables": variables}
 
 
 # ----------------------------------------------------------------- salida
@@ -230,6 +257,14 @@ def main():
     ap.add_argument("--minimo", type=float, default=200000000)
     ap.add_argument("--piso", type=float, default=1000000,
                     help="no proponer mover montos menores a esto")
+    ap.add_argument("--estres", type=float, default=0,
+                    help="sube un %% los pagos de monto estimado (ej: --estres 20)")
+    ap.add_argument("--mover", action="append", metavar="TEXTO=DIAS",
+                    help="cuantos dias podes mover ESE pago, mas alla del catalogo "
+                         "(ej: --mover SUIZO=25). Se puede repetir.")
+    ap.add_argument("--ajustes", help="archivo json con varios ajustes juntos")
+    ap.add_argument("--forzar", action="store_true",
+                    help="permite estirar tambien cheques, sueldos e impuestos")
     args = ap.parse_args()
 
     desde = datetime.date.fromisoformat(args.desde) if args.desde else datetime.date.today()
@@ -240,6 +275,18 @@ def main():
     ch, _ = cheques_ventana(args.cheques, desde, hasta)
 
     egr = egresos(contrato, cat, desde, hasta, ch)
+
+    reglas = AJ.cargar(args.ajustes) + AJ.desde_cli(args.mover)
+    try:
+        egr, cambios = AJ.aplicar(egr, reglas, permitir_graves=args.forzar)
+    except AJ.AjusteRiesgoso as ex:
+        print("  [X] %s" % ex)
+        return
+    AJ.imprimir(cambios, _m)
+
+    egr, extra = aplicar_estres(egr, args.estres)
+    if extra:
+        print("  [estres %+.0f%%] los montos estimados suman %s mas" % (args.estres, _m(extra)))
     cob = cobros(contrato, desde, hasta)
     r = armar_plan(egr, cob, float(contrato.get("caja_hoy") or 0),
                    desde, hasta, args.minimo, cat["prioridad"], args.piso)

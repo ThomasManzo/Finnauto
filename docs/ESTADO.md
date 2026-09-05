@@ -4,101 +4,166 @@
 > estamos, qué falta, qué quedó pendiente y qué ideas hay dando vueltas.
 
 **Última actualización:** 2026-09-04
-**Repo:** github.com/ThomasManzo/Finnauto
-**Cliente #1:** MAGA+ / Speedmed (ya manifestaron interés en comprar el software)
+**Repo:** github.com/ThomasManzo/Finnauto — *se queda con doble N (decidido)*
+**Cliente #1:** MAGA+ / Speedmed
+
+---
+
+## 0. La cadena (el orden de trabajo)
+
+Thomas lo definió así, y es el orden en que se construye:
+
+```
+   BOTS          →      INFO        →   MUESTRA DE INFO   →   DASHBOARD
+(bajan datos)      (se transcriben      (contrato JSON)       (visual)
+                    donde corresponde)
+```
+
+Con ramificaciones en el medio, que son las que hacen al producto:
+- el dash no solo **muestra**, también **aconseja**;
+- los bots no solo **bajan**, también **dan por pagadas** las cobranzas.
+
+**Regla de orden: primero se terminan todos los bots.** Conectar el dashboard a
+un contrato que se genera a mano es una demo, no un producto.
 
 ---
 
 ## 1. Dónde estamos
 
-El proyecto tiene **3 capas**. Este es el estado real de cada pieza:
-
-### Capa 1 — Bots (automatización / entrada de datos)
+### Capa 1 — Bots (el eslabón que falta)
 
 | Pieza | Estado | Detalle |
 |---|---|---|
-| Bot Galicia (producción) | ✅ Andando | El bot viejo corre solo a las 8:00 (tarea `BotGaliciaExtractos`). **Intacto, no lo tocamos.** |
-| Bot Galicia (finauto) | 🟡 Refactorizado, sin probar | Portado 1:1 a núcleo + adaptador. Compila e importa, pero **nunca corrió contra el banco**. |
-| Bot Comafi | 🟡 Andamiaje | Estructura lista, faltan los selectores reales (`# >>> TODO COMAFI`). |
+| Bot Galicia (producción) | ✅ Andando | Corre solo a las 8:00 (`BotGaliciaExtractos`). Intacto. |
+| Bot Galicia (finauto) | 🟡 Sin probar | Portado a núcleo + adaptador. Compila, **nunca corrió contra el banco**. |
+| Bot Comafi | 🟡 Andamiaje | Falta una pasada de DOM en vivo (`# >>> TODO COMAFI`). |
 | Bot Santander | ⬜ Esqueleto | Solo el contrato de la clase. |
-| Parser de cheques del banco | ✅ Probado con datos reales | 61 cheques leídos, 58 pendientes, 0 duplicados. Reemplaza el BUSCARV manual. |
+| Bot cheques emitidos | ⬜ No existe | El parser sí; falta que el bot lo **baje solo**. |
+| Bot cobranzas (RAL) | ⬜ No existe | Hoy es un BUSCARV manual todos los lunes. |
 
-### Capa 2 — Los datos (el verdadero activo)
+### Capa 2 — Los datos
 
-| Pieza | Estado | Detalle |
-|---|---|---|
-| Exportador (Apps Script) | ✅ v1.4 | Lee MOVIMIENTOS, SALDOS, caja de hoy, ingresos previstos del cashflow, cobranza y deuda con droguerías. Busca por encabezados, no por filas fijas. |
-| Contrato (JSON) | ✅ v1.2 | La fuente de verdad que consumen las herramientas. Las visuales **nunca** tocan una celda. |
-| Catálogo por cliente | ✅ Completo | Tipos, tolerancias, divisible, internos, excepciones por concepto, orden de pateo, entidades propias, modelo de ingresos. **Todo lo de MAGA vive acá, nada en el código.** |
-| Auditoría de calidad | ✅ 10 chequeos | Genérica: se apoya en el catálogo del cliente. |
+| Pieza | Estado |
+|---|---|
+| Exportador (Apps Script) v1.4 | ✅ |
+| Contrato JSON v1.2 | ✅ |
+| Catálogo por cliente | ✅ |
+| Auditoría de calidad (10 chequeos) | ✅ |
+| Parser de cheques del banco | ✅ Probado con datos reales |
 
 ### Capa 3 — Herramientas
 
-| Pieza | Estado | Detalle |
-|---|---|---|
-| `simulador/semana.py` | ✅ Con datos reales | Escenario conservador vs optimista de N días. |
-| `simulador/timeline.py` | ✅ Con datos reales | Día por día entre dos fechas, marca los días bajo el mínimo. |
-| `simulador/consejo.py` | ✅ Con datos reales | Qué patear, en el orden de decisión de Thomas, con pagos parciales. |
-| Dashboard "Caja al Día" | 🟡 Mockup | Diseñado (blanco/verde/naranja) pero **con datos de ejemplo, sin conectar**. |
-| Simulador web | 🟡 Mockup | Ídem: anda, pero no lee el contrato. |
-
-### Transversal
-
-| | |
+| Pieza | Estado |
 |---|---|
-| Tests | ✅ 24, corren sin instalar nada (`python tests/test_motor.py`) |
-| Documentación | ✅ README, CLAUDE.md, ARQUITECTURA, mapa de Capa 2, IDEAS, este archivo |
+| `simulador/semana.py` — escenario conservador/optimista | ✅ |
+| `simulador/timeline.py` — día por día | ✅ |
+| `simulador/consejo.py` — qué patear, con pagos parciales | ✅ |
+| `simulador/ajustes.py` — **cuántos días podés mover ESE pago** | ✅ nuevo |
+| `memoria/registro.py` — **qué se proyectó vs qué pasó** | ✅ nuevo |
+| Dashboard "Caja al Día" | 🟡 Mockup, sin conectar |
+| Simulador web | 🟡 Mockup, sin conectar |
+
+**61 tests**, corren sin instalar nada: `python tests/test_motor.py`
 
 ---
 
-## 2. Qué falta
+## 2. Los tres ejes del modelo
 
-**Para cerrar el motor (lo más cerca):**
-- Nada bloqueante. El motor está funcionando y auditado. Ver "descartado" abajo.
+Empezó con uno solo y ya son tres. Confundirlos fue fuente de errores reales:
 
-**Para que sea un producto usable:**
-1. **Conectar las pantallas al motor** — hoy los mockups muestran datos inventados. Es el paso más visible y el que se le muestra a un cliente.
-2. **Probar el bot nuevo contra el banco** — el refactor de Galicia nunca corrió de verdad.
-3. **Que el bot baje el listado de cheques solo** — hoy se baja a mano cada semana. El bot ya entra al banco; es casi el mismo trabajo.
+| Eje | Qué dice | Dónde vive |
+|---|---|---|
+| **Fecha** (`dias_tolerancia`) | Cuántos días se puede correr | catálogo = *default* |
+| **Monto** (`monto_variable`) | Si el importe es cierto o estimado | catálogo |
+| **Ajuste manual** | Lo que sabés vos **esta semana** | `--mover`, fuera del catálogo |
+
+El caso testigo: **Honorarios DJ** = 10% del resultado del mes anterior. Fecha
+fija, monto estimado. Yo había asumido que "variable" quería decir "pateable" —
+estaba mal, y el catálogo ahora lo dice explícito para que nadie lo repita.
+
+Y el ajuste manual: el catálogo no puede saber que el martes hablaste con la
+droguería y te dieron diez días más. Por eso los ajustes son **explícitos**
+(hay que pedirlos), **temporales** (no ensucian el catálogo) y **visibles** (el
+escenario siempre imprime qué está asumiendo).
+
+---
+
+## 3. Qué falta
+
+**Ahora (la cadena, en orden):**
+1. **Comafi** — necesita una pasada de DOM con el banco abierto.
+2. **Galicia finauto** — probarlo de verdad contra el banco.
+3. **Bot de cheques emitidos** — el bot ya entra al banco; es casi el mismo trabajo.
+4. **Bot / cruce de cobranzas (RAL)** — y que marque las cobradas solas.
+5. Santander (cuando haga falta).
+
+**Después:**
+6. Conectar el dashboard y el simulador web al contrato.
+7. Que el dash aconseje, no solo muestre.
 
 **Para escalar a otros clientes:**
-4. **El reconocedor de planillas** (idea de Thomas) — que deduzca solo el modelo de datos de un Cash desconocido. Es el cuello de botella del negocio: sin esto, cada cliente nuevo son semanas de configuración.
+8. **Reconocedor de planillas** — el cuello de botella del negocio.
 
-**Piezas del sistema original todavía no tocadas:**
-5. Cobranzas de droguerías (RAL) — el cruce manual de los lunes.
-6. Cartera de cheques — hoy se carga a mano y son ingresos con fecha cierta.
-7. Análisis EERR.
+**Sin tocar todavía:** cartera de cheques, análisis EERR.
 
 ---
 
-## 3. Pendientes y decisiones abiertas
+## 4. Pendientes y decisiones abiertas
 
 | Tema | Estado |
 |---|---|
-| `HONORARIO` fijo vs variable | Pendiente. Hoy criterio conservador (tolerancia 0). En la planilla hay un solo valor. |
-| PAMI | **Queda manual.** Thomas tiene dudas sobre el calendario real de quincenas cruzadas. No modelar todavía. |
-| Venta diaria automática | Requiere el histórico de ventas por farmacia. Hoy manual. |
-| Contrato de venta a MAGA+ | Pendiente de cerrar por escrito. |
-| Repo `finauto` vs `Finnauto` | Quedó con doble N. Se puede renombrar en GitHub cuando quieras. |
+| **Honorarios DJ: ¿"DJ" son las iniciales de D.Jaimovich?** | ❓ **Pregunta abierta.** En la planilla conviven "honorarios DJ", "honorarios D.jaimovich" y "honorarios junio D.Jaimovich". Hoy solo se marca `DJ` como palabra suelta (criterio conservador: marca de menos, no de más). |
+| Cargas sociales cargadas como `SUELDO` | El catálogo tiene `VEP_AFIP`, la planilla usa `SUELDO`. Ambos rígidos, así que no cambia ningún número. Anotado. |
+| PAMI | Queda **manual**. No modelar todavía. |
+| Venta diaria automática | Requiere histórico de ventas por farmacia. |
+| Contrato de venta a MAGA+ | Pendiente por escrito. |
 
-### ❌ Descartado (para no volver a proponerlo)
+### ❌ Descartado
 
-- **Adelantar cobros como palanca** — Thomas: *"es muy difícil en este rubro"*. No se construye.
-- **Calibración automática (proyectado vs real)** — Thomas: *"entender si algo se cumplió es más complicado"*. Queda como idea de largo plazo, no como próximo paso.
+- **Adelantar cobros como palanca** — *"es muy difícil en este rubro"*.
 
----
-
-## 4. Decisiones ya tomadas (no re-litigar)
-
-- **Dos repos separados:** `MAGA` (sistema productivo actual) y `Finnauto` (el producto).
-- **La lógica del cliente vive en su catálogo, nunca en el código.** Otra empresa = otro catálogo.
-- **Las herramientas visuales leen el contrato, nunca una celda de la planilla.**
-- **El administrativo sigue en su Excel; el dueño ve el tablero.** Mismo dato abajo, distinta interfaz arriba.
-- **Multi-cliente diferido:** la estructura lo soporta; la decisión "Google vs backend propio" se toma cuando haya volumen.
+*(La "calibración automática" ya no está descartada: Thomas la reformuló como
+**memoria interna** — registrar en vez de inferir — y así construida sí sirve.
+Ver sección 5.)*
 
 ---
 
-## 5. Números clave descubiertos (MAGA+)
+## 5. La memoria interna
+
+Idea de Thomas: el modelo tiene que **acordarse** de lo que proyectó.
+
+```bash
+python memoria/registro.py guardar   --contrato c.json   # foto de lo que creo que va a pasar
+python memoria/registro.py conciliar --contrato c_nuevo.json  # contra lo que paso
+python memoria/registro.py resumen                       # como se porta cada tipo
+```
+
+Distingue **CUMPLIO / CAMBIO_FECHA / CAMBIO_MONTO / CAMBIO_AMBOS / NO_APARECIO**,
+y aparte las **sorpresas** (lo que pasó sin que nadie lo proyectara — suele ser
+la razón real por la que un mes no cierra).
+
+Es a propósito un módulo **tonto**: registra y compara, no infiere nada. Con una
+sola proyección conciliada, cualquier "ajuste automático" sería inventar un
+número con una muestra de uno — y el propio resumen lo dice cuando hay pocas.
+
+Primera foto ya guardada: `clientes/maga/memoria/proyeccion_2026-09-04.json`
+(226 movimientos hasta el 04/10).
+
+---
+
+## 6. Decisiones ya tomadas (no re-litigar)
+
+- **Dos repos:** `MAGA` (productivo actual) y `Finnauto` (el producto).
+- **La lógica del cliente vive en su catálogo, nunca en el código.**
+- **Las herramientas leen el contrato, nunca una celda.**
+- **El administrativo sigue en su Excel; el dueño ve el tablero.**
+- **`dias_tolerancia` del catálogo es un DEFAULT, no una ley.**
+- **Primero los bots, después el dashboard.**
+- Multi-cliente diferido: la estructura lo soporta.
+
+---
+
+## 7. Números clave (MAGA+)
 
 | | |
 |---|---|
@@ -107,46 +172,53 @@ El proyecto tiene **3 capas**. Este es el estado real de cada pieza:
 | Deuda viva con droguerías | $2.690.750.655 |
 | Día crítico detectado | 25/09/2026 — cae a $135M, bajo el mínimo de $200M |
 
-> El dato del **9%** es el más importante del proyecto: significa que postergar
-> pagos casi no mueve la aguja. Cualquier consejo que dé el sistema tiene que
-> partir de ahí.
+> El **9%** es el dato más importante del proyecto: postergar pagos casi no
+> mueve la aguja. Cualquier consejo tiene que partir de ahí.
 
 ---
 
-## 6. Los 9 errores que encontramos (y que los tests ahora cuidan)
+## 8. Los 9 errores que encontramos (y que los tests ahora cuidan)
 
-Cada uno hacía que el motor mintiera. Ninguno lo encontró el sistema: los
-encontró Thomas mirando datos reales.
+Ninguno lo encontró el sistema: los encontró Thomas mirando datos reales.
 
 1. Transferencias y depósitos **internos** contados como gasto.
 2. **NCR** sumando deuda en vez de restarla.
-3. Filas de **saldo** ("Con pago a droguerías") sumadas 200 veces → $249 mil millones.
+3. Filas de **saldo** sumadas 200 veces → $249 mil millones.
 4. La deuda **intercompany** arrastrando el mismo saldo día a día.
 5. "Fecha pasada" significa lo **opuesto** en cobranza (vencido) y en deuda (pagado).
-6. Una **cuota de préstamo** cargada como retiro de socios → el motor la proponía patear.
-7. El tipo `PAGO` como **cajón de sastre**: ~$458M de internos + impuestos + sueldos.
-8. **Cargador de catálogo duplicado** → el consejo proponía postergar impuestos y sueldos.
-9. `TRANSFERENCIA A TERCEROS` ($155M) cargado a veces como servicio, a veces como interno.
+6. Una **cuota de préstamo** cargada como retiro → el motor la proponía patear.
+7. El tipo `PAGO` como **cajón de sastre** (~$458M).
+8. **Cargador de catálogo duplicado** → proponía postergar impuestos y sueldos.
+9. `TRANSFERENCIA A TERCEROS` ($155M) a veces servicio, a veces interno.
+
+Y dos que aparecieron construyendo lo nuevo:
+
+10. `conciliar()` no filtraba internos y `guardar()` sí: cada transferencia
+    propia figuraba como "movimiento que nadie proyectó".
+11. Matcheo por subcadena: `"D.J"` pegaba dentro de `"D.Jaimovich"` — y encima
+    de forma inconsistente. De ahí salió `palabra_completa`.
 
 ---
 
-## 7. Cómo correr todo
+## 9. Cómo correr todo
 
 ```bash
-# 1. Exportar el contrato desde el Cash (Apps Script -> exportarContratoEnLog)
-# 2. Bajar el JSON de Drive
-
 # Auditoría de calidad (SIEMPRE antes de confiar en el número)
 python auditoria/revisar.py --contrato contrato.json
 
-# Escenario de la semana
-python simulador/semana.py --contrato contrato.json --cheques cheques.csv --dias 7
+# Escenario / timeline / consejo
+python simulador/semana.py   --contrato c.json --cheques ch.csv --dias 7
+python simulador/timeline.py --contrato c.json --cheques ch.csv --dias 21 --minimo 200000000
+python simulador/consejo.py  --contrato c.json --cheques ch.csv --minimo 200000000
 
-# Timeline día por día
-python simulador/timeline.py --contrato contrato.json --cheques cheques.csv --dias 21 --minimo 200000000
+# "¿y si a la financiera la estiro 20 días?"
+python simulador/consejo.py --contrato c.json --minimo 200000000 --mover "FINANCIERA=20"
 
-# Qué patear si falta plata
-python simulador/consejo.py --contrato contrato.json --cheques cheques.csv --minimo 200000000
+# "¿y si los honorarios DJ salen 20% más caros?"
+python simulador/consejo.py --contrato c.json --minimo 200000000 --estres 20
+
+# Memoria
+python memoria/registro.py guardar --contrato c.json
 
 # Tests
 python tests/test_motor.py
@@ -154,12 +226,11 @@ python tests/test_motor.py
 
 ---
 
-## 8. Ideas en el backlog
+## 10. Ideas en el backlog
 
-Ver **`docs/IDEAS.md`** para el detalle. En orden de cuánto diferencian al producto:
+Ver `docs/IDEAS.md`. En orden de cuánto diferencian al producto:
 
-1. **Reconocedor de planillas** (onboarding automático de clientes nuevos) ⭐
-2. **Alertas** en vez de tablero — el dueño no abre nada, le llega el aviso
-3. Que el bot baje el listado de cheques
-4. Automatizar el cruce de cuentas a cobrar (RAL)
-5. Roles: cada usuario su vista
+1. **Reconocedor de planillas** (onboarding automático) ⭐
+2. **Alertas** en vez de tablero — al dueño le llega el aviso, no abre nada
+3. Que los bots marquen las cobranzas como pagadas solas
+4. Roles: cada usuario su vista

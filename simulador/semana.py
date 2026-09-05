@@ -15,6 +15,10 @@ Reglas (salen del catálogo del cliente, no están hardcodeadas):
     FLEXIBLES (se pueden patear N días).
   · Ingresos: FIJOS (entran sí o sí) vs VARIABLES (pueden no entrar ese día).
   · Los CHEQUES son el rígido más duro: si no se cubren, la empresa va al BCRA.
+  · MONTO VARIABLE: eje aparte de la tolerancia. Hay pagos con fecha FIJA cuyo
+    importe es una estimación (ej. Honorarios DJ = 10% del resultado del mes
+    anterior). No se pueden patear, pero su número puede moverse: por eso el
+    escenario los marca y --estres permite ver si el plan aguanta si suben.
 
 Dos escenarios:
   · CONSERVADOR  = solo con los ingresos FIJOS. Es el que manda para decidir.
@@ -28,6 +32,7 @@ import os
 import sys
 import json
 import argparse
+import re
 import datetime
 from collections import defaultdict
 
@@ -56,6 +61,7 @@ def cargar_catalogo(cliente):
             "interno": bool(t.get("interno")),
             "divisible": bool(t.get("divisible")),
             "consecuencia": t.get("consecuencia", ""),
+            "monto_variable": bool(t.get("monto_variable")),
         }
     exc = []
     for r in cat.get("excepciones_por_concepto", {}).get("reglas", []):
@@ -66,10 +72,25 @@ def cargar_catalogo(cliente):
             "consecuencia": r.get("consecuencia", ""),
             "interno": bool(r.get("interno")),
             "tiene_tolerancia": ("dias_tolerancia" in r),
+            "monto_variable": bool(r.get("monto_variable")),
+            "palabra_completa": bool(r.get("palabra_completa")),
         })
     # Orden con el que el cliente decide que patear cuando falta plata.
     prioridad = cat.get("orden_de_pateo", {}).get("prioridad_por_tipo", [])
     return {"tipos": tipos, "excepciones": exc, "prioridad": prioridad}
+
+
+def _matchea(concepto, regla):
+    """Por defecto la excepcion matchea por SUBCADENA, que alcanza casi siempre.
+
+    Con "palabra_completa": true matchea solo palabras enteras. Hace falta cuando
+    la clave es corta y se mete adentro de otra: "DJ" aparece dentro de
+    "D.Jaimovich", y ya nos paso lo mismo con "PERSONAL" dentro de "PERSONALES".
+    """
+    if regla.get("palabra_completa"):
+        return any(re.search(r"(?<![A-Z0-9])%s(?![A-Z0-9])" % re.escape(p), concepto)
+                   for p in regla["contiene"])
+    return any(p in concepto for p in regla["contiene"])
 
 
 def meta_de(mov, cat):
@@ -77,16 +98,22 @@ def meta_de(mov, cat):
     el CONCEPTO, esa pisa la tolerancia y el nombre."""
     tipo = mov.get("tipo") or ""
     base = cat["tipos"].get(tipo, {"nombre": tipo or "(sin tipo)", "tolerancia": None,
-                                   "interno": False, "consecuencia": "?"})
+                                   "interno": False, "consecuencia": "?",
+                                   "monto_variable": False})
     meta = dict(base)
     concepto = (mov.get("concepto") or "").upper()
     if concepto:
         for r in cat["excepciones"]:
-            if any(p in concepto for p in r["contiene"]):
+            if _matchea(concepto, r):
                 meta["nombre"] = r["nombre"] or meta["nombre"]
                 if r.get("tiene_tolerancia"):
                     meta["tolerancia"] = r["tolerancia"]
                 meta["consecuencia"] = r["consecuencia"] or meta["consecuencia"]
+                if r.get("monto_variable"):
+                    # OJO: monto_variable NO afecta la tolerancia. Son dos ejes
+                    # distintos: la fecha sigue siendo fija, lo que no es cierto
+                    # es el IMPORTE (ej. Honorarios DJ = 10% del resultado).
+                    meta["monto_variable"] = True
                 if r.get("interno"):
                     meta["interno"] = True      # no es gasto: no sale del grupo
                     meta["divisible"] = False
@@ -212,8 +239,15 @@ def sugerir_pateo(flexibles, faltante):
 
 # ------------------------------------------------------------------ salida
 def _m(x):
+    """Formato argentino: $1.183.497.652,34 (miles con punto, decimales con coma).
+
+    Es el mismo formato de la planilla: si el tablero muestra otro, el dueno
+    tiene que traducir mentalmente cada numero antes de creerselo.
+    """
     signo = "-" if x < 0 else ""
-    return signo + "$" + format(abs(round(x, 2)), ",.2f")
+    ent = format(abs(round(x, 2)), ",.2f")          # 1,234.56
+    ent = ent.replace(",", "@").replace(".", ",").replace("@", ".")
+    return signo + "$" + ent
 
 
 def _agrupar(items, campo="nombre"):
