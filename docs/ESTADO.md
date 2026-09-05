@@ -28,6 +28,36 @@ un contrato que se genera a mano es una demo, no un producto.
 
 ---
 
+## 0.a El modelo de negocio (define las prioridades)
+
+Thomas lo dejó explícito:
+
+> "Mi idea NO es 'te vendo todo, 1 o 2 días y chau'. Es asesorar a las empresas,
+> no venderles un software y olvidarme al segundo día."
+
+**No es un detalle comercial: cambia qué hay que construir.**
+
+| Si fuera venta de software | Como es asesoría |
+|---|---|
+| El cliente lo usa solo | **Vos** corrés las herramientas |
+| Onboarding automático | Onboarding = **una reunión** que las herramientas preparan |
+| Dashboards para el cliente | Un **documento** por visita |
+| El éxito es que no te necesite | El éxito es que la próxima visita valga más que la anterior |
+
+Consecuencias sobre el backlog:
+
+- **La memoria sube a lo más importante.** Es lo que sostiene una cuenta
+  recurrente: *"el mes pasado te dije que el 25 quedabas corto"*. Sin registro,
+  cada visita arranca de cero.
+- **El entregable es un documento, no una terminal.** Hoy todo imprime en
+  pantalla y no queda nada que el cliente pueda guardar o mostrarle al contador.
+- **El dashboard baja de prioridad.** Sigue teniendo sentido como algo que
+  Thomas muestra en la reunión, no como algo que el cliente abre solo.
+- **`respuestas_del_cliente.json` no es configuración: es el legajo.** Lo que
+  cada cliente contestó, acumulado, es el activo que no se copia con software.
+
+---
+
 ## 1. Dónde estamos
 
 ### Capa 1 — Bots
