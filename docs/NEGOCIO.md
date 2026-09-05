@@ -149,6 +149,39 @@ Sumarla al total de droguerías infla la cifra y mezcla dos cosas distintas: una
 deuda que tiene **tolerancia de proveedor** con una que no la tiene.
 
 
+### Dónde NO coincide el motor con la Calculadora (y por qué está bien)
+
+Contrastado el 05/09/2026: **cierra al peso**. Las dos diferencias son de
+definición, no errores, y conviene tenerlas presentes al mostrar números.
+
+| | La Calculadora | El motor |
+|---|---|---|
+| **Refinanciación** | La suma como deuda con droguerías (es una fila fija del bloque) | La separa: no tiene tolerancia de proveedor |
+| **Notas de crédito** | **No** las descuenta del saldo | Las resta: una NCR baja deuda |
+
+La segunda importa: la Calculadora muestra **$915M más de deuda** de la que
+realmente se debe, porque las NCR se cuentan como ingreso en otra fila pero
+nunca se netean contra la droguería.
+
+También difiere el borde: la Calculadora cuenta *vencido* como **fecha ≤ hoy** y
+el motor como **fecha < hoy**. Sin efecto hasta que caiga un vencimiento hoy
+mismo.
+
+### Los números de la Calculadora no son fórmulas
+
+Las celdas de "Deuda droguerías VENCIDA / a vencer" **no tienen fórmula**: las
+escribe `Calculadora.gs` cuando alguien la corre. Valen lo que valían la última
+vez que se ejecutó.
+
+El 05/09/2026 el mismo valor pasó de **$1.456M a $2.526M entre dos exports del
+mismo día**, con los mismos datos abajo. Se investigó medio día una diferencia
+que era un número viejo.
+
+> **Generalizable:** antes de discutir una diferencia contra la planilla del
+> cliente, hay que saber si el número del cliente es una fórmula viva o el
+> resultado congelado de la última corrida.
+
+
 ---
 
 ## 4 · De dónde entra la plata
