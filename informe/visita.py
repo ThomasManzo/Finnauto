@@ -95,10 +95,42 @@ def analizar(contrato, caja, dias, minimo):
         meses_hist = ((f1 - f0).days + 1) / 30.44
 
     return {"corte": corte, "caja": caja_r, "coherencia": coh,
+            "posicion": posicion(contrato),
             "critico": critico, "peor": peor, "dias_bajo": len(bajo),
             "minimo": minimo, "dias": dias, "meses_historia": meses_hist,
             "movimientos": len(contrato.get("movimientos", [])),
             "cobros": len(contrato.get("cobros_previstos", []))}
+
+
+
+def posicion(contrato):
+    """Caja + lo que le deben - lo que debe.
+
+    ERROR QUE HABIA: el informe mostraba la caja proyectada y listo. En una
+    farmacia eso es una aberracion, porque el grueso del negocio esta en la
+    cuenta corriente con las droguerias: se les debe y ellas deben. Decirle a
+    alguien "vas a quedar con $6.840M" cuando debe $2.690M y le deben $7.176M
+    no es incompleto, es enganoso.
+
+    Esos saldos NO son caja y no se suman como si lo fueran: por eso van en su
+    propia linea y con su propio nombre. Pero tampoco se pueden ignorar, porque
+    son exactamente lo que decide si el mes que viene se puede comprar.
+
+    Solo cuenta lo PENDIENTE y lo que no es intercompany: la deuda entre
+    empresas del mismo grupo no es plata que salga.
+    """
+    def suma(clave, estados):
+        return sum(float(x.get("importe") or 0) for x in contrato.get(clave, [])
+                   if not x.get("intercompany") and x.get("estado") in estados)
+
+    caja = float(contrato.get("caja_hoy") or 0)
+    debe = suma("deuda_droguerias", ("PENDIENTE",))
+    cobrar = suma("cuentas_a_cobrar_droguerias", ("VENCIDO", "A_VENCER"))
+    vencido = suma("cuentas_a_cobrar_droguerias", ("VENCIDO",))
+    if not debe and not cobrar:
+        return None
+    return {"caja": caja, "debe": debe, "cobrar": cobrar, "vencido": vencido,
+            "neto": caja + cobrar - debe}
 
 
 # ------------------------------------------------------------------ html
@@ -164,9 +196,93 @@ def _pagina_dueno(cliente, a):
     h = ['<div class="hoja">']
     h.append('<span class="tag">Para el dueno</span>')
     h.append('<h1>%s</h1>' % _e(cliente.upper()))
-    h.append('<p class="sub">Como viene la caja en los proximos %d dias &middot; '
-             'del %s al %s</p>' % (a["dias"], _fecha_larga(c["desde"]),
-                                   _fecha_larga(c["hasta"])))
+    h.append('<p class="sub">Como estas parado hoy y como viene la caja en los '
+             'proximos %d dias &middot; del %s al %s</p>'
+             % (a["dias"], _fecha_larga(c["desde"]), _fecha_larga(c["hasta"])))
+
+    # LA POSICION VA PRIMERO, ANTES QUE CUALQUIER PROYECCION.
+    # En una farmacia el grueso del negocio esta en la cuenta corriente con las
+    # droguerias. Mostrar solo la caja es mostrar la punta del iceberg.
+    p = a.get("posicion")
+    if p:
+        h.append('<h2>Como estas parado hoy</h2>')
+        h.append('<div class="cajas">')
+        h.append('<div class="caja"><div class="rot">En el banco</div>'
+                 '<div class="val">%s</div></div>' % _m(p["caja"]))
+        h.append('<div class="caja ok"><div class="rot">Te deben las droguerias</div>'
+                 '<div class="val">%s</div></div>' % _m(p["cobrar"]))
+        h.append('<div class="caja alerta"><div class="rot">Les debes</div>'
+                 '<div class="val">%s</div></div>' % _m(p["debe"]))
+        h.append('<div class="caja %s"><div class="rot">Posicion</div>'
+                 '<div class="val">%s</div></div>'
+                 % ("ok" if p["neto"] >= 0 else "alerta", _m(p["neto"])))
+        h.append('</div>')
+        h.append('<p class="sub">Lo que te deben y lo que debes NO es plata en el '
+                 'banco: es cuenta corriente. Pero es lo que decide si el mes que '
+                 'viene podes seguir comprando.</p>')
+        if p["vencido"] > 0:
+            h.append('<div class="panel aviso">')
+            h.append('<p><strong>Hay %s vencido que todavia no cobraste.</strong></p>'
+                     % _m(p["vencido"]))
+            h.append('<p>Es %.0f%% de todo lo que te deben. Cobrar eso es la palanca '
+                     'mas barata que tenes: no hay que pedirle plazo a nadie ni '
+                     'pagar intereses.</p>'
+                     % (100.0 * p["vencido"] / p["cobrar"] if p["cobrar"] else 0))
+            h.append('</div>')
+        h.append('<h2>Y como viene la caja</h2>')
+
+    # SI LOS DATOS NO CIERRAN, NO SE PROYECTA LA CAJA. Y PUNTO.
+    #
+    # La primera version mostraba "quedarias con $6.840M / la caja aguanta todo
+    # el periodo" en la hoja del dueno, y ponia el aviso de que ese numero no era
+    # confiable en la hoja tecnica. O sea: la persona que menos entiende recibia
+    # el numero mas confiado, y la salvedad quedaba donde solo la lee el que ya
+    # la sabe. Es la peor forma posible de estar equivocado.
+    #
+    # Un asterisco tampoco alcanza: el numero igual queda en la cabeza. Si no se
+    # puede afirmar, NO SE MUESTRA. Lo que si se puede afirmar -- cuanto hay que
+    # pagar -- se muestra igual, porque eso sirve.
+    if a["coherencia"] and a["coherencia"]["avisos"]:
+        h.append('<div class="panel aviso">')
+        h.append('<p><strong>Todavia no puedo decirte si la caja te alcanza.</strong></p>')
+        h.append('<p>Los movimientos cargados no cierran entre si: figuran %s que '
+                 'entran y %s que salen en los ultimos meses, y con esa diferencia '
+                 'la caja tendria que haber crecido muchisimo mas de lo que crecio.</p>'
+                 % (_m(a["coherencia"]["ingresos"]), _m(a["coherencia"]["egresos"])))
+        h.append('<p>Puede ser por una razon buena &mdash; que haya compras que se '
+                 'cancelan sin pasar por el banco, con notas de credito, endoso de '
+                 'cheques o compensando cuentas a cobrar &mdash; o porque hay gastos '
+                 'que no se estan registrando. <strong>Son cosas muy distintas y '
+                 'necesito confirmarlo con vos antes de darte un numero.</strong></p>')
+        h.append('<p>Mientras tanto, lo que si esta firme es lo que hay que pagar.</p>')
+        h.append('</div>')
+
+        h.append('<div class="cajas">')
+        h.append('<div class="caja"><div class="rot">Tenes hoy</div>'
+                 '<div class="val">%s</div></div>' % _m(c["caja_inicial"]))
+        h.append('<div class="caja alerta"><div class="rot">Vas a pagar en %d dias</div>'
+                 '<div class="val">%s</div></div>' % (a["dias"], _m(c["total_egresos"])))
+        h.append('</div>')
+
+        h.append('<h2>Que hay que pagar, semana por semana</h2>')
+        h.append('<table><tr><th>Semana del</th><th class="num">A pagar</th></tr>')
+        for i in range(0, len(c["curva"]), 7):
+            tramo = c["curva"][i:i + 7]
+            sale = sum(-x["movimiento"] for x in tramo if x["movimiento"] < 0)
+            h.append('<tr><td>%s</td><td class="num">%s</td></tr>'
+                     % (_fecha_larga(tramo[0]["fecha"]), _m(sale)))
+        h.append('</table>')
+
+        h.append('<h2>Lo que necesito de vos</h2>')
+        h.append('<ul><li>Confirmar si hay compras que se cancelan por fuera del '
+                 'banco (notas de credito, endoso de cheques, cuentas a cobrar).</li>'
+                 '<li>Si no las hay, revisar juntos que gastos no se estan '
+                 'cargando en la planilla.</li>'
+                 '<li>Con eso resuelto, la proyeccion de caja sale en el acto.</li></ul>')
+        h.append('<div class="pie">Prefiero no darte un numero de caja antes de '
+                 'aclarar esto. Un numero optimista es peor que ninguno.</div>')
+        h.append('</div>')
+        return chr(10).join(h)
 
     # El titular: la respuesta a "¿me alcanza?", antes que cualquier numero.
     if a["critico"]:
@@ -288,6 +404,25 @@ def _pagina_thomas(cliente, a, contrato, medicion):
     eve = sorted([p["clave"] for p in pe.values()
                   if p["perfil"] == "evento" and p["clave"].strip()])
     sin_tipo = [p for p in pe.values() if not p["clave"].strip()]
+    p = a.get("posicion")
+    if p:
+        h.append('<h2>La posicion, desglosada</h2>')
+        h.append('<table>')
+        h.append('<tr><td>Caja (bancos + efectivo)</td><td class="num">%s</td></tr>'
+                 % _m(p["caja"]))
+        h.append('<tr><td>Cuentas a cobrar a droguerias</td><td class="num">%s</td></tr>'
+                 % _m(p["cobrar"]))
+        h.append('<tr><td style="padding-left:26px;color:#5a6270">de las cuales '
+                 'VENCIDAS</td><td class="num">%s</td></tr>' % _m(p["vencido"]))
+        h.append('<tr><td>Deuda con droguerias (solo PENDIENTE)</td>'
+                 '<td class="num">-%s</td></tr>' % _m(p["debe"]))
+        h.append('<tr><td><strong>Posicion</strong></td>'
+                 '<td class="num"><strong>%s</strong></td></tr>' % _m(p["neto"]))
+        h.append('</table>')
+        h.append('<p class="sub">No se cuentan los saldos intercompany ni la deuda '
+                 'ya marcada como PAGADO. Estos saldos no son caja: se muestran '
+                 'aparte a proposito, pero omitirlos daria una foto irreal.</p>')
+
     h.append('<h2>Como modela cada rubro</h2>')
     h.append('<p><strong>Difusos</strong> (pasan casi todos los dias habiles, se '
              'modelan como un ritmo diario): %s</p>'
