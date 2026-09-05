@@ -421,5 +421,12 @@
     "_ayuda": "SEGUNDO EJE, independiente de la tolerancia de fecha. 'dias_tolerancia' dice cuanto se puede correr la FECHA. 'monto_variable' dice si el IMPORTE de la planilla es un numero cierto o una estimacion.",
     "_ejemplo": "Honorarios DJ: se pagan pasada la mitad del mes SIEMPRE (fecha fija, tolerancia 0) pero el importe es el 10% del resultado del mes anterior, asi que el numero cargado es una estimacion.",
     "_por_que_importa": "Un movimiento con monto_variable NO se puede patear, pero tampoco se puede confiar en su importe. El motor no debe proponerlo como palanca, y SI debe avisar que ese numero puede moverse. Correr el simulador con --estres N aumenta un N% los montos variables para ver si el plan aguanta igual."
+  },
+  "_por_que_el_cash_no_cierra": {
+    "_ayuda": "Por que los ingresos del contrato son ~2,5 veces los egresos, y por que ESTA BIEN.",
+    "explicacion_de_thomas": "Muchas veces las compras a droguerias se pagan con notas de credito, con endoso de cheques o compensando cuentas a cobrar. Eso esta excluido del cash a proposito: nunca toca el banco. Por eso el cash nunca va a dar el 100% de la realidad economica; despues todo se ajusta.",
+    "consecuencia": "El Cash es un flujo de CAJA, no un estado de resultados. Que falte el egreso de una compra pagada por endoso NO es un error de carga: es que ese movimiento no existe en la caja.",
+    "_no_intentar": "NO tratar de 'completar' el lado de los egresos con la deuda de droguerias. Ya se propuso una vez y estaba mal. Sumaria egresos que nunca se pagaron con plata, y la curva de caja pasaria a mentir para el otro lado.",
+    "que_si_hay_que_hacer": "simulador/proyeccion.py revisar_coherencia() detecta el desbalance y PREGUNTA, sin diagnosticar. En MAGA la respuesta es 'se cancela por fuera'; en otro cliente la misma senal puede ser que no cargan los gastos, que si es un problema."
   }
 }

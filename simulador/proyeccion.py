@@ -581,17 +581,27 @@ def revisar_coherencia(contrato, meses=3):
         entra  $7.032M
         sale   $2.707M
         neto  +$4.326M por mes
-    pero la caja es de $1.183M y no se mueve. O sea que la empresa NO gana
-    $4.326M por mes: hay egresos que no estan registrados como movimientos.
-    En este caso son las compras a droguerias, que en esa planilla viven en un
-    bloque aparte.
+    con una caja de $1.183M que no se mueve. La empresa obviamente no gana eso.
 
-    Sin este chequeo, la curva de caja da un dibujo precioso que sube y sube, y
-    es exactamente el error mas caro posible: decirle a alguien que le sobra
-    plata cuando no le sobra.
+    LA PRIMERA VERSION DE ESTE CHEQUEO DIAGNOSTICABA MAL: decia "faltan egresos
+    sin registrar". Thomas lo corrigio, y la explicacion es otra:
 
-    No se puede corregir solo. Lo que si se puede es DETECTARLO y preguntar, que
-    es lo mismo que hace el lector con las columnas que no entiende.
+        "muchas veces las compras de droguerias se pagan con NCR, o con endoso
+         de cheques, o con cuentas a cobrar. Esta excluido del cash, por eso
+         nunca va a poder dar el 100% de realidad: despues todo se ajusta."
+
+    O sea que esos egresos NO faltan: nunca tocan la caja. Un pago hecho
+    endosando un cheque no mueve el saldo del banco. El Cash es un flujo de
+    CAJA, no un estado de resultados, y esta bien que sea parcial.
+
+    Por eso este chequeo NO diagnostica: detecta el desbalance y pregunta. En
+    MAGA la respuesta es "se cancela por fuera"; en otra empresa la misma senal
+    puede ser que se olvidaron de cargar a los proveedores, que es un problema
+    de verdad. La herramienta no puede saber cual de las dos es, y adivinar mal
+    es peor que preguntar.
+
+    Lo que si hace siempre: impedir que la curva de caja se presente como si
+    fuera completa.
     """
     egr = [x for x in contrato.get("movimientos", []) if x.get("fecha")]
     ing = _como_movimientos(contrato.get("cobros_previstos"))
@@ -613,23 +623,26 @@ def revisar_coherencia(contrato, meses=3):
     caja = float(contrato.get("caja_hoy") or 0)
 
     avisos = []
-    # Si el neto mensual es una fraccion grande de la caja y la caja no crece a
-    # ese ritmo, es que falta registrar movimientos de un lado.
     if caja and neto_mes > caja * 0.5:
         avisos.append(
-            "El contrato dice que entran %s por mes mas de lo que sale, pero la "
-            "caja es de %s. Si eso fuera cierto, la caja se multiplicaria en "
-            "pocos meses. Lo mas probable es que FALTEN EGRESOS sin registrar "
-            "(en una farmacia, tipicamente las compras a droguerias)."
+            "Entra %s por mes mas de lo que sale, con una caja de %s. Si eso "
+            "fuera plata de verdad, la caja se multiplicaria en pocos meses."
             % (_m(neto_mes), _m(caja)))
     if te and ti / te > 2.0:
-        avisos.append(
-            "Entra %.1f veces lo que sale. Preguntarle al cliente que gastos no "
-            "estan en esta planilla." % (ti / te))
+        avisos.append("Entra %.1f veces lo que sale." % (ti / te))
     if ti and te / ti > 2.0:
+        avisos.append("Sale %.1f veces lo que entra." % (te / ti))
+
+    # Las dos explicaciones posibles, sin elegir una. En MAGA es la primera; en
+    # una empresa que recien empieza a ordenarse suele ser la segunda, y son
+    # cosas MUY distintas: una es normal, la otra es un agujero.
+    if avisos:
         avisos.append(
-            "Sale %.1f veces lo que entra. O falta registrar ingresos, o la "
-            "empresa se esta financiando con algo que no figura aca." % (te / ti))
+            "PREGUNTAR: (a) ¿hay compras que se cancelan por fuera de la caja "
+            "-- notas de credito, endoso de cheques, compensacion con cuentas a "
+            "cobrar? Si es asi esta bien, esos egresos nunca tocan el banco. "
+            "(b) ¿o hay gastos que simplemente no se estan cargando? Eso si es "
+            "un agujero.")
 
     return {"ingresos": ti, "egresos": te, "meses": meses,
             "neto_mes": neto_mes, "caja": caja, "avisos": avisos}
@@ -684,8 +697,11 @@ def imprimir_caja(r, minimo=0.0, coherencia=None):
                 linea += palabra + " "
             print(linea.rstrip())
         print("")
-        print("  Mientras falte ese lado, la curva de arriba esta INCOMPLETA y")
-        print("  peca de optimista. Es el error mas caro posible.")
+        print("")
+        print("  Segun cual sea la respuesta, la curva de arriba puede estar bien")
+        print("  (es la CAJA, y lo que se cancela por fuera no le corresponde) o")
+        print("  puede estar de mas y pecar de optimista. No lo puede decidir el")
+        print("  programa.")
 
     print("")
     print("  OJO: esto sale del historial, no de una carga manual. Medido sobre")
