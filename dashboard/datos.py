@@ -726,6 +726,33 @@ def memoria_del_cliente(cliente):
     return {"snapshots": out, "conciliadas": 0}
 
 
+
+def planes_por_ventana(contrato, unidad, hoy, cliente, ventanas=(7, 14, 21, 30, 45)):
+    """El plan minimo para cada ventana del timeline.
+
+    Se precalculan todas: mover el slider tiene que cambiar de plan al toque, y
+    la regla del proyecto es que la plata se calcula en Python. Son cinco
+    calculos baratos sobre datos que ya estan en memoria.
+    """
+    from simulador import plan as PL
+    try:
+        fichas = PROV.cargar_proveedores(cliente)
+    except Exception:
+        fichas = {}
+    p = proyeccion(contrato, unidad, hoy)
+    out = {}
+    for v in ventanas:
+        try:
+            pl = PL.armar(p, dias=v, proveedores=fichas)
+        except Exception as e:
+            out[str(v)] = {"error": str(e)}
+            continue
+        pl.pop("curva", None)          # la curva la arma el navegador
+        pl["frase"] = PL.en_palabras(pl)
+        out[str(v)] = pl
+    return out
+
+
 def armar(contrato, cliente="maga"):
     hoy = D.hoy_de(contrato)
     us = POS.unidades(contrato)
@@ -755,6 +782,10 @@ def armar(contrato, cliente="maga"):
             "ingresos_dia": ingresos_por_dia(contrato, u, hoy),
             "a_cobrar": a_cobrar(contrato, u, hoy),
             "proyeccion": proyeccion(contrato, u, hoy),
+            # El plan minimo para cada ventana que ofrece el timeline.
+            # Se precalculan porque el HTML no calcula plata: mover el slider
+            # cambia de plan, no lo recalcula.
+            "planes": planes_por_ventana(contrato, u, hoy, cliente),
             "refi": refinanciacion(contrato, u, hoy),
         }
 
