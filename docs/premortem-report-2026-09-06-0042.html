@@ -1,0 +1,515 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Premortem finauto — 06/09/2026</title>
+<style>
+  :root{
+    --bg:#0a0e1a; --bg2:#111726; --bg3:#161d2f;
+    --line:#232c42; --line2:#2e3a55;
+    --tx:#e7ecf5; --tx2:#a6b2c9; --tx3:#6d7c99;
+    --rojo:#ff5c5c; --naranja:#ff9f43; --amarillo:#ffd166;
+    --verde:#3ddc97; --cian:#4cc9f0; --violeta:#b085f5;
+    --rosa:#ff7eb6; --lima:#c3e88d; --acero:#7aa2f7; --coral:#f78c6c;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);
+    font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .wrap{max-width:960px;margin:0 auto;padding:48px 24px 80px}
+
+  header{border-bottom:1px solid var(--line);padding-bottom:32px;margin-bottom:44px}
+  .kicker{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--tx3);margin:0 0 14px}
+  h1{font-size:clamp(30px,5vw,44px);line-height:1.1;margin:0 0 16px;letter-spacing:-.02em;font-weight:650}
+  .premisa{background:var(--bg2);border-left:3px solid var(--rojo);padding:16px 20px;
+    border-radius:0 8px 8px 0;color:var(--tx2);font-size:15px;margin:22px 0 0}
+  .premisa b{color:var(--tx)}
+
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-top:26px}
+  .stat{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+  .stat .n{font-size:26px;font-weight:650;letter-spacing:-.02em;line-height:1.1}
+  .stat .l{font-size:11px;color:var(--tx3);text-transform:uppercase;letter-spacing:.09em;margin-top:5px}
+
+  h2.sec{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--tx3);
+    margin:56px 0 20px;padding-bottom:10px;border-bottom:1px solid var(--line);font-weight:600}
+
+  .sint{background:var(--bg2);border:1px solid var(--line);border-radius:12px;
+    padding:24px 26px;margin-bottom:16px;position:relative;overflow:hidden}
+  .sint::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--c,var(--acero))}
+  .sint h3{margin:0 0 6px;font-size:19px;letter-spacing:-.01em;color:var(--c,var(--tx))}
+  .sint .tag{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--tx3);
+    display:block;margin-bottom:12px}
+  .sint p{margin:0 0 12px;color:var(--tx2)}
+  .sint p:last-child{margin-bottom:0}
+  .sint strong{color:var(--tx);font-weight:600}
+
+  ol.plan{list-style:none;counter-reset:p;padding:0;margin:0}
+  ol.plan li{counter-increment:p;background:var(--bg2);border:1px solid var(--line);
+    border-radius:10px;padding:18px 20px 18px 62px;margin-bottom:10px;position:relative;color:var(--tx2)}
+  ol.plan li::before{content:counter(p);position:absolute;left:20px;top:17px;width:26px;height:26px;
+    background:var(--bg3);border:1px solid var(--line2);border-radius:7px;color:var(--acero);
+    font-size:13px;font-weight:650;display:flex;align-items:center;justify-content:center}
+  ol.plan li b{color:var(--tx);display:block;margin-bottom:4px;font-weight:600}
+  ol.plan li .ref{font-size:11px;color:var(--tx3);text-transform:uppercase;letter-spacing:.09em;margin-top:8px;display:block}
+  .urg{border-color:var(--rojo)!important}
+  .urg::before{color:var(--rojo)!important;border-color:var(--rojo)!important}
+
+  ul.check{list-style:none;padding:0;margin:0}
+  ul.check li{background:var(--bg2);border:1px solid var(--line);border-radius:10px;
+    padding:15px 18px 15px 50px;margin-bottom:9px;position:relative;color:var(--tx2)}
+  ul.check li::before{content:"";position:absolute;left:18px;top:18px;width:16px;height:16px;
+    border:1.5px solid var(--line2);border-radius:4px}
+  ul.check li b{color:var(--tx);font-weight:600}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+  .card{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:20px 22px;
+    border-top:3px solid var(--c)}
+  .card .num{font-size:10px;letter-spacing:.16em;color:var(--c);text-transform:uppercase;font-weight:650}
+  .card h3{margin:8px 0 14px;font-size:17px;line-height:1.3;letter-spacing:-.01em}
+  .meters{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+  .m{font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:3px 9px;border-radius:20px;
+    border:1px solid var(--line2);color:var(--tx3);font-weight:600}
+  .m.alta{color:var(--naranja);border-color:#5a3a1a}
+  .m.critica{color:var(--rojo);border-color:#5a1f1f;background:#1e0f12}
+  .m.media{color:var(--amarillo);border-color:#54481c}
+  .card .lb{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--tx3);
+    margin:16px 0 6px;font-weight:600}
+  .card p{margin:0 0 11px;color:var(--tx2);font-size:14px}
+  .card .sup{background:var(--bg3);border-radius:8px;padding:12px 14px;color:var(--tx);
+    font-size:14px;font-style:italic;border-left:2px solid var(--c)}
+  .card ul{margin:0;padding-left:18px;color:var(--tx2);font-size:14px}
+  .card ul li{margin-bottom:7px}
+
+  footer{margin-top:64px;padding-top:24px;border-top:1px solid var(--line);
+    color:var(--tx3);font-size:12.5px;line-height:1.8}
+  footer b{color:var(--tx2);font-weight:600}
+  code{background:var(--bg3);padding:2px 6px;border-radius:4px;font-size:.9em;color:var(--lima)}
+  .nota{background:#1a1410;border:1px solid #4a3520;border-radius:10px;padding:16px 20px;
+    color:var(--amarillo);font-size:14px;margin:20px 0 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <p class="kicker">Informe de premortem · Método Klein</p>
+  <h1>finauto no le vendió a ninguna cadena ajena</h1>
+  <div class="premisa">
+    <b>La premisa:</b> es <b>marzo de 2027</b>. Pasaron seis meses. Ninguna cadena ajena a MAGA+
+    paga por finauto. El intento está muerto. Esto es la autopsia, escrita antes de que pase.
+  </div>
+  <div class="stats">
+    <div class="stat"><div class="n">10</div><div class="l">modos de fallo</div></div>
+    <div class="stat"><div class="n">10</div><div class="l">agentes en paralelo</div></div>
+    <div class="stat" style="border-color:#5a1f1f"><div class="n" style="color:var(--rojo)">28</div><div class="l">días para conciliar</div></div>
+    <div class="stat"><div class="n">195</div><div class="l">tests del motor</div></div>
+    <div class="stat"><div class="n">0</div><div class="l">entregables cobrables</div></div>
+  </div>
+</header>
+
+<div class="nota">
+  <b>Cambió el encuadre el 06/09/2026:</b> Thomas ya no trabaja en MAGA+. El cliente #1 pasó a
+  prospecto, no hay acceso al cash de producción, los bots están frenados por partida doble y
+  <b>el dato es una foto del 05/09/2026 que no se puede refrescar</b>. Todo lo que sigue está leído
+  con eso puesto.
+</div>
+
+<div class="nota" style="background:#101a16;border-color:#224a38;color:var(--verde)">
+  <b>Correcciones aplicadas tras la primera pasada.</b> Cuatro escenarios estaban construidos sobre
+  premisas equivocadas y se reescribieron: el proyecto <b>no está terminado</b> y el documento por
+  visita es una pieza pendiente, no algo abandonado; <b>nunca se dijo que el onboarding fuera de un
+  día</b>; <b>los bots funcionan</b> —probados contra Galicia— y lo que falta es la ficha de cada
+  banco nuevo; el diseño <b>no pide ver las claves de nadie</b> (se cargan cifradas y vos no las
+  leés); y <b>no pertenecés a la competencia</b>. El fallo 07 queda marcado como punto en disputa.
+</div>
+
+<h2 class="sec">La síntesis</h2>
+
+<div class="sint" style="--c:var(--naranja)">
+  <span class="tag">El fallo más probable</span>
+  <h3>El documento que se cobra nunca se escribió</h3>
+  <p>El proyecto no está terminado y el documento es una de las piezas que faltan: eso está claro y
+  es legítimo. El fallo no es que hoy no exista — es que dentro de seis meses <strong>siga sin
+  existir</strong>, mientras el motor sumó tests. Es el único artefacto que convierte todo lo
+  construido en algo facturable, y la única pieza importante que <strong>no depende de ningún
+  acceso que ya no tenés</strong>.</p>
+  <p>El mecanismo del fallo no es la falta de tiempo: es que construir motor da satisfacción
+  inmediata, sale rápido con asistencia de IA y no expone a un "no". Cada semana hay commits, y el
+  progreso comercial puede quedarse en cero sin que se note. Tu propio <code>ESTADO.md</code> ya lo
+  dice — <strong>"lo único que mueve la aguja ahora es lo que sirva para vender"</strong>. La
+  pregunta del premortem no es si lo sabés: es qué hace que dentro de seis meses siga escrito ahí.</p>
+</div>
+
+<div class="sint" style="--c:var(--rojo)">
+  <span class="tag">El fallo más peligroso</span>
+  <h3>El dato se congela y la prueba caduca — con fecha de vencimiento</h3>
+  <p>Este es el único fallo <strong>irreversible</strong> de la lista. Guardaste
+  <code>proyeccion_2026-09-04.json</code>: 226 movimientos proyectados hasta el
+  <strong>04/10/2026</strong>. Para conciliarla necesitás el cash real de MAGA+ de ese período.
+  Sin acceso, esa conciliación no se puede hacer <strong>nunca más</strong>: no es que se posterga,
+  se pierde.</p>
+  <p>Y lo que se pierde es justo el activo que declaraste como el corazón del negocio: la memoria,
+  "el mes pasado te dije que el 25 quedabas corto". En febrero de 2027, cuando un prospecto
+  pregunte <strong>"¿y le acertaste?"</strong>, la respuesta va a ser una promesa de hace cinco
+  meses sin verificar, sobre un cliente que además ya no es cliente. Un motor de predicción que
+  nunca mostró un acierto no es un producto: es una hipótesis.</p>
+</div>
+
+<div class="sint" style="--c:var(--violeta)">
+  <span class="tag">El supuesto oculto</span>
+  <h3>Que el caso MAGA+ es un activo que te espera quieto</h3>
+  <p>Sabés que falta la demo y sabés que falta el precio: lo dijiste vos. Lo que no está
+  cuestionado es el <strong>estado del material con el que vas a hacer las dos cosas</strong>. La
+  foto del 05/09/2026 se trata como una base estable — algo que está ahí, guardado, listo para
+  cuando le llegue el turno en la secuencia.</p>
+  <p>No lo es. <strong>Es un activo que se deprecia, y una parte tiene fecha de vencimiento
+  exacta.</strong> La proyección guardada llega al 04/10/2026: conciliarla exige el cash real de
+  MAGA+ de ese período, y sin acceso esa conciliación no se posterga, se pierde. El resto del caso
+  también envejece: cada mes que pasa, "el día crítico del 25/09" se parece menos a una predicción
+  y más a una anécdota vieja de un cliente que ya no es cliente.</p>
+  <p>El supuesto oculto, entonces, no es que falte software. Es que <strong>los pendientes son
+  secuenciales e independientes</strong> —primero la demo, después el precio, después el acceso—
+  cuando en realidad uno de ellos tiene un reloj propio corriendo que no espera a los otros.</p>
+</div>
+
+<h2 class="sec">El plan revisado</h2>
+<ol class="plan">
+  <li class="urg"><b>Antes del 04/10/2026 — quedan 28 días — pedile a MAGA+ el cash actualizado para conciliar la proyección.</b>
+  No como trabajo ni como favor abierto: como pedido puntual de un archivo exportado. Ofrecé a
+  cambio el informe del día crítico del 25/09 sin cargo. Es la única chance de tener un backtest
+  real y de poder decir "te lo dije y pasó". Después del 04/10 esa prueba no existe nunca más.
+  <span class="ref">Contra el fallo 10 — el dato congelado</span></li>
+
+  <li class="urg"><b>Esta semana: escribí el documento por visita con la foto del 05/09.</b>
+  Un PDF fechado, versionado, con tu nombre. Contenido que ya tenés y no requiere ningún dato
+  nuevo: los cuatro hallazgos, el día crítico del 25/09, el 9% flexible, el reparto semanal
+  sugerido. Cero bots, cero dashboard, cero acceso. Es la pieza que convierte seis meses de código
+  en algo que se puede mandar por mail.
+  <span class="ref">Contra los fallos 1 y 5</span></li>
+
+  <li><b>Antes del 30/09: mandale a MAGA+ un número por escrito.</b> Precio mensual, qué incluye,
+  qué no, y qué pasa si no hay acceso a los bancos. Sin un precio efectivamente cobrado no hay
+  ancla para cotizarle a nadie más — y ojo con esto: <strong>MAGA+ hoy califica para tu propio
+  test</strong>, porque ya no sos parte de la empresa.
+  <span class="ref">Contra el fallo 6 — el precio que nunca se fija</span></li>
+
+  <li><b>Escribí el papel de una carilla que hoy no existe.</b> Que las credenciales se carguen
+  cifradas y vos nunca las veas resuelve el problema técnico — pero lo que un dueño pide antes de
+  dar acceso no es cifrado, es <strong>un contrato</strong>: qué datos tocás, dónde quedan, quién
+  responde si un consejo sale mal, y qué pasa cuando termina la relación. Una carilla alcanza.
+  Escribila ahora, no cuando te la pidan en una reunión y tengas que decir "te la mando".
+  Y ordená la propuesta en dos fases: fase 1 la planilla exportada, fase 2 las credenciales del
+  home banking con el papel firmado.
+  <span class="ref">Contra los fallos 3 y 4</span></li>
+
+  <li><b>Sacá la config de MAGA de adentro del Exportador antes de tocar la planilla del segundo
+  prospecto.</b> No es prolijidad: es la diferencia entre tres días y tres semanas de onboarding, y
+  vos mismo lo tenés anotado como "el cuello de botella del negocio". Regla dura: si a una planilla
+  ajena no se le puede apuntar un archivo de config sin tocar código, no salgas a vender todavía.
+  <span class="ref">Contra los fallos 2 y 7</span></li>
+
+  <li><b>Hacé 5 llamadas de descubrimiento con una sola pregunta antes de armar el pitch:
+  "¿tenés línea bancaria disponible hoy?"</b> Si la mayoría dice que sí, tu nicho está mal
+  definido: no viven al límite del proveedor y el motor les resuelve un problema que no tienen.
+  Es mejor enterarte en octubre que en marzo.
+  <span class="ref">Contra el fallo 8 — el nicho más chico de lo que parece</span></li>
+
+  <li><b>Escribí cuántos meses podés sostener esto sin cobrar, y qué hacés el día que se acaba.</b>
+  Sin sueldo de MAGA+, el reloj del proyecto no lo marca el backlog: lo marca tu plata. Ese número
+  debería estar arriba de todo en <code>ESTADO.md</code>, no en tu cabeza.
+  <span class="ref">Contra el fallo 9 — el estancamiento</span></li>
+</ol>
+
+<h2 class="sec">Lista de verificación pre-lanzamiento</h2>
+<ul class="check">
+  <li><b>¿Existe un PDF fechado que un tercero pueda leer sin vos al lado?</b> Si la respuesta es
+  "está casi", la respuesta es no.</li>
+  <li><b>¿Pediste el cash de octubre antes del 04/10?</b> Es la única fecha de esta lista que no
+  se puede correr.</li>
+  <li><b>¿Hay un número de precio mensual escrito en algún lado?</b> No "depende del volumen": un
+  número.</li>
+  <li><b>¿Hay una fecha concreta en el calendario con una persona ajena a MAGA+?</b> No "voy a
+  buscar prospectos": una fecha.</li>
+  <li><b>¿La fase 1 de tu propuesta pide credenciales de home banking?</b> Si sí, sacalas y
+  moveelas al mes 2.</li>
+</ul>
+
+<h2 class="sec">Los 10 modos de fallo · un agente por cada uno</h2>
+<div class="grid">
+
+  <div class="card" style="--c:var(--naranja)">
+    <div class="num">Fallo 01</div>
+    <h3>El entregable que se cobra nunca se construyó</h3>
+    <div class="meters"><span class="m alta">Probabilidad alta</span><span class="m alta">Daño alto</span></div>
+    <p>Decisión de ingeniero: primero las tuberías, después la interfaz. Pero el documento no es
+    interfaz, <strong>es el producto</strong>. El bloqueo de los bancos se usó como excusa para
+    postergar lo que en realidad no se sabía cómo hacer: convertir "el motor contesta bien" en
+    "acá tenés un papel que le mostrás a tu contador".</p>
+    <p>Los hallazgos fuertes —el faro apuntando a abril, los $915M, el "45 días" que suma 56— se
+    quedaron en conversaciones sueltas. Se volvieron anécdotas de asesoría informal, nunca
+    informes fechados.</p>
+    <div class="lb">El supuesto</div>
+    <div class="sup">Que un motor técnicamente correcto se traduce solo, después, en un entregable
+    vendible.</div>
+    <div class="lb">Señales tempranas</div>
+    <ul>
+      <li>Pasan 30 días desde la validación al peso sin que exista un archivo fechado y
+      versionado que se pueda mostrar sin estar presente.</li>
+      <li>Los hallazgos se mencionan en conversación pero no aparecen citados en ningún documento
+      entregado.</li>
+    </ul>
+  </div>
+
+  <div class="card" style="--c:var(--cian)">
+    <div class="num">Fallo 02</div>
+    <h3>El primer onboarding ajeno se come el trimestre</h3>
+    <div class="meters"><span class="m media">Probabilidad media</span><span class="m alta">Daño alto</span></div>
+    <p>Nadie dijo que fuera un día. Pero el plan sí dice <em>"onboarding = una reunión que las
+    herramientas preparan"</em>, y hoy las herramientas que lo prepararían no existen: el
+    reconocedor de planillas está en el backlog, marcado por vos como <strong>"el cuello de botella
+    del negocio"</strong>.</p>
+    <p>Llega la planilla del prospecto y no se parece a la de MAGA+: otras columnas, otro orden de
+    fechas, y la convención clave no aplica —esta cadena <strong>borra la celda</strong> cuando
+    paga en vez de dejarla en cero, así que "monto con fecha vieja = vencido" no significa nada
+    ahí. No hay Suizo ni DDS: hay dos droguerías regionales con lógica propia, y pagarés en vez de
+    endoso, que el motor no contempla. Cada campo nuevo toca código del Exportador. Semanas sin
+    cobrar, y el prospecto se cae por desgaste, no por rechazo.</p>
+    <div class="lb">El supuesto</div>
+    <div class="sup">Que el trabajo de generalizar se podía dejar para cuando apareciera el segundo
+    cliente — cuando es justamente lo que determina si hay un segundo cliente.</div>
+    <div class="lb">Señales tempranas</div>
+    <ul>
+      <li>El Exportador sigue con config hardcodeada: si a una planilla nueva no se le puede
+      apuntar un archivo de config sin tocar código, la señal ya está prendida.</li>
+      <li>Días entre "recibí la planilla" y "le mostré el primer número propio". Si no baja a menos
+      de tres, el patrón se está repitiendo.</li>
+    </ul>
+  </div>
+
+  <div class="card" style="--c:var(--verde)">
+    <div class="num">Fallo 03</div>
+    <h3>El motor de bots anda; la ficha del banco del prospecto, no</h3>
+    <div class="meters"><span class="m alta">Probabilidad alta</span><span class="m media">Daño medio</span></div>
+    <p>El bot genérico está probado punta a punta y Galicia funciona: eso no está en discusión. Lo
+    que falta es la ficha de selectores de cada banco nuevo — y una ficha no se llena de memoria,
+    se llena <strong>navegando una sesión real de ese banco</strong>. Ahí está el círculo: para
+    mapear Comafi o Santander hace falta estar adentro de un Comafi o un Santander, y hoy no hay
+    ninguno al alcance.</p>
+    <p>Aparece un prospecto con cuentas en dos bancos sin ficha. Llenarlas exige entrar a las
+    cuentas del prospecto <em>antes</em> de tener contrato. Para no trabar la reunión sale el
+    atajo: "mandame los extractos por mail". Funciona —el clasificador los parsea igual— pero la
+    promesa se degradó a interpretar lo que el cliente manda a mano, que es lo que ya hacía con su
+    contador. A los dos meses deja de mandarlos.</p>
+    <div class="lb">El supuesto</div>
+    <div class="sup">Que llenar una ficha es trabajo que se agenda para "cuando haya cliente" —
+    cuando la ficha vacía es parte de lo que impide cerrarlo.</div>
+    <div class="lb">Señales tempranas</div>
+    <ul>
+      <li>Pasan 4 semanas desde el primer contacto con un prospecto sin un solo selector mapeado
+      de su banco.</li>
+      <li>El verbo cambia: de <strong>"yo bajo los extractos"</strong> a <strong>"mandame los
+      extractos"</strong>. Ese cambio es el fallo ocurriendo en tiempo real.</li>
+    </ul>
+  </div>
+
+  <div class="card" style="--c:var(--rosa)">
+    <div class="num">Fallo 04</div>
+    <h3>El "sí" de la reunión no se convierte en un acceso cargado</h3>
+    <div class="meters"><span class="m alta">Probabilidad alta</span><span class="m alta">Daño alto</span></div>
+    <p><em>Corrección respecto de la versión anterior: no pertenecés a la competencia, y el diseño
+    no te pide ver las claves de nadie — el cliente las carga él, cifradas con DPAPI, y vos nunca
+    las leés. Eso baja el riesgo, no lo elimina.</em></p>
+    <p>La reunión sale bien y el dueño dice "dale, arrancamos". Después hay que hacer dos cosas
+    concretas: que alguien de su equipo se siente a cargar las credenciales en tu setup, y que te
+    pasen la deuda real con cada droguería y los retiros de los socios. <strong>Ninguna de las dos
+    la hace un "sí" verbal</strong>: la primera necesita que un tercero acepte que un bot en tu
+    máquina entre a sus cuentas —cosa que los bancos formalmente desalientan— y la segunda es
+    material que nadie manda sin un papel firmado.</p>
+    <p>El dueño pide "mandame cómo protegés los datos". No hay entidad, ni contrato, ni cláusula de
+    confidencialidad para contestarle en el momento. Tres semanas sin respuesta. Alguno manda un
+    Excel viejo "para probar", y ahí se estanca.</p>
+    <div class="lb">El supuesto</div>
+    <div class="sup">Que el cuello del acceso es técnico —cómo se guardan las credenciales— cuando
+    en realidad es contractual: quién responde si algo sale mal, y con qué papel.</div>
+    <div class="lb">Señales tempranas</div>
+    <ul>
+      <li>Contá reuniones positivas contra accesos efectivamente cargados. Si a los 60 días hay 3
+      "sí" verbales y 0 credenciales cargadas, el patrón está activo.</li>
+      <li>La primera vez que un prospecto pide un contrato o una política de datos y no tenés un
+      documento para contestarle en el momento — eso es la señal, no un trámite.</li>
+    </ul>
+  </div>
+
+  <div class="card" style="--c:var(--acero)">
+    <div class="num">Fallo 05</div>
+    <h3>El valor solo se demuestra adentro</h3>
+    <div class="meters"><span class="m alta">Probabilidad alta</span><span class="m media">Daño medio</span></div>
+    <p>El pitch abre fuerte con los hallazgos. El prospecto escucha y pregunta lo obvio:
+    <strong>"¿y eso lo viste en mis números o en los de otro?"</strong> Silencio. Mostrar los
+    hallazgos reales es exhibir la intimidad financiera de una empresa del mismo mercado.</p>
+    <p>Entonces se cae al modo genérico —"el motor puede hacer esto con tus datos"— que es
+    exactamente lo que dice cualquier consultor de Excel, cualquier implementador de Power BI o
+    cualquiera con ChatGPT. La diferenciación real vive adentro de datos que no se pueden mostrar.
+    Huevo y gallina: <strong>necesitás acceso total para producir la prueba, y la prueba para
+    conseguir acceso total.</strong></p>
+    <div class="lb">El supuesto</div>
+    <div class="sup">Que la potencia técnica del motor hablaría por sí sola en una primera reunión,
+    sin necesitar una prueba empírica sobre los datos del prospecto.</div>
+    <div class="lb">Señales tempranas</div>
+    <ul>
+      <li>Tres o más primeras reuniones y ninguna avanzó a "te doy acceso" sin haber entregado
+      antes algo escrito y específico.</li>
+      <li>El documento por visita sigue pausado a los 60 días de arrancar la prospección: sin
+      artefacto transferible, cada reunión arranca de cero.</li>
+    </ul>
+  </div>
+
+  <div class="card" style="--c:var(--amarillo)">
+    <div class="num">Fallo 06</div>
+    <h3>El precio nunca se fijó</h3>
+    <div class="meters"><span class="m alta">Probabilidad alta</span><span class="m alta">Daño alto</span></div>
+    <p>Enero. Un conocido de un conocido, dueño de una cadena, pregunta: <strong>"che, ¿y esto
+    cuánto sale?"</strong> Un segundo de más de silencio. Sale un "depende del volumen, lo vemos
+    sobre la marcha" y un "el primer mes para que lo veas funcionar". El tipo acepta: es gratis.
+    Ese mes gratis se convierte en marzo, y después en abril.</p>
+    <p>La raíz es anterior: en MAGA+, donde se destapó una deuda inflada en $915M, nunca se puso
+    ese hallazgo en una factura. Sin el precedente <strong>"esto ya se lo cobré a alguien y lo
+    pagó"</strong>, se cotiza a ciegas — y a ciegas siempre se cotiza bajo, o gratis, o "después
+    vemos".</p>
+    <div class="lb">El supuesto</div>
+    <div class="sup">Que el valor entregado se iba a traducir solo en un precio, sin que hiciera
+    falta cobrárselo primero a alguien real.</div>
+    <div class="lb">Señales tempranas</div>
+    <ul>
+      <li>Pasan 30 días desde un hallazgo grande sin que exista una nota de honorarios o acuerdo
+      escrito que le ponga precio.</li>
+      <li>Aparece la frase "el primer mes sin cargo" en una conversación real, sin fecha de corte
+      ni número que se active después.</li>
+    </ul>
+  </div>
+
+  <div class="card" style="--c:var(--coral)">
+    <div class="num">Fallo 07</div>
+    <h3>Las horas del cliente #2 salen de las mismas 24</h3>
+    <div class="meters"><span class="m media">Probabilidad media</span><span class="m media">Daño medio</span></div>
+    <p><em>Punto en disputa: vos decís que estando solo el cliente #2 no duplica el costo. De
+    acuerdo en la mitad — no hay estructura duplicada, ni coordinación, ni gente ociosa. Pero
+    estando solo es precisamente cuando las horas se suman enteras: no hay nadie a quien
+    delegarle la segunda corrida.</em></p>
+    <p>El costo que sí se duplica es el operativo, y el diseño lo pide por definición: vos corrés
+    las herramientas. Dos clientes son dos corridas de bots, dos clasificaciones, dos
+    exportaciones, dos auditorías, dos documentos, dos visitas. Lo que no se duplica es lo que ya
+    está construido — el motor, los tests, el bot genérico. La pregunta correcta no es "¿se
+    duplica el costo?" sino <strong>"¿cuántas horas por semana consume un cliente en régimen, y
+    cuántos entran en tu semana?"</strong>. Ese número todavía no está medido.</p>
+    <p>Aparte va la divergencia: con la config hardcodeada en el Exportador, el segundo cliente
+    sale de una copia parcheada a mano. Estando solo no hay conflicto de edición, pero sí olvido —
+    tocás una función común y hay que acordarse de replicarla en la otra copia.</p>
+    <div class="lb">El supuesto</div>
+    <div class="sup">Que "estar solo" mantiene el costo bajo, cuando es lo que hace que el techo lo
+    ponga tu semana y no tu estructura.</div>
+    <div class="lb">Señales tempranas</div>
+    <ul>
+      <li>Cronometrá una corrida completa de MAGA+ de punta a punta, una sola vez. Si no sabés ese
+      número, no podés saber cuántos clientes entran.</li>
+      <li>Aparece más de una copia de config por cliente en el repo, o un <code>if cliente ==</code>,
+      antes de que exista config externa.</li>
+    </ul>
+  </div>
+
+  <div class="card" style="--c:var(--lima)">
+    <div class="num">Fallo 08</div>
+    <h3>La cadena ajena no tenía el problema con esa forma</h3>
+    <div class="meters"><span class="m media">Probabilidad media</span><span class="m critica">Daño crítico</span></div>
+    <p>Primera reunión buena: cadena de 8 locales con un ERP contable de agencia y un administrativo
+    full-time que ya concilia proveedores todos los lunes. Escuchan diez minutos y dicen "esto ya
+    lo hacemos, solo que en Excel más feo". No hay droguería propia, no hay compensación
+    intercompany, no hay 14 razones sociales: hay una persona cuyo trabajo es exactamente lo que el
+    motor automatiza.</p>
+    <p>Segunda: cadena de 3 locales, el dueño lleva la cuenta de memoria y dice que el día que
+    necesite una planilla para saber a quién pagarle, cierra. El punto medio —ni tan chica que se
+    decide de memoria, ni tan grande que ya tiene ERP y gerente— casi no tiene representantes al
+    alcance. <strong>La combinación completa resultó ser un fenómeno de MAGA+, no de la
+    industria.</strong></p>
+    <div class="lb">El supuesto</div>
+    <div class="sup">Que la configuración financiera de MAGA+ era representativa del nicho, cuando
+    era una anomalía de un solo grupo: droguería propia, 14 razones sociales, líneas bancarias
+    agotadas por elección.</div>
+    <div class="lb">Señales tempranas</div>
+    <ul>
+      <li>Preguntá en las primeras tres reuniones: <strong>"¿tenés línea bancaria disponible
+      hoy?"</strong> Si la mayoría dice que sí, el nicho no existe como está definido.</li>
+      <li>Contá cuántos prospectos ya usan un ERP con módulo de tesorería. Si son mayoría, competís
+      contra software instalado, no contra una planilla.</li>
+    </ul>
+  </div>
+
+  <div class="card" style="--c:var(--violeta)">
+    <div class="num">Fallo 09</div>
+    <h3>No hubo fracaso: hubo estancamiento</h3>
+    <div class="meters"><span class="m alta">Probabilidad alta</span><span class="m alta">Daño alto</span></div>
+    <p>Siempre hay una buena razón. "Primero cierro Comafi, así el exportador tiene dos bancos."
+    Después aparece un edge case que rompe tres tests, y arreglarlo es más gratificante que escribir
+    un documento que todavía nadie va a leer. Diciembre: antes de mostrar nada hace falta el
+    dashboard con datos reales, porque dos maquetas vacías "no venden nada".</p>
+    <p>Marzo 2027: los 195 tests son 340, la documentación pesa el doble, y el documento por visita
+    sigue en la misma carpeta donde estaba en septiembre. <strong>El estancamiento nunca se sintió
+    como fracaso porque cada semana hubo commits.</strong> El día que dejó de ser "todavía no" fue
+    el día en que la fecha del primer contacto comercial dejó de estar anotada en ningún lado, ni
+    siquiera como pendiente.</p>
+    <div class="lb">El supuesto</div>
+    <div class="sup">Que si el motor es suficientemente bueno, la parte comercial va a resultar
+    fácil o casi automática cuando llegue el momento — y por eso nunca hay apuro en empezarla.</div>
+    <div class="lb">Señales tempranas</div>
+    <ul>
+      <li>Pasan 2 semanas sin una fecha concreta agendada con una persona ajena a MAGA+. No "voy a
+      buscar prospectos": una fecha real en un calendario.</li>
+      <li>El repo acumula commits de motor, tests y docs mientras el archivo del documento por
+      visita no cambia de fecha de modificación en 30 días.</li>
+    </ul>
+  </div>
+
+  <div class="card" style="--c:var(--rojo)">
+    <div class="num">Fallo 10 · irreversible</div>
+    <h3>El dato se congeló y se pudrió</h3>
+    <div class="meters"><span class="m alta">Probabilidad alta</span><span class="m critica">Daño crítico</span></div>
+    <p>El módulo de memoria estaba bien diseñado —proyectar, conciliar, aprender— pero necesitaba
+    una segunda foto para probar que servía, y esa foto dependía de un acceso que se perdió el
+    06/09/2026. <code>proyeccion_2026-09-04.json</code> quedó como un fósil: 226 movimientos, un
+    día crítico marcado para el 25/09, y nadie pudo volver a mirar la cuenta real para ver si la
+    caja efectivamente cayó a $135M. <strong>El 25 de septiembre pasó como un martes cualquiera,
+    sin que nadie lo registrara.</strong></p>
+    <p>Para noviembre la misma foto seguía usándose en cada reunión, con el discurso retocado
+    ("fue una demostración de capacidad, no un backtest") pero sin poder cambiar los números. En
+    febrero llegó la pregunta: <strong>"¿y le acertaste?"</strong> — y detrás, la peor:
+    <strong>"¿y a MAGA+ le seguís laburando?"</strong>. La respuesta convirtió el caso de éxito en
+    el caso de un cliente que se fue.</p>
+    <div class="lb">El supuesto</div>
+    <div class="sup">Que iba a poder demostrar valor con datos prestados de un cliente que ya no era
+    cliente, sin necesitar nunca una segunda medición.</div>
+    <div class="lb">Señales tempranas</div>
+    <ul>
+      <li>El contador de proyecciones conciliadas sigue en 1 después de 30 días.</li>
+      <li>La fecha del hallazgo estrella no cambia entre reuniones. Si en octubre y en enero se
+      sigue citando el mismo 25/09/2026, el caso está muerto y nadie lo dijo en voz alta.</li>
+    </ul>
+  </div>
+
+</div>
+
+<footer>
+  <b>Premortem ejecutado el 06/09/2026 a las 00:42.</b><br>
+  Objeto: <b>finauto / Finnauto</b> — motor de decisión financiera para PyMEs que se financian con
+  sus proveedores. Criterio de éxito sometido a premortem: <b>que una cadena ajena pague</b>, en un
+  horizonte de 6 meses.<br>
+  Método: premortem de Gary Klein (retrospectiva prospectiva). 10 razones de fallo generadas en
+  bruto, 10 agentes de análisis profundo lanzados en paralelo, síntesis posterior.<br>
+  Contexto leído: <code>docs/ESTADO.md</code>, <code>docs/NEGOCIO.md</code> y las memorias del
+  proyecto. Transcripción completa en
+  <code>premortem-transcript-2026-09-06-0042.md</code>.
+</footer>
+
+</div>
+</body>
+</html>

@@ -44,6 +44,8 @@ if BASE_REPO not in sys.path:
 from simulador import disponibilidad as D
 from simulador import posicion as POS
 from simulador import proveedores as PROV
+# hallazgos() vive en dashboard/datos.py: lo usan la app y este informe.
+from dashboard.datos import hallazgos                      # noqa: F401
 
 
 # ------------------------------------------------------------------ formato
@@ -99,90 +101,6 @@ def fecha_larga(iso):
         return iso
 
 
-# ------------------------------------------------------------------ hallazgos
-def hallazgos(contrato):
-    """Lo que se encontró mirando los datos del cliente.
-
-    Se calculan sobre el contrato, no se escriben a mano: si el cliente arregla
-    una de estas cosas, el hallazgo desaparece solo del informe. Un hallazgo
-    hardcodeado sobrevive a su propia solución y hace quedar mal.
-    """
-    out = []
-    hoy = D.hoy_de(contrato)
-
-    # 1. Referencias que apuntan a una columna de FECHA vieja del cashflow.
-    #
-    # FALSO POSITIVO REAL (06/09/2026): la primera version marcaba cualquier
-    # celda de columna A/B/C, y saco como hallazgo que "Caja hoy apunta a
-    # SALDOS!C26". SALDOS no es un cashflow: sus columnas son bancos, no fechas,
-    # y C26 es el total correcto. Un informe que le dice al cliente que algo
-    # esta mal cuando esta bien vale menos que no decir nada -- destruye la
-    # confianza en los hallazgos que SI son ciertos.
-    #
-    # Por eso ahora se exige que la hoja apuntada sea un cashflow: son las
-    # unicas donde una columna equivale a un dia.
-    def _es_cashflow(n):
-        n = str(n or "").lower()
-        return "cash" in n and "flow" in n
-
-    for hoja, filas in (contrato.get("referencias_del_cliente") or {}).items():
-        for f in filas:
-            for a in (f.get("apunta_a") or []):
-                cel = str(a.get("celda") or "")
-                col = "".join(c for c in cel if c.isalpha())
-                if (_es_cashflow(a.get("hoja")) and len(col) == 1
-                        and col <= "C" and a.get("rotulo")):
-                    out.append({
-                        "titulo": "Tu “%s” mira una fecha vieja" % esc(hoja),
-                        "cuerpo": ("La celda de <b>%s</b> apunta a <code>%s!%s</code>, "
-                                   "que es la fila “%s” en la <b>primera columna</b> "
-                                   "del cashflow. No es el saldo de hoy: es el del "
-                                   "comienzo del período cargado."
-                                   % (esc(f.get("etiqueta")), esc(a.get("hoja")),
-                                      esc(cel), esc(a.get("rotulo")))),
-                        "monto": None})
-                    break
-            else:
-                continue
-            break
-
-    # 2. NCR que no bajan la deuda en la planilla del cliente.
-    ncr = sum(abs(float(x.get("importe") or 0))
-              for x in contrato.get("deuda_droguerias", [])
-              if x.get("es_credito"))
-    if ncr:
-        out.append({
-            "titulo": "Tu planilla muestra más deuda de la que tenés",
-            "cuerpo": ("Las notas de crédito están cargadas como ingreso en otra "
-                       "fila, pero <b>nunca se descuentan del saldo con la "
-                       "droguería</b>. La deuda que ves está inflada en ese monto."),
-            "monto": ncr})
-
-    # 3. Cartera de cheques que no pasa por el banco.
-    ch = contrato.get("cartera_cheques") or []
-    endos = sum(abs(float(c.get("importe") or 0)) for c in ch
-                if "ENDOS" in str(c.get("estado") or "").upper())
-    total = sum(abs(float(c.get("importe") or 0)) for c in ch)
-    if total and endos / total > 0.2:
-        out.append({
-            "titulo": "%d%% de tus cheques no pasan por el banco" % round(100 * endos / total),
-            "cuerpo": ("De la cartera de cheques, esa parte se <b>endosa</b>: no "
-                       "entra un peso a la cuenta, baja deuda con una droguería. "
-                       "Contarlos como caja infla cualquier proyección."),
-            "monto": endos})
-
-    # 4. Cobranza a droguerías que venció y no entró.
-    venc = sum(float(x.get("importe") or 0)
-               for x in contrato.get("cuentas_a_cobrar_droguerias", [])
-               if not x.get("intercompany") and (x.get("fecha") or "") < hoy)
-    if venc:
-        out.append({
-            "titulo": "Cobranza que venció y no entró",
-            "cuerpo": ("Plata que te deben con fecha ya pasada. No está contada "
-                       "como segura en ningún número de este informe: si entra, "
-                       "todo mejora; darla por hecha sería engañarse."),
-            "monto": venc})
-    return out
 
 
 # ------------------------------------------------------------------ el HTML
