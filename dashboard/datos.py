@@ -408,6 +408,25 @@ def ingresos_por_dia(contrato, unidad, hoy, dias=30):
 # cashflow no las hace menos cuentas a cobrar.
 COBRO_INMEDIATO = ('EFECTIVO', 'TARJETA')
 
+# Conceptos que SI mantienen el saldo hasta cobrarse.
+#
+# ERROR REAL (06/09/2026). Thomas: "tiene cuentas a cobrar de FCIAS vencida
+# Speed, mira esos 102M del 31".
+#
+# Yo habia puesto una regla por BLOQUE: del bloque de ingresos, solo el futuro,
+# porque ahi la celda no se limpia al cobrar. Vale para el mostrador -- tarjeta
+# y efectivo son el registro de lo que entro -- pero NO para "Cuentas a cobrar
+# FCIAS", que es exactamente lo que dice: plata facturada y no cobrada. Un monto
+# con fecha del 31/08 que sigue ahi el 05/09 son $102M sin cobrar.
+#
+# O sea que la regla no es del bloque: es del CONCEPTO.
+MANTIENEN_SALDO = ('CUENTAS A COBRAR', 'A COBRAR', 'CTAS A COBRAR')
+
+
+def _mantiene_saldo(concepto):
+    c = " ".join(str(concepto or "").upper().split())
+    return any(k in c for k in MANTIENEN_SALDO)
+
 
 def _es_a_cobrar(concepto):
     c = " ".join(str(concepto or "").upper().split())
@@ -485,9 +504,16 @@ def a_cobrar(contrato, unidad, hoy, dias=45):
         # Por eso de esta fuente solo cuenta el futuro.
         f = x.get("fecha") or ""
         v = float(x.get("importe") or 0)
+        if _mantiene_saldo(con) and f and f < hoy:
+            # Vencida y sin cobrar: la celda sigue con monto porque no entro.
+            agg[con]["que_es"] = "facturado y no cobrado"
+            agg[con]["vencido"] += v
+            venc += v
+            continue
         if not (hoy <= f <= hasta):
             continue
-        agg[con]["que_es"] = "vendido y no cobrado"
+        agg[con]["que_es"] = ("facturado y no cobrado" if _mantiene_saldo(con)
+                              else "vendido y no cobrado")
         agg[con]["por_vencer"] += v
         fut += v
 
@@ -556,6 +582,9 @@ PATEABLES = [
      "NO se puede patear."),
     ("impuestos", "Impuestos y servicios",
      "Se puede correr unos dias, con recargo."),
+    ("intercompany", "Pago a la otra empresa del grupo",
+     "Speedmed le factura a MAGA al costo y sin necesidad de que pague: hoy MAGA "
+     "solo transfiere cuando Speed necesita cubrir cheques."),
     ("otros", "Otros egresos", ""),
 ]
 
@@ -578,82 +607,113 @@ def _grupo_de(nombre):
     return "otros"
 
 
-def proyeccion(contrato, unidad, hoy, dias=45):
-    """La caja dia por dia, ARMADA POR PARTES para que se pueda tocar.
+def proyeccion(contrato, unidad, hoy, dias=45, con_intercompany=False):
+    """La caja dia por dia, CON LO QUE ESTA CARGADO — sin estimar nada.
 
-    ERROR REAL (06/09/2026). Thomas: "la proyeccion no entiendo que toma para
-    dar esos numeros, nunca una caja aumenta tan exponencialmente".
+    ERROR REAL (06/09/2026). Thomas: *"¿cómo puede ser que Speed en el cash dé
+    tan bien y en la aplicación dé tan mal?"*.
 
-    La causa era gruesa: **comparaba peras con manzanas.**
+    Dos causas, las dos mias, y las dos de la misma familia:
 
-        ingresos  <- bloque INGRESOS del cashflow      $37.390M historicos
-        egresos   <- solapa MOVIMIENTOS (los bancos)   $12.180M historicos
+    1. **Faltaba una punta.** Se le restaban los $4.677M que Speed le DEBE a
+       las droguerias y no se le sumaban los $6.8MM que las droguerias le DEBEN
+       a Speed. Speedmed les compra Y les vende: contar un solo lado lo dejaba
+       en rojo por construccion.
 
-    Dos fuentes de tamanos distintos. El bloque de egresos del cashflow
-    ($35.596M) y la deuda con droguerias ($10.400M) no entraban, y encima se
-    proyectaban como ingreso $5.164M de transferencias internas -- que mueven
-    plata pero no la crean -- mas $9.263M de cartera, que no es caja hasta que
-    se decide. Con eso la caja subia $5.649M en 45 dias.
+    2. **Se estimaba lo que ya estaba cargado.** El cashflow trae los egresos
+       futuros con fecha y monto — para eso existe — y aca se los ignoraba para
+       proyectarlos a partir del historico. O sea que a lo cargado se le sumaba
+       una estimacion de lo mismo.
 
-    Ahora los dos lados salen del cashflow, sin internos.
+    Ahora no se estima nada: se usa lo que dice la planilla. Y el resultado
+    reproduce las dos filas del cash de Thomas:
 
-    Y NO SE DEVUELVE UNA CURVA: se devuelven las PARTES por dia. La curva la
-    arma el navegador sumando los grupos que esten tildados, asi se puede ver
-    "que pasa si pateo las droguerias" sin volver a calcular nada. La cuenta
-    sigue siendo una suma de numeros que salieron de aca.
+        Speed sin pagar droguerias   +$3.791M   ("Saldo cierre")
+        Speed pagandolas             -$885M     ("Con pago a droguerias")
+
+    La maquinaria de estimacion sigue viva en simulador/proyeccion.py, que es
+    donde sirve: para el backtest y la memoria, donde la pregunta es "¿lo que
+    proyectamos se parecio a lo que paso?". Para el tablero, la respuesta
+    honesta es mostrar lo que el cliente cargo.
     """
-    from simulador import proyeccion as PR
     u = _unidad_real(unidad)
     caja = float(contrato.get("caja_hoy") or 0)
     if u:
         caja = float((contrato.get("caja_por_unidad") or {}).get(u) or 0)
 
+    desde = datetime.date.fromisoformat(hoy)
+    hasta = (desde + datetime.timedelta(days=dias - 1)).isoformat()
+
     def _mia(x):
         return (not u) or (x.get("unidad") or "") == u
 
-    ing = [x for x in contrato.get("cobros_previstos", [])
-           if _mia(x) and not x.get("interno")
-           and "CARTERA" not in str(x.get("concepto") or "").upper()]
-    egr = [dict(x, tipo=x.get("contraparte"))
-           for x in contrato.get("egresos_cashflow", [])
-           if _mia(x) and not x.get("intercompany")]
-    deuda = [dict(x, tipo=x.get("contraparte"))
-             for x in contrato.get("deuda_droguerias", [])
-             if _mia(x) and not x.get("intercompany")
-             and float(x.get("importe") or 0) > 0]
+    def _dentro(f):
+        return bool(f) and hoy <= f <= hasta
 
-    desde = datetime.date.fromisoformat(hoy)
-    try:
-        r_i = PR.proyectar_horizonte(PR.perfilar(ing, desde)[0], desde, dias)
-        r_e = PR.proyectar_horizonte(PR.perfilar(egr, desde)[0], desde, dias)
-    except Exception as e:
-        return {"error": str(e), "dias": []}
-
-    # La deuda con droguerias NO se proyecta: ya tiene fecha y monto.
-    # Proyectarla seria inventar un vencimiento que la planilla ya dice.
-    hasta = (desde + datetime.timedelta(days=dias - 1)).isoformat()
     por_dia = {}
 
     def _sumar(f, grupo, monto):
-        if not (hoy <= f <= hasta):
-            return
         d = por_dia.setdefault(f, {"entra": 0.0})
         if grupo == "entra":
             d["entra"] += monto
         else:
             d[grupo] = d.get(grupo, 0.0) + monto
 
-    for x in r_i:
-        _sumar(x["fecha"], "entra", abs(float(x["importe"])))
-    for x in r_e:
-        # proyectar_horizonte devuelve la etiqueta en "clave", no en "tipo":
-        # leyendo la que no era, TODO caia en "otros" y la solapa perdia
-        # justamente lo que sirve, que es poder patear un grupo y no otro.
-        _sumar(x["fecha"], _grupo_de(x.get("clave") or x.get("tipo")),
-               abs(float(x["importe"])))
-    for x in deuda:
-        g = "refi" if "REFINANC" in str(x.get("contraparte") or "").upper() else "droguerias"
-        _sumar(x["fecha"], g, abs(float(x["importe"])))
+    # --- lo que entra
+    for x in contrato.get("cobros_previstos", []):
+        if not _mia(x) or x.get("interno"):
+            continue
+        if "CARTERA" in str(x.get("concepto") or "").upper():
+            continue          # no es caja hasta que se decide
+        if _dentro(x.get("fecha")):
+            _sumar(x["fecha"], "entra", abs(float(x.get("importe") or 0)))
+
+    for x in contrato.get("cuentas_a_cobrar_droguerias", []):
+        if not _mia(x) or x.get("intercompany"):
+            continue
+        if _dentro(x.get("fecha")):
+            _sumar(x["fecha"], "entra", abs(float(x.get("importe") or 0)))
+
+    # --- lo que sale, item por item para poder patearlo
+    items = []
+    for x in contrato.get("egresos_cashflow", []):
+        if not _mia(x) or x.get("intercompany"):
+            continue
+        f = x.get("fecha") or ""
+        if not _dentro(f):
+            continue
+        v = abs(float(x.get("importe") or 0))
+        if not v:
+            continue
+        cp = (x.get("contraparte") or "?").strip()
+        g = _grupo_de(cp)
+        _sumar(f, g, v)
+        items.append({"id": g + "|" + f + "|" + cp, "grupo": g, "fecha": f,
+                      "concepto": cp, "monto": v, "estimado": False})
+
+    for x in contrato.get("deuda_droguerias", []):
+        if not _mia(x):
+            continue
+        cp = str(x.get("contraparte") or "")
+        # Lo intercompany solo cuenta en el escenario "con pago a la otra
+        # empresa": es plata que se mueve dentro del grupo.
+        if x.get("intercompany") and not con_intercompany:
+            continue
+        f = x.get("fecha") or ""
+        v = float(x.get("importe") or 0)
+        if not _dentro(f) or v <= 0:
+            continue
+        if x.get("intercompany"):
+            g = "intercompany"
+        elif "REFINANC" in cp.upper():
+            g = "refi"
+        else:
+            g = "droguerias"
+        _sumar(f, g, v)
+        items.append({"id": g + "|" + f + "|" + cp, "grupo": g, "fecha": f,
+                      "concepto": ("Resumen del " + f[8:10] + "/" + f[5:7] +
+                                   " · " + cp) if g == "droguerias" else cp,
+                      "monto": v, "estimado": False})
 
     f, out = desde, []
     while f.isoformat() <= hasta:
@@ -662,44 +722,13 @@ def proyeccion(contrato, unidad, hoy, dias=45):
                     "sale": {g: d.get(g, 0.0) for g, _, _ in PATEABLES if d.get(g)}})
         f += datetime.timedelta(days=1)
 
-    # EL DETALLE, PARA PODER TILDAR DE A UNO.
-    #
-    # Thomas: "me gustaria que haya un desplegable por cada concepto y poder
-    # tildar o destildar los conceptos desde ahi. Ejemplo deuda con drogueria y
-    # que salgan los resumenes que comprenden el timeline".
-    #
-    # Tiene sentido y es como se decide de verdad: no se patea "las droguerias",
-    # se patea el resumen de Suizo del 03/09 y se paga el de Cofaloza. Un
-    # interruptor por grupo obliga a elegir todo o nada, que es justo lo que el
-    # negocio no hace.
-    #
-    # Cada item lleva su id para que el navegador pueda sacarlo de la suma.
-    items = []
-    for x in r_e:
-        g = _grupo_de(x.get("clave") or x.get("tipo"))
-        if hoy <= x["fecha"] <= hasta:
-            items.append({"id": g + "|" + x["fecha"] + "|" + str(x.get("clave") or ""),
-                          "grupo": g, "fecha": x["fecha"],
-                          "concepto": (x.get("clave") or "?").title(),
-                          "monto": abs(float(x["importe"])), "estimado": True})
-    for x in deuda:
-        cp = str(x.get("contraparte") or "")
-        g = "refi" if "REFINANC" in cp.upper() else "droguerias"
-        if hoy <= x["fecha"] <= hasta:
-            items.append({"id": g + "|" + x["fecha"] + "|" + cp,
-                          "grupo": g, "fecha": x["fecha"],
-                          # En droguerias, cada monto es un RESUMEN con su fecha.
-                          "concepto": "Resumen del " + x["fecha"][8:10] + "/" +
-                                      x["fecha"][5:7] + " · " + cp,
-                          "monto": abs(float(x.get("importe") or 0)),
-                          "estimado": False})
     items.sort(key=lambda i: (i["grupo"], i["fecha"], -i["monto"]))
-
     return {"desde": hoy, "hasta": hasta, "caja_inicial": caja, "dias": out,
             "items": items,
             "grupos": [{"id": g, "nombre": n, "nota": t} for g, n, t in PATEABLES],
             "total_entra": sum(x["entra"] for x in out),
-            "total_sale": sum(sum(x["sale"].values()) for x in out)}
+            "total_sale": sum(sum(x["sale"].values()) for x in out),
+            "sin_estimar": True}
 
 
 def memoria_del_cliente(cliente):
@@ -724,6 +753,7 @@ def memoria_del_cliente(cliente):
         except Exception:
             continue
     return {"snapshots": out, "conciliadas": 0}
+
 
 
 
@@ -782,6 +812,8 @@ def armar(contrato, cliente="maga"):
             "ingresos_dia": ingresos_por_dia(contrato, u, hoy),
             "a_cobrar": a_cobrar(contrato, u, hoy),
             "proyeccion": proyeccion(contrato, u, hoy),
+            # El escenario "y ademas le pago a la otra empresa del grupo".
+            "proyeccion_ic": proyeccion(contrato, u, hoy, con_intercompany=True),
             # El plan minimo para cada ventana que ofrece el timeline.
             # Se precalculan porque el HTML no calcula plata: mover el slider
             # cambia de plan, no lo recalcula.

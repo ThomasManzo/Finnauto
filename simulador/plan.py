@@ -114,7 +114,22 @@ def armar(proyeccion, dias=None, proveedores=None, costos=None):
     # días nuevos no entraban nunca: el plan se quedaba masticando movimientos
     # chicos del primer tramo y terminaba diciendo "no alcanza" cuando sí
     # alcanzaba.
-    candidatos = [i for i in items if i["grupo"] in orden]
+    # PATEAR $19.289 NO ES UN CONSEJO.
+    #
+    # ERROR REAL (06/09/2026): el plan proponia correr Servicios de $928.562,
+    # $720.386, $369.278, $63.331 y $19.289 contra un faltante de miles de
+    # millones. Es aritmeticamente correcto y ridiculo de leer: cinco pasos que
+    # juntos no mueven la aguja, en una pantalla que tiene que dar confianza.
+    #
+    # Thomas: "estos pagos chiquitos no la podes correr, que sean pagos
+    # importantes: cargas sociales, sueldos, pago a droguerias".
+    #
+    # Se descartan los que no llegan al 2% del faltante. No es que no se puedan
+    # correr: es que proponerlos no ayuda a decidir.
+    piso = max(-rojo["caja"] * 0.02, 0.0)
+    candidatos = [i for i in items if i["grupo"] in orden and i["monto"] >= piso]
+    if not candidatos:
+        candidatos = [i for i in items if i["grupo"] in orden]
 
     # UN PLAN DE 30 MOVIMIENTOS NO ES UN PLAN.
     #

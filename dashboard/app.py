@@ -407,7 +407,7 @@ function desplegable(id, cabecera, contenido){
 // dato del negocio: por eso vive en el navegador y no toca el contrato.
 var ENDOSOS = {};
 // Lo que el usuario esta simulando en la solapa de proyeccion.
-var VENTANA = 45, PATEADO = {}, SUELTO = {};
+var VENTANA = 45, PATEADO = {}, SUELTO = {}, CON_IC = false;
 try { ENDOSOS = JSON.parse(localStorage.getItem('finauto_endosos') || '{}'); }
 catch (e) { ENDOSOS = {}; }
 
@@ -859,7 +859,17 @@ function verCobrar(){
 }
 
 function verProyeccion(){
-  var d = actual(), p = d.proyeccion, out = [];
+  var d = actual(), out = [];
+  // EL ESCENARIO "Y ADEMAS LE PAGO A LA OTRA EMPRESA DEL GRUPO".
+  //
+  // Thomas: "acordate de sumar el boton de MAGA con pago a Speed y Speed con
+  // pago a MAGA". Es el escenario 3 de su Posicion Consolidada, y mide cuanto
+  // le esta financiando una empresa a la otra -- hoy MAGA solo transfiere
+  // cuando Speed necesita cubrir cheques.
+  //
+  // Va como interruptor y no como solapa aparte porque es la MISMA proyeccion
+  // con una linea mas: verlas al lado hace evidente el salto.
+  var p = (CON_IC && d.proyeccion_ic) ? d.proyeccion_ic : d.proyeccion;
   if (p.error || !p.dias.length){
     out.push(el('div', 'card', 'No se pudo proyectar: ' + (p.error || 'faltan datos.')));
     return out;
@@ -937,6 +947,25 @@ function verProyeccion(){
                       .join(' · ')));
     }
     out.push(cc);
+  }
+
+  // El interruptor del pago entre empresas, arriba del timeline.
+  if (d.proyeccion_ic && (d.proyeccion_ic.items || []).some(function(i){
+        return i.grupo === 'intercompany'; })){
+    var cic = el('div', 'card');
+    var lab = document.createElement('label');
+    lab.style.cssText = 'display:flex;gap:9px;align-items:flex-start;cursor:pointer';
+    var cbic = document.createElement('input');
+    cbic.type = 'checkbox'; cbic.checked = CON_IC;
+    cbic.onchange = function(){ CON_IC = cbic.checked; pintar(); };
+    var otra = UNIDAD === 'MAGA' ? 'Speedmed' : (UNIDAD === 'SPEEDMED' ? 'MAGA' : 'la otra empresa');
+    lab.appendChild(cbic);
+    lab.appendChild(el('span', null, '<b>Contar el pago a ' + otra + '</b>' +
+      '<div class="resumen">Hoy no se paga como a un proveedor: se transfiere ' +
+      'cuando hace falta cubrir cheques. Tildarlo muestra como quedarias si ' +
+      'fuera una obligacion mas.</div>'));
+    cic.appendChild(lab);
+    out.push(cic);
   }
 
   var ct = el('div', 'card');
