@@ -1538,6 +1538,54 @@ def test_proyeccion_por_partes():
        "y sacar un grupo de la suma es exactamente patearlo")
 
 
+def test_detalle_para_desplegar():
+    """CADA TOTAL TIENE QUE PODER ABRIRSE.
+
+    Thomas: "me gustaria que haya un desplegable por cada concepto y poder
+    tildar o destildar los conceptos desde ahi. Ejemplo deuda con drogueria y
+    que salgan los resumenes que comprenden el timeline."
+
+    Es como se decide de verdad: no se patea "las droguerias", se patea el
+    resumen de Suizo del 10/09 y se paga el de Cofaloza. Un interruptor por
+    grupo obliga a elegir todo o nada, que es justo lo que el negocio no hace.
+    """
+    from dashboard import datos as DA
+
+    hoy = "2026-09-05"
+    contrato = {"generado": hoy + "T00:00:00Z", "caja_hoy": 1000.0,
+                "cobros_previstos": [],
+                "egresos_cashflow": [
+                    {"fecha": "2026-09-08", "contraparte": "Alquileres",
+                     "importe": 50.0, "unidad": "MAGA"},
+                    {"fecha": "2026-09-09", "contraparte": "Alquileres",
+                     "importe": 30.0, "unidad": "MAGA"}],
+                "deuda_droguerias": [
+                    {"fecha": "2026-09-10", "contraparte": "SUIZO", "importe": 300.0},
+                    {"fecha": "2026-09-17", "contraparte": "SUIZO", "importe": 200.0}]}
+
+    p = DA.proyeccion(contrato, "GRUPO", hoy, dias=20)
+    drog = [i for i in p["items"] if i["grupo"] == "droguerias"]
+    ok(len(drog) == 2, "cada resumen es un item propio", str(len(drog)))
+    ok(all("Resumen del" in i["concepto"] for i in drog),
+       "y se llama por su fecha de resumen, que es como lo ve el proveedor")
+    ok(all(not i["estimado"] for i in drog),
+       "la deuda NO va marcada como estimada: tiene fecha y monto en la planilla")
+    ok(len(set(i["id"] for i in p["items"])) == len(p["items"]),
+       "cada item tiene un id unico, si no destildar uno destildaria otro")
+
+    # Sacar un item de la suma es exactamente patearlo.
+    total = sum(i["monto"] for i in drog)
+    ok(abs(total - 500.0) < 0.01, "y los items suman el total del grupo", str(total))
+
+    # Los gastos tambien se abren.
+    g = DA.gastos_del_periodo(contrato, "MAGA", hoy, dias=20)
+    alq = [x for x in g if x["nombre"] == "Alquileres"][0]
+    ok(len(alq["detalle"]) == 2, "cada barra de gastos trae su detalle",
+       str(alq["detalle"]))
+    ok(abs(sum(d["monto"] for d in alq["detalle"]) - alq["monto"]) < 0.01,
+       "y el detalle suma exactamente la barra: si no, una de las dos miente")
+
+
 if __name__ == "__main__":
     print("=" * 62)
     print("  TESTS DEL MOTOR finauto")
@@ -1564,6 +1612,7 @@ if __name__ == "__main__":
     test_tablero()
     test_atraso_y_alias()
     test_proyeccion_por_partes()
+    test_detalle_para_desplegar()
     test_proveedores()
     test_rigido_y_endoso()
     test_deuda_vencida()

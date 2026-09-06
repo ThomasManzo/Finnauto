@@ -196,6 +196,40 @@ function svgEl(t, attrs){
   return e;
 }
 
+// El tooltip del grafico de ingresos.
+//
+// Thomas: "lo que entra dia por dia, pasar el mouse por arriba y que te diga el
+// monto de cada concepto". Es lo que convierte un grafico lindo en uno que se
+// usa: la barra alta del 07 no dice nada hasta que se sabe que son $490M de
+// PAMI y no treinta dias de mostrador.
+function tooltip(){
+  var t = document.getElementById('tip');
+  if (!t){
+    t = el('div'); t.id = 'tip';
+    t.style.cssText = 'position:fixed;z-index:99;background:var(--panel);' +
+      'border:1px solid var(--linea);border-radius:9px;padding:10px 12px;' +
+      'font-size:12.5px;box-shadow:0 4px 16px rgba(16,32,24,.14);pointer-events:none;' +
+      'display:none;min-width:200px;color:var(--tinta)';
+    document.body.appendChild(t);
+  }
+  return t;
+}
+
+function mostrarTip(ev, html){
+  var t = tooltip();
+  t.innerHTML = html;
+  t.style.display = 'block';
+  var x = ev.clientX + 14, y = ev.clientY + 14;
+  if (x + 250 > window.innerWidth) x = ev.clientX - 250;
+  if (y + t.offsetHeight > window.innerHeight) y = ev.clientY - t.offsetHeight - 10;
+  t.style.left = x + 'px'; t.style.top = y + 'px';
+}
+
+function ocultarTip(){
+  var t = document.getElementById('tip');
+  if (t) t.style.display = 'none';
+}
+
 function barrasApiladas(datos, alto){
   alto = alto || 210;
   var ancho = 900, izq = 62, abajo = 26, arriba = 8;
@@ -231,6 +265,31 @@ function barrasApiladas(datos, alto){
       tx.textContent = d.fecha.slice(8);
       svg.appendChild(tx);
     }
+
+    // La zona sensible cubre TODA la altura de la columna, no solo la barra.
+    // Apuntarle a una barra de 3 pixeles es imposible, y un tooltip al que hay
+    // que apuntar no lo usa nadie.
+    var zona = svgEl('rect', {x: x, y: 0, width: w, height: alto,
+                              fill: 'transparent'});
+    zona.style.cursor = 'crosshair';
+    zona.addEventListener('mousemove', function(ev){
+      var filas = [];
+      d.valores.forEach(function(v, j){
+        if (!v) return;
+        filas.push('<div style="display:flex;justify-content:space-between;gap:14px">' +
+          '<span><i style="width:9px;height:9px;border-radius:2px;display:inline-block;' +
+          'margin-right:6px;background:' + PALETA[j % PALETA.length] + '"></i>' +
+          datos.fuentes[j] + '</span><b>' + pesos(v) + '</b></div>');
+      });
+      if (!filas.length) filas.push('<span style="color:var(--tenue)">Sin ingresos ese dia</span>');
+      mostrarTip(ev, '<div style="font-weight:700;margin-bottom:6px">' + dia(d.fecha) +
+        '</div>' + filas.join('') +
+        '<div style="display:flex;justify-content:space-between;gap:14px;' +
+        'margin-top:6px;padding-top:6px;border-top:1px solid var(--linea)">' +
+        '<span>Total</span><b>' + pesos(d.total) + '</b></div>');
+    });
+    zona.addEventListener('mouseleave', ocultarTip);
+    svg.appendChild(zona);
   });
   return svg;
 }
@@ -297,12 +356,47 @@ function leyenda(nombres){
 }
 
 
+
+// ---------------------------------------------------------------- desplegar
+// Un bloque que se abre. Se usa en los gastos y en lo que se puede patear:
+// la barra dice CUANTO, y abrirla dice DE QUE esta hecha. Sin eso, frente a
+// una barra de $5.028M la unica reaccion posible es desconfiar.
+var ABIERTO = {};
+
+function desplegable(id, cabecera, contenido){
+  var caja = el('div');
+  var b = el('button');
+  b.type = 'button';
+  b.style.cssText = 'background:none;border:0;padding:0;cursor:pointer;width:100%;' +
+                    'text-align:left;font-family:inherit;font-size:inherit;color:inherit';
+  var flecha = el('span', null, ABIERTO[id] ? '▾ ' : '▸ ');
+  flecha.style.color = 'var(--tenue)';
+  var cab = el('div');
+  cab.style.cssText = 'display:flex;align-items:center;gap:2px';
+  cab.appendChild(flecha);
+  cab.appendChild(cabecera);
+  b.appendChild(cab);
+  b.onclick = function(){
+    if (ABIERTO[id]) delete ABIERTO[id]; else ABIERTO[id] = 1;
+    pintar();
+  };
+  caja.appendChild(b);
+  if (ABIERTO[id]){
+    var c = el('div');
+    c.style.cssText = 'margin:8px 0 14px 20px;padding-left:12px;' +
+                      'border-left:2px solid var(--linea)';
+    c.appendChild(contenido);
+    caja.appendChild(c);
+  }
+  return caja;
+}
+
 // ---------------------------------------------------------------- endosos
 // El unico estado que el tablero guarda. Es una simulacion del usuario, no un
 // dato del negocio: por eso vive en el navegador y no toca el contrato.
 var ENDOSOS = {};
 // Lo que el usuario esta simulando en la solapa de proyeccion.
-var VENTANA = 45, PATEADO = {};
+var VENTANA = 45, PATEADO = {}, SUELTO = {};
 try { ENDOSOS = JSON.parse(localStorage.getItem('finauto_endosos') || '{}'); }
 catch (e) { ENDOSOS = {}; }
 
@@ -321,6 +415,21 @@ function resumenEndosos(){
     total += x.importe;
   });
   return {por: por, total: total};
+}
+
+// UN ENDOSO SE IMPUTA AL RESUMEN MAS VIEJO, ASI QUE BAJA LO VENCIDO PRIMERO.
+//
+// Thomas: "en los cheques que te diga cuanto baja de lo vencido, no de lo a
+// vencer". Es la regla del negocio: todo pago o endoso se aplica al resumen
+// mas viejo. Y es lo unico que importa para decidir -- lo vencido es lo que
+// puede hacer que te corten la compra; bajar deuda que todavia no vencio no
+// cambia nada hoy.
+function bajaVencido(nombre, monto){
+  var p = (actual().proveedores || []).filter(function(q){ return q.nombre === nombre; })[0];
+  if (!p) return {vencido: 0, resto: monto, queda: null};
+  var aVencido = Math.min(monto, p.vencido);
+  return {vencido: aVencido, resto: monto - aVencido,
+          queda: Math.max(0, p.vencido - aVencido)};
 }
 
 // ---------------------------------------------------------------- estado
@@ -385,10 +494,10 @@ function verPosicion(){
   out.push(el('h2', null, 'En que se va la plata (45 dias)'));
   var cg = el('div', 'card');
   var max = Math.max.apply(null, d.gastos.map(function(g){ return g.monto; })) || 1;
-  d.gastos.forEach(function(g){
+  d.gastos.forEach(function(g, gi){
     var f = el('div');
-    f.style.cssText = 'display:grid;grid-template-columns:210px 1fr 120px;gap:12px;' +
-                      'align-items:center;margin-bottom:10px';
+    f.style.cssText = 'display:grid;grid-template-columns:210px 1fr 130px;gap:12px;' +
+                      'align-items:center';
     f.appendChild(el('div', null, '<span style="color:var(--suave);font-size:13.5px">' +
       g.nombre + '</span>'));
     var b = el('div'), bb = el('div', 'barra');
@@ -396,7 +505,20 @@ function verPosicion(){
     b.appendChild(bb); f.appendChild(b);
     f.appendChild(el('div', null, '<span style="font-variant-numeric:tabular-nums">' +
       pesos(g.monto) + '</span>'));
-    cg.appendChild(f);
+
+    // Cada barra se abre y muestra de que esta hecha. Frente a una barra de
+    // $5.028M la primera pregunta siempre es "de que", y hasta ahora habia que
+    // ir a buscarlo a otro lado.
+    var det = el('table');
+    (g.detalle || []).forEach(function(x){
+      var tr = el('tr');
+      tr.appendChild(el('td', null, (x.fecha ? '<b>' + dia(x.fecha) + '</b>  ' : '') +
+        '<span style="color:var(--suave)">' + x.concepto + '</span>'));
+      tr.appendChild(el('td', null, pesos(x.monto)));
+      det.appendChild(tr);
+    });
+    var env = el('div', 'envuelve'); env.appendChild(det);
+    cg.appendChild(desplegable('gasto_' + gi, f, env));
   });
   cg.appendChild(el('p', 'nota', 'Incluye lo que vence con cada drogueria, no solo ' +
     'los egresos del cashflow. Sin eso faltaria el gasto mas grande que hay.'));
@@ -686,12 +808,15 @@ function verCobrar(){
     lin.push('entran <b>' + pesos(deposita) + '</b> a la caja' +
              (res.total ? ' y baja <b>' + pesos(res.total) + '</b> de deuda' : ''));
     if (res.total){
+      // CONTRA LO VENCIDO, que es lo unico que cambia algo hoy.
       lin.push('<div style="margin-top:8px;color:var(--suave)">' +
         Object.keys(res.por).map(function(n){
-          var p0 = (d.proveedores || []).filter(function(q){ return q.nombre === n; })[0];
-          var queda = p0 ? Math.max(0, p0.vencido + p0.por_vencer - res.por[n]) : null;
-          return '<b>' + n + '</b>: baja ' + pesos(res.por[n]) +
-                 (queda !== null ? ', queda en ' + pesos(queda) : '');
+          var b = bajaVencido(n, res.por[n]);
+          var t = '<b>' + n + '</b>: baja ' + pesos(b.vencido) + ' de lo VENCIDO';
+          if (b.queda !== null) t += ', que queda en ' + pesos(b.queda);
+          if (b.resto > 0.5) t += '. Los otros ' + pesos(b.resto) +
+            ' van contra lo que todavia no vencio.';
+          return t;
         }).join('<br>') + '</div>');
     }
     var venc = d.kpis.vencido;
@@ -728,21 +853,22 @@ function verProyeccion(){
     out.push(el('div', 'card', 'No se pudo proyectar: ' + (p.error || 'faltan datos.')));
     return out;
   }
+  var hasta = p.dias[Math.min(VENTANA, p.dias.length) - 1].fecha;
 
-  // LA CURVA SE ARMA ACA, SUMANDO LAS PARTES QUE ESTAN TILDADAS.
-  //
-  // Thomas: "esta solapa lo que te tiene que mostrar es que puedo hacer para
-  // llegar bien, que obligaciones tengo que patear". Una curva sola no
-  // contesta eso: hay que poder sacar cosas y ver el efecto.
-  //
-  // Sigue valiendo que la plata se calcula en Python -- lo que viaja son los
-  // montos por dia y por grupo, ya resueltos. Aca solo se suman los grupos
-  // elegidos, que es una suma, no un modelo.
+  // Un item cuenta si su grupo no esta pateado y el item no esta destildado.
+  function pateado(it){
+    return PATEADO[it.grupo] || SUELTO[it.id];
+  }
   function armar(){
+    var porDia = {};
+    (p.items || []).forEach(function(it){
+      if (it.fecha > hasta || pateado(it)) return;
+      porDia[it.fecha] = (porDia[it.fecha] || 0) + it.monto;
+    });
     var caja = p.caja_inicial, curva = [];
     for (var i = 0; i < Math.min(VENTANA, p.dias.length); i++){
-      var x = p.dias[i], sale = 0;
-      for (var g in x.sale) if (!PATEADO[g]) sale += x.sale[g];
+      var x = p.dias[i];
+      var sale = porDia[x.fecha] || 0;
       caja += x.entra - sale;
       curva.push({fecha: x.fecha, caja: caja, entra: x.entra, sale: sale});
     }
@@ -753,12 +879,12 @@ function verProyeccion(){
   for (var i = 0; i < curva.length; i++) if (curva[i].caja < 0){ critico = curva[i]; break; }
   var minimo = Math.min.apply(null, curva.map(function(x){ return x.caja; }));
 
-  // --- el timeline
   var ct = el('div', 'card');
   ct.appendChild(el('div', null,
     '<b>Horizonte:</b> <span id="vent">' + VENTANA + ' dias</span> ' +
-    '<span style="color:var(--tenue);font-size:12.5px">— a 45 dias todavia no hay ' +
-    'nada cerrado, asi que cuanto mas lejos, menos dato real y mas proyeccion.</span>'));
+    '<span style="color:var(--tenue);font-size:12.5px">— hasta el ' + dia(hasta) +
+    '. A 45 dias todavia no hay nada cerrado: cuanto mas lejos, menos dato real ' +
+    'y mas estimacion.</span>'));
   var sl = el('input'); sl.type = 'range'; sl.min = 1; sl.max = p.dias.length;
   sl.value = VENTANA; sl.style.width = '100%'; sl.style.marginTop = '10px';
   sl.oninput = function(){
@@ -769,41 +895,72 @@ function verProyeccion(){
   ct.appendChild(sl);
   out.push(ct);
 
-  // --- que se puede patear
+  // QUE PATEO — con desplegable por concepto.
   var cp = el('div', 'card');
-  cp.appendChild(el('div', null, '<b>Que pasa si pateo...</b>'));
-  var cont = el('div');
-  cont.style.cssText = 'display:flex;gap:16px;flex-wrap:wrap;margin-top:12px';
+  cp.appendChild(el('div', null, '<b>Que puedo patear para llegar</b>'));
+  cp.appendChild(el('p', 'nota', 'Tildar un grupo entero, o abrirlo y elegir de a uno. ' +
+    'Asi se decide de verdad: no se patea “las droguerias”, se patea el resumen de ' +
+    'una y se paga el de la otra.'));
+  var lista = el('div');
+  lista.style.marginTop = '12px';
+
   p.grupos.forEach(function(g){
-    var hay = p.dias.some(function(x){ return x.sale[g.id]; });
-    if (!hay) return;
-    var lab = document.createElement('label');
-    lab.style.cssText = 'display:flex;gap:7px;align-items:flex-start;font-size:13.5px;' +
-                        'max-width:250px;cursor:pointer';
+    var items = (p.items || []).filter(function(it){
+      return it.grupo === g.id && it.fecha <= hasta;
+    });
+    if (!items.length) return;
+    var total = items.reduce(function(a, x){ return a + x.monto; }, 0);
+    var pateados = items.filter(pateado).reduce(function(a, x){ return a + x.monto; }, 0);
+
+    var cab = el('div');
+    cab.style.cssText = 'display:flex;gap:10px;align-items:baseline;flex:1;padding:7px 0';
     var cb = document.createElement('input');
     cb.type = 'checkbox'; cb.checked = !!PATEADO[g.id];
-    cb.onchange = function(){
+    cb.style.marginRight = '2px';
+    cb.onclick = function(ev){
+      ev.stopPropagation();
       if (cb.checked) PATEADO[g.id] = 1; else delete PATEADO[g.id];
       pintar();
     };
-    var txt = el('span', null, '<b>' + g.nombre + '</b>' +
-      (g.nota ? '<div class="resumen">' + g.nota + '</div>' : ''));
-    lab.appendChild(cb); lab.appendChild(txt);
-    cont.appendChild(lab);
+    cab.appendChild(cb);
+    cab.appendChild(el('span', null, '<b>' + g.nombre + '</b> ' +
+      '<span style="color:var(--tenue);font-size:12.5px">' + items.length + ' ' +
+      (items.length === 1 ? 'movimiento' : 'movimientos') + ' · ' + pesos(total) +
+      (pateados ? ' · <span class="pos">se patea ' + pesos(pateados) + '</span>' : '') +
+      '</span>' + (g.nota ? '<div class="resumen">' + g.nota + '</div>' : '')));
+
+    var det = el('table');
+    items.forEach(function(it){
+      var tr = el('tr');
+      var td1 = el('td');
+      var c2 = document.createElement('input');
+      c2.type = 'checkbox';
+      c2.checked = !pateado(it);
+      c2.disabled = !!PATEADO[g.id];
+      c2.onchange = function(){
+        if (c2.checked) delete SUELTO[it.id]; else SUELTO[it.id] = 1;
+        pintar();
+      };
+      td1.appendChild(c2);
+      td1.appendChild(el('span', null, ' ' + dia(it.fecha) + '  ' +
+        '<span style="color:var(--suave)">' + it.concepto + '</span>' +
+        (it.estimado ? ' <span class="chip medio">estimado</span>' : '')));
+      tr.appendChild(td1);
+      tr.appendChild(el('td', pateado(it) ? 'pos' : '', pesos(it.monto)));
+      det.appendChild(tr);
+    });
+    lista.appendChild(desplegable('g_' + g.id, cab, det));
   });
-  cp.appendChild(cont);
-  cp.appendChild(el('p', 'nota', 'Tildar algo lo saca de la curva: es simular que ese ' +
-    'pago se corre. La deuda no desaparece — se patea, y el atraso se acumula.'));
+  cp.appendChild(lista);
   out.push(cp);
 
-  // --- los numeros
   var k = el('div', 'kpis');
   var fin = curva.length ? curva[curva.length - 1].caja : p.caja_inicial;
   [['Caja al arrancar', pesos(p.caja_inicial, true), p.desde, ''],
    ['El dia mas bajo', pesos(minimo, true),
      minimo < 0 ? 'la caja se da vuelta' : 'nunca toca cero', minimo < 0 ? 'malo' : 'bien'],
-   ['Caja a los ' + VENTANA + ' dias', pesos(fin, true),
-     curva.length ? curva[curva.length - 1].fecha : '', fin >= 0 ? 'bien' : 'malo']
+   ['Caja a los ' + VENTANA + ' dias', pesos(fin, true), dia(hasta),
+     fin >= 0 ? 'bien' : 'malo']
   ].forEach(function(x){
     var t = el('div', 'card kpi ' + x[3]);
     t.appendChild(el('div', 'et', x[0]));
@@ -813,6 +970,7 @@ function verProyeccion(){
   });
   out.push(k);
 
+  var hayPateo = Object.keys(PATEADO).length || Object.keys(SUELTO).length;
   if (critico){
     var av = el('div', 'card');
     av.style.borderLeft = '3px solid var(--rojo)';
@@ -821,13 +979,15 @@ function verProyeccion(){
       pesos(critico.caja) + '. Un dueno no mira el final del periodo: mira el dia que ' +
       'se queda corto, y ese dia tiene fecha.</span>';
     out.push(av);
-  } else if (Object.keys(PATEADO).length){
+  } else if (hayPateo){
     var ok = el('div', 'card');
     ok.style.borderLeft = '3px solid var(--verde)';
-    ok.innerHTML = '<b>Asi llegas.</b> Pateando ' +
-      p.grupos.filter(function(g){ return PATEADO[g.id]; })
-              .map(function(g){ return g.nombre.toLowerCase(); }).join(' y ') +
-      ', la caja no se da vuelta en ' + VENTANA + ' dias.';
+    var pat = (p.items || []).filter(function(it){
+      return it.fecha <= hasta && pateado(it);
+    }).reduce(function(a, x){ return a + x.monto; }, 0);
+    ok.innerHTML = '<b>Asi llegas.</b> Corriendo ' + pesos(pat) + ' la caja no se da ' +
+      'vuelta en ' + VENTANA + ' dias. La deuda no desaparece: se patea, y el atraso ' +
+      'se acumula.';
     out.push(ok);
   }
 
@@ -836,10 +996,11 @@ function verProyeccion(){
   var sale = curva.reduce(function(a, x){ return a + x.sale; }, 0);
   var entra = curva.reduce(function(a, x){ return a + x.entra; }, 0);
   cg.appendChild(el('p', 'nota',
-    '<b>Que toma:</b> el comportamiento de los ultimos meses, no una formula — cada ' +
-    'tipo de movimiento se repite con su propio ritmo. La deuda con droguerias NO se ' +
-    'proyecta: ya tiene fecha y monto en la planilla. En ' + VENTANA + ' dias entran ' +
-    pesos(entra) + ' y salen ' + pesos(sale) + '.'));
+    '<b>Que toma:</b> el comportamiento de los ultimos meses — cada tipo de movimiento ' +
+    'se repite con su propio ritmo. La deuda con droguerias NO se estima: ya tiene ' +
+    'fecha y monto en la planilla, por eso sus resumenes salen sin la marca de ' +
+    '“estimado”. En ' + VENTANA + ' dias entran ' + pesos(entra) + ' y salen ' +
+    pesos(sale) + '.'));
   out.push(cg);
   return out;
 }
