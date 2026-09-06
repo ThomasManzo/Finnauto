@@ -363,7 +363,15 @@
           "nombre": "PAMI",
           "naturaleza": "VARIABLE",
           "carga": "manual",
-          "_nota": "El mas importante y el mas enredado. Paga 2 veces por mes (a veces 4), por QUINCENA PRESENTADA, pero cruzado: un pago cubre la 1ra quincena de un mes + la 2da del mes anterior. Ademas paga parte en notas de credito. PENDIENTE: modelar bien el calendario con Thomas/Andy."
+          "_nota": "El mas importante y el mas enredado. Paga 2 veces por mes (a veces 4), por QUINCENA PRESENTADA, pero cruzado: un pago cubre la 1ra quincena de un mes + la 2da del mes anterior. Ademas paga parte en notas de credito. PENDIENTE: modelar bien el calendario con Thomas/Andy.",
+          "pagos_por_mes": 2,
+          "dias_esperados": [
+            15,
+            30
+          ],
+          "se_corre": true,
+          "_como_lo_dijo_thomas": "\"Lo suelo dejar como cobrable cerca de las fechas que deberian pagar (tienen que hacer como minimo dos pagos al mes), uno a mitad y otro a fin de mes, y en su momento los iba corriendo pasados los dias.\" (06/09/2026)",
+          "_modelo": "PAMI no es impredecible en el MONTO: es impredecible en la FECHA. Se esperan dos pagos por mes, a mitad y a fin. Cuando la fecha pasa sin que entre, no se borra: se CORRE. Por eso la memoria tiene que medir cuanto se corre en promedio -- ese numero es el riesgo real del negocio, y hoy nadie lo tiene escrito en ningun lado."
         }
       ]
     },
@@ -496,9 +504,10 @@
         "contraparte": "DROG.DEL SUD",
         "monto_usd_mensual": 219000,
         "pateable": true,
-        "tolerancia_semanas": null,
-        "_falta_definir": "Cuantas semanas se puede patear la refi sin consecuencia. Thomas dijo que se puede, pero no cuanto. Hasta saberlo el motor la muestra aparte y NO la propone para patear.",
-        "_nota": "Acuerdo por USD 219.000 mensuales con DDS. Se hace un cheque, se retira en efectivo y DDS manda una financiera a buscarlo en pesos. La contraparte es DDS pero NO es una factura de mercaderia: no entra en el reparto semanal de droguerias."
+        "tolerancia_semanas": 2,
+        "_nota": "Acuerdo por USD 219.000 mensuales con DDS. Se hace un cheque, se retira en efectivo y DDS manda una financiera a buscarlo en pesos. La contraparte es DDS pero NO es una factura de mercaderia: no entra en el reparto semanal de droguerias. Tolerancia: 2 semanas -- pateable hasta el vencimiento del mes siguiente. A partir de ahi el motor SI la propone para patear, junto con las droguerias, pero se muestra en su propia linea porque la consecuencia de atrasarla no es que te bloqueen la compra.",
+        "vence_dia_del_mes": "20 a 25",
+        "_como_lo_dijo_thomas": "\"La refinanciacion se suele pagar llegando el 20/25 de cada mes, se puede patear hasta el mes siguiente, o sea 1 semana casi dos.\" (06/09/2026)"
       },
       {
         "id": "FONDO_DE_COMERCIO",

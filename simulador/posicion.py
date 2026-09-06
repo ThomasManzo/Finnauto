@@ -55,12 +55,29 @@ from simulador.semana import _m
 from simulador import disponibilidad as D
 
 
+# EL DEL MEDIO ES EL QUE SE USA. Los otros dos son los bordes.
+#
+# Cuando le mostre solo los dos extremos, Thomas corrigio (06/09/2026):
+#
+#     "El escenario 1 es el incorrecto, claramente no esta teniendo en cuenta
+#      deuda a vencer."
+#
+# Tenia razon: "no pagar nada" da un numero enorme y positivo que no significa
+# nada, porque la deuda no desaparecio -- se pateo. Mostrarlo al lado de "pagar
+# todo" hace parecer que la eleccion es entre esos dos, y no es.
+#
+# La decision real es la del medio: cubrir lo VENCIDO y dejar correr lo que
+# todavia no vencio. Por eso va marcada.
 ESCENARIOS = [
-    ("1. sin pagar a droguerias", dict(con_droguerias=False),
-     "Lo que Thomas miraba cuando el negocio estaba peor: si al menos se "
-     "cubren los cheques de la semana."),
-    ("2. pagando a droguerias", dict(con_droguerias=True),
-     "Como quedarias pagando todo en fecha."),
+    ("1. sin pagarles nada", dict(con_droguerias="nada"),
+     "El borde de abajo. La deuda no desaparece: se patea y el atraso se "
+     "acumula. Sirve para ver si al menos se cubren los cheques."),
+    ("2. pagando lo VENCIDO  <<", dict(con_droguerias="vencido"),
+     "LO QUE SE HACE DE VERDAD: se cubre lo que ya vencio -- que es lo que "
+     "puede hacer que te corten la compra -- y lo que todavia no vencio se "
+     "deja correr."),
+    ("3. pagando todo en fecha", dict(con_droguerias="todo"),
+     "El borde de arriba. Como quedarias sin atrasarte un dia con nadie."),
 ]
 
 # EL ESCENARIO 3 NO ESTA, Y NO ES UN OLVIDO.
@@ -135,12 +152,15 @@ def imprimir(us, filas, dias, hoy):
     # Un saldo negativo en los tres escenarios no dice nada nuevo; lo que dice
     # algo es cuanto cambia entre uno y otro.
     print("\n  QUE SIGNIFICA CADA SALTO")
-    if len(filas) >= 2:
-        d = filas[0]["total"] - filas[1]["total"]
-        print("     Del 1 al 2: %s" % _m(d))
-        print("     Es lo que te estan financiando las droguerias. Si dejas de")
-        print("     pagarles, esa plata se queda en la caja -- y el atraso se")
-        print("     acumula hasta que te bloquean la compra.")
+    if len(filas) >= 3:
+        print("     Del 1 al 2: %s" % _m(filas[0]["total"] - filas[1]["total"]))
+        print("     Es el atraso que YA tenes acumulado. Esa plata esta en tu")
+        print("     caja hoy porque todavia no se la pagaste a la drogueria.")
+        print("     Del 2 al 3: %s" % _m(filas[1]["total"] - filas[2]["total"]))
+        print("     Es lo que te van a financiar en la ventana, si te seguis")
+        print("     atrasando al mismo ritmo.")
+        print("     Los dos juntos son tu linea de credito real. No hay otra:")
+        print("     las bancarias estan agotadas.")
 
     print("\n  Esto NO es la caja de hoy: es la caja de hoy MAS lo que entra")
     print("  seguro MENOS lo que sale, en la ventana. Los cheques en cartera")
@@ -159,7 +179,7 @@ def diagnostico_esc3(contrato):
 def imprimir_esc3(contrato):
     filas, por_unidad = diagnostico_esc3(contrato)
     print()
-    print("  FALTA EL ESCENARIO 3: \"y MAGA pagandole a Speed\"")
+    print("  FALTA UN CUARTO ESCENARIO: \"y MAGA pagandole a Speed\"")
     print("  No se calcula porque el dato no esta, no porque no importe.")
     if not filas:
         print("     No hay ninguna fila intercompany cargada en la deuda.")

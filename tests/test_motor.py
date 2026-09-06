@@ -1039,7 +1039,7 @@ def test_disponibilidad():
         ],
     }
 
-    p = D.puente(contrato, dias=45, minima=100.0)
+    p = D.puente(contrato, dias=45, minima=100.0, con_droguerias=D.TODO)
 
     # 1) EL HORIZONTE SE APLICA DE VERDAD.
     # En la Calculadora del cliente, HORIZONTE_DIAS: 45 aparece una sola vez en
@@ -1083,7 +1083,7 @@ def test_disponibilidad():
     # 7) LA CAJA POR UNIDAD ES SOLO BANCOS.
     # El efectivo de la grilla de SALDOS es un total del grupo y no dice de que
     # empresa es. Repartirlo con un criterio inventado seria peor que avisar.
-    pu = D.puente(contrato, dias=45, unidad="MAGA")
+    pu = D.puente(contrato, dias=45, unidad="MAGA", con_droguerias=D.TODO)
     ok(abs(pu["caja"] - 600.0) < 0.01, "por unidad, la caja es la del banco")
     ok(abs(pu["efectivo_sin_asignar"] - 50.0) < 0.01,
        "y el efectivo del grupo se avisa en vez de repartirse")
@@ -1126,23 +1126,31 @@ def test_posicion_por_unidad():
     us, filas = P.calcular(contrato, dias=45)
     ok(us == ["MAGA", "SPEEDMED"],
        "las empresas salen del contrato, no estan hardcodeadas", str(us))
-    ok(len(filas) == 2, "se publican los dos escenarios que se pueden calcular")
+    ok(len(filas) == 3, "son tres escenarios: los dos bordes y el del medio")
+    ok("<<" in filas[1]["escenario"],
+       "y el marcado es el del medio, que es el que se usa de verdad")
 
-    # Escenario 1: no se paga a droguerias -> solo pesan los egresos.
+    # Borde de abajo: no se paga nada -> solo pesan los egresos.
     ok(abs(filas[0]["por_unidad"]["MAGA"] - 500.0) < 0.01,
-       "sin pagar a droguerias, la deuda no resta", str(filas[0]["por_unidad"]))
+       "sin pagarles nada, la deuda no resta", str(filas[0]["por_unidad"]))
     ok(abs(filas[0]["por_unidad"]["SPEEDMED"] - 400.0) < 0.01,
        "y cada empresa queda con lo suyo")
 
-    # Escenario 2: se paga.
-    ok(abs(filas[1]["por_unidad"]["MAGA"] - 200.0) < 0.01,
-       "pagando, la deuda resta de la empresa que la tiene")
-    ok(abs(filas[1]["por_unidad"]["SPEEDMED"] - 150.0) < 0.01,
+    # EL DEL MEDIO: se cubre lo vencido y se deja correr lo que no vencio.
+    # Aca toda la deuda es futura, asi que tiene que dar igual que el borde de
+    # abajo -- si diera distinto, estaria cobrando deuda que todavia no vencio.
+    ok(abs(filas[1]["por_unidad"]["MAGA"] - 500.0) < 0.01,
+       "pagando solo lo vencido, la deuda futura no pesa",
+       str(filas[1]["por_unidad"]))
+
+    # Borde de arriba: se paga todo en fecha.
+    ok(abs(filas[2]["por_unidad"]["MAGA"] - 200.0) < 0.01,
+       "pagando todo, la deuda resta de la empresa que la tiene")
+    ok(abs(filas[2]["por_unidad"]["SPEEDMED"] - 150.0) < 0.01,
        "y de la otra tambien, cada una la suya")
 
-    # El salto entre los dos es lo que te financia el proveedor.
-    ok(abs((filas[0]["total"] - filas[1]["total"]) - 550.0) < 0.01,
-       "el salto entre escenarios es lo que te financian las droguerias")
+    ok(abs((filas[1]["total"] - filas[2]["total"]) - 550.0) < 0.01,
+       "el salto del medio al borde de arriba es lo que te financian")
 
     # EL INVARIANTE: lo intercompany no cambia el total del grupo.
     from simulador import disponibilidad as D
@@ -1153,10 +1161,10 @@ def test_posicion_por_unidad():
         {"fecha": dentro, "contraparte": "SPEEDMED", "importe": -90.0,
          "unidad": "MAGA", "intercompany": True},
     ]
-    t = sum(D.puente(con_inter, dias=45, unidad=u, con_droguerias=True,
+    t = sum(D.puente(con_inter, dias=45, unidad=u, con_droguerias=D.TODO,
                      con_intercompany=True)["proyectada_seguro"]
             for u in us)
-    ok(abs(t - filas[1]["total"]) < 0.01,
+    ok(abs(t - filas[2]["total"]) < 0.01,
        "un pago entre empresas del grupo no cambia el total del grupo", str(t))
 
     # Y cuando esta cargado de un solo lado, se dice cual y cuanto.
@@ -1167,6 +1175,88 @@ def test_posicion_por_unidad():
     f, por_u = P.diagnostico_esc3(solo_uno)
     ok(len(f) == 1 and list(por_u) == ["SPEEDMED"],
        "y el diagnostico dice de que lado quedo cargado")
+
+
+def test_retiro():
+    """LA REGLA DEL RETIRO, con las palabras de Thomas (06/09/2026):
+
+        "La decision la tomaria en base a la deuda efectivamente VENCIDA. Si
+         podemos pagar esa deuda y dejar un resto para retirar, estaria ok. Si
+         con lo que tenemos no llegamos a cubrir esa deuda, patearia el retiro."
+
+    Reemplaza a la regla anterior del motor -- caja proyectada menos una "caja
+    minima" -- que tenia el problema de que el minimo era un numero inventado.
+    La deuda vencida no: es un hecho, y es justo la que puede hacer que te
+    corten la compra.
+    """
+    from simulador import disponibilidad as D
+
+    hoy = "2026-09-05"
+    base = {
+        "generado": hoy + "T00:00:00Z",
+        "caja_hoy": 1000.0,
+        "cobros_previstos": [], "cuentas_a_cobrar_droguerias": [],
+        "egresos_cashflow": [],
+        "deuda_droguerias": [
+            {"fecha": "2026-09-01", "contraparte": "SUIZO", "importe": 300.0},
+            {"fecha": "2026-09-08", "contraparte": "SUIZO", "importe": 5000.0},
+        ],
+    }
+
+    r = D.retiro(base, dias=7)
+    ok(abs(r["vencido"] - 300.0) < 0.01, "mide lo que ya vencio", str(r["vencido"]))
+    ok(abs(r["margen"] - 700.0) < 0.01,
+       "el margen es lo que queda despues de cubrirlo", str(r["margen"]))
+    ok(r["se_puede"] and abs(r["maximo"] - 700.0) < 0.01,
+       "y ese margen es el maximo que se puede sacar")
+
+    # LA PARED DE ATRAS.
+    # Contar los cobros de la ventana contra la deuda vencida de HOY infla el
+    # margen. Con 45 dias el motor llego a decir "podes retirar $5.665M" cuando
+    # en esa misma ventana vencian $7.849M mas. Un margen positivo puede estar
+    # tapando una pared, y eso hay que decirlo.
+    ok(r["tapa_una_pared"],
+       "avisa cuando el margen positivo tapa lo que vence en la misma ventana")
+    ok(abs(r["por_vencer_en_ventana"] - 5000.0) < 0.01,
+       "y dice cuanto es esa pared", str(r["por_vencer_en_ventana"]))
+
+    # Cuando no alcanza ni para lo vencido, no se retira.
+    flaco = dict(base, caja_hoy=100.0)
+    r2 = D.retiro(flaco, dias=7, pedido=50.0)
+    ok(not r2["se_puede"], "si no se cubre lo vencido, no se retira")
+    ok(abs(r2["falta_para_cubrir"] - 200.0) < 0.01,
+       "y dice cuanto falta para cubrirlo", str(r2["falta_para_cubrir"]))
+    # Dos faltantes distintos: los tenia mezclados en uno y el titular mentia.
+    ok(abs(r2["falta_para_el_retiro"] - 250.0) < 0.01,
+       "aparte de cuanto falta para el retiro pedido",
+       str(r2["falta_para_el_retiro"]))
+
+
+def test_modos_de_pago():
+    """Los tres modos, y por que el del medio es el default."""
+    from simulador import disponibilidad as D
+
+    hoy = "2026-09-05"
+    c = {"generado": hoy + "T00:00:00Z", "caja_hoy": 0.0,
+         "cobros_previstos": [], "cuentas_a_cobrar_droguerias": [],
+         "egresos_cashflow": [],
+         "deuda_droguerias": [
+             {"fecha": "2026-09-01", "contraparte": "SUIZO", "importe": 100.0},
+             {"fecha": "2026-09-20", "contraparte": "SUIZO", "importe": 400.0}]}
+
+    ok(abs(D.puente(c, 45, con_droguerias=D.NADA)["sale"]) < 0.01,
+       "modo nada: no se paga deuda de droguerias")
+    ok(abs(D.puente(c, 45, con_droguerias=D.VENCIDO)["sale"] - 100.0) < 0.01,
+       "modo vencido: solo lo que ya vencio")
+    ok(abs(D.puente(c, 45, con_droguerias=D.TODO)["sale"] - 500.0) < 0.01,
+       "modo todo: vencido mas lo que vence en la ventana")
+    ok(abs(D.puente(c, 45)["sale"] - 100.0) < 0.01,
+       "y el default es el del medio, que es lo que se hace de verdad")
+    # Compatibilidad con los booleanos viejos, para no romper lo ya escrito.
+    ok(D.puente(c, 45, con_droguerias=True)["con_droguerias"] == D.TODO,
+       "True sigue significando 'todo'")
+    ok(D.puente(c, 45, con_droguerias=False)["con_droguerias"] == D.NADA,
+       "y False, 'nada'")
 
 
 if __name__ == "__main__":
@@ -1189,6 +1279,8 @@ if __name__ == "__main__":
     test_coherencia()
     test_completitud()
     test_posicion_por_unidad()
+    test_retiro()
+    test_modos_de_pago()
     test_proveedores()
     test_rigido_y_endoso()
     test_deuda_vencida()
