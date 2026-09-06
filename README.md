@@ -65,3 +65,30 @@ python orquestador/correr.py --cliente maga --banco galicia --modo prueba
 ⚠️ **El refactor de Galicia se portó 1:1 del bot probado, pero todavía NO se corrió
 contra el banco desde esta estructura nueva.** Antes de reemplazar producción hay
 que hacer una corrida de prueba. Ver `docs/MANANA_THOMAS.md`.
+
+## Cómo se corre
+
+Un solo comando arma todo el material de una visita:
+
+```bash
+python finauto.py --contrato datos/CONTRATO_maga_2026-09-05.json
+```
+
+Controla el dato, lo contrasta contra los números del propio cliente, arma el
+tablero y el informe, y guarda la foto de hoy en la memoria.
+
+**Lo último no es un extra.** Es lo único que hace que la segunda visita valga
+más que la primera — y la foto de hoy solo se puede sacar hoy.
+
+### Las herramientas por separado
+
+```bash
+python dashboard/app.py       --contrato c.json    # el tablero
+python dashboard/generar.py   --contrato c.json    # el informe de una página
+python simulador/proveedores.py   --contrato c.json --cliente maga
+python simulador/disponibilidad.py --contrato c.json --retiro 150000000
+python simulador/posicion.py  --contrato c.json
+python simulador/proyeccion.py --contrato c.json
+python auditoria/contraste.py --contrato c.json
+python auditoria/revisar.py   --contrato c.json
+```

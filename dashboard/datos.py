@@ -275,6 +275,147 @@ def hallazgos(contrato):
     return out
 
 
+
+def ingresos_por_dia(contrato, unidad, hoy, dias=30):
+    """Lo que entra, día por día y separado por fuente.
+
+    Es el gráfico que Thomas ya tenía en su tablero de Apps Script y el único
+    que muestra el RITMO del negocio: un total mensual no dice que el 07 entra
+    PAMI y el resto del mes se vive de mostrador.
+    """
+    u = _unidad_real(unidad)
+    hasta = (datetime.date.fromisoformat(hoy)
+             + datetime.timedelta(days=dias)).isoformat()
+    por_dia = {}
+    fuentes = {}
+    for x in contrato.get("cobros_previstos", []):
+        if x.get("interno"):
+            continue
+        if u and (x.get("unidad") or "") != u:
+            continue
+        f = x.get("fecha") or ""
+        if not (hoy <= f <= hasta):
+            continue
+        con = (x.get("concepto") or "?").strip()
+        por_dia.setdefault(f, {})
+        por_dia[f][con] = por_dia[f].get(con, 0.0) + float(x.get("importe") or 0)
+        fuentes[con] = fuentes.get(con, 0.0) + float(x.get("importe") or 0)
+
+    orden = [k for k, _ in sorted(fuentes.items(), key=lambda kv: -kv[1])]
+    dias_ord = sorted(por_dia)
+    return {
+        "fuentes": orden,
+        "dias": [{"fecha": f, "valores": [por_dia[f].get(k, 0.0) for k in orden],
+                  "total": sum(por_dia[f].values())} for f in dias_ord],
+    }
+
+
+def a_cobrar(contrato, unidad, hoy, dias=45):
+    """Lo que nos deben: vencido, por vencer, y por contraparte.
+
+    OJO CON EL SENTIDO: MAGA le COMPRA a las droguerías. Esta vista es de
+    Speedmed, que les compra Y les vende. Confundir las dos puntas fue el error
+    más caro del proyecto.
+    """
+    u = _unidad_real(unidad)
+    hasta = (datetime.date.fromisoformat(hoy)
+             + datetime.timedelta(days=dias)).isoformat()
+    agg = defaultdict(lambda: {"vencido": 0.0, "por_vencer": 0.0})
+    venc = fut = 0.0
+    for x in contrato.get("cuentas_a_cobrar_droguerias", []):
+        if x.get("intercompany"):
+            continue
+        if u and (x.get("unidad") or "") != u:
+            continue
+        f = x.get("fecha") or ""
+        v = float(x.get("importe") or 0)
+        cp = (x.get("contraparte") or "?").strip()
+        if f and f < hoy:
+            agg[cp]["vencido"] += v
+            venc += v
+        elif hoy <= f <= hasta:
+            agg[cp]["por_vencer"] += v
+            fut += v
+    filas = [{"nombre": k, "vencido": v["vencido"], "por_vencer": v["por_vencer"],
+              "total": v["vencido"] + v["por_vencer"]}
+             for k, v in agg.items()]
+    filas.sort(key=lambda x: -x["total"])
+
+    ch = []
+    for c in contrato.get("cartera_cheques", []):
+        f = c.get("fecha") or ""
+        est = str(c.get("estado") or "").upper()
+        if est == "ANULADO" or not (hoy <= f <= hasta):
+            continue
+        ch.append({"fecha": f, "importe": abs(float(c.get("importe") or 0)),
+                   "librador": (c.get("librador") or "").strip()[:40],
+                   "estado": est})
+    ch.sort(key=lambda x: (x["fecha"], -x["importe"]))
+    return {"filas": filas, "vencido": venc, "por_vencer": fut,
+            "cheques": ch[:20],
+            "cheques_total": sum(c["importe"] for c in ch)}
+
+
+def proyeccion(contrato, unidad, hoy, dias=45):
+    """La curva de caja día por día, y el primer día en rojo.
+
+    Es lo único que contesta "¿qué día me quedo corto?" en vez de "¿cómo cierro
+    el período?". Un dueño no mira el final del período: mira el martes.
+    """
+    from simulador import proyeccion as PR
+    u = _unidad_real(unidad)
+    caja = float(contrato.get("caja_hoy") or 0)
+    if u:
+        caja = float((contrato.get("caja_por_unidad") or {}).get(u) or 0)
+
+    sub = dict(contrato)
+    if u:
+        sub["movimientos"] = [x for x in contrato.get("movimientos", [])
+                              if (x.get("unidad") or "") == u]
+        sub["cobros_previstos"] = [x for x in contrato.get("cobros_previstos", [])
+                                   if (x.get("unidad") or "") == u]
+    try:
+        r = PR.proyectar_caja(sub, datetime.date.fromisoformat(hoy), dias,
+                              caja_inicial=caja)
+    except Exception as e:
+        return {"error": str(e), "curva": []}
+
+    critico = None
+    for p in r["curva"]:
+        if p["caja"] < 0:
+            critico = p
+            break
+    return {"desde": r["desde"], "hasta": r["hasta"], "caja_inicial": r["caja_inicial"],
+            "curva": r["curva"], "critico": critico,
+            "total_ingresos": r["total_ingresos"], "total_egresos": r["total_egresos"],
+            "minimo": min([p["caja"] for p in r["curva"]] or [0]),
+            "final": r["curva"][-1]["caja"] if r["curva"] else caja}
+
+
+def memoria_del_cliente(cliente):
+    """Qué se proyectó antes y si se cumplió.
+
+    Es el activo de una asesoría recurrente: "el mes pasado te dije que el 25
+    quedabas corto". Sin esto, cada visita arranca de cero.
+    """
+    try:
+        from memoria import registro as MEM
+        rutas = MEM.snapshots(cliente)
+    except Exception:
+        return {"snapshots": [], "conciliadas": 0}
+    out = []
+    for ruta in rutas:
+        try:
+            d = MEM.leer(ruta)
+            out.append({"corte": d.get("corte"), "hasta": d.get("hasta"),
+                        "etiqueta": d.get("etiqueta") or "",
+                        "movimientos": len(d.get("proyectados") or []),
+                        "caja_hoy": d.get("caja_hoy")})
+        except Exception:
+            continue
+    return {"snapshots": out, "conciliadas": 0}
+
+
 def armar(contrato, cliente="maga"):
     hoy = D.hoy_de(contrato)
     us = POS.unidades(contrato)
@@ -301,6 +442,9 @@ def armar(contrato, cliente="maga"):
             "gastos": gastos_del_periodo(contrato, u, hoy),
             "escenarios": esc_por_unidad[u],
             "retiro": retiro_por_ventana(contrato, u),
+            "ingresos_dia": ingresos_por_dia(contrato, u, hoy),
+            "a_cobrar": a_cobrar(contrato, u, hoy),
+            "proyeccion": proyeccion(contrato, u, hoy),
         }
 
     return {
@@ -311,4 +455,5 @@ def armar(contrato, cliente="maga"):
         "ventanas": VENTANAS,
         "datos": datos,
         "hallazgos": hallazgos(contrato),
+        "memoria": memoria_del_cliente(cliente),
     }
