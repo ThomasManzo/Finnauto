@@ -7,12 +7,11 @@ pierde el acceso a la planilla de origen**, y por eso existe esta carpeta.
 egresos del cashflow, cartera de cheques, referencias del cliente y las
 fórmulas resueltas. Todo lo que el motor sabe leer, sale de acá.
 
-## Por qué importa más de lo que parece
+## Por qué está acá
 
-La planilla "Cash de prueba" es de una cuenta de trabajo
-(`thomasmanzospeedmed@gmail.com`), no de la personal. Si esa cuenta se da de
-baja, se pierde la planilla y con ella la posibilidad de volver a exportar.
-Los JSON de esta carpeta no dependen de eso.
+Comodidad, no seguro. Las planillas son de la cuenta personal de Thomas, así que
+el origen no se pierde y siempre se puede volver a exportar. Tener el JSON local
+evita depender de Drive para correr el motor o generar el informe.
 
 ## Qué NO va a git
 

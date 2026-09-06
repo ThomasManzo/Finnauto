@@ -25,6 +25,10 @@
 >
 > **Lo único que mueve la aguja ahora es lo que sirva para vender.** El motor ya
 > está; lo que no existe es con qué mostrarlo.
+>
+> *(No hay riesgo de perder el dato: las planillas son de la cuenta personal de
+> Thomas, que es dueña del cash y del clasificador. Puede copiarlas cuando
+> quiera.)*
 
 ---
 
