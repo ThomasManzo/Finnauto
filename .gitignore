@@ -33,3 +33,7 @@ desktop.ini
 .DS_Store
 clientes/*/memoria/
 salidas/
+
+# Los informes generados llevan datos reales del cliente: se regeneran con
+# dashboard/generar.py y no se versionan.
+salidas/*.html

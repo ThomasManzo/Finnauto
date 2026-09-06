@@ -1259,6 +1259,70 @@ def test_modos_de_pago():
        "y False, 'nada'")
 
 
+def test_hallazgos_del_informe():
+    """LOS HALLAZGOS SE CALCULAN, Y NO PUEDEN SER FALSOS.
+
+    El informe le dice al cliente "esto que tenes esta mal". Si uno de esos
+    señalamientos es falso, no cuesta un renglon: cuesta la credibilidad de
+    todos los demas, incluidos los que si son ciertos.
+
+    FALSO POSITIVO REAL (06/09/2026): la primera version marcaba cualquier
+    referencia a una celda de columna A, B o C, y saco como hallazgo que "Caja
+    hoy apunta a SALDOS!C26 -- mira una fecha vieja". SALDOS no es un cashflow:
+    sus columnas son bancos, no fechas, y C26 es el total correcto.
+
+    Y se calculan sobre el contrato, nunca a mano: si el cliente arregla algo,
+    el hallazgo desaparece solo. Uno hardcodeado sobrevive a su propia solucion.
+    """
+    from dashboard import generar as G
+
+    base = {"generado": "2026-09-05T00:00:00Z", "caja_hoy": 0.0,
+            "deuda_droguerias": [], "cuentas_a_cobrar_droguerias": [],
+            "cartera_cheques": []}
+
+    # Una referencia a la grilla de SALDOS NO es un hallazgo.
+    c = dict(base, referencias_del_cliente={"Calculadora": [
+        {"etiqueta": "Caja hoy", "valor": 100.0, "formula": "=SALDOS!C26",
+         "apunta_a": [{"hoja": "SALDOS", "celda": "C26", "fila": 26,
+                       "rotulo": "TOTAL", "valor": 100.0}]}]})
+    ok(not G.hallazgos(c),
+       "una referencia a SALDOS no se marca como fecha vieja",
+       str([h["titulo"] for h in G.hallazgos(c)]))
+
+    # Una referencia a la PRIMERA columna de un cashflow si lo es.
+    c2 = dict(base, referencias_del_cliente={"Posicion": [
+        {"etiqueta": "Speedmed", "valor": 333.0,
+         "formula": "='Cash Flow Diario-Speed'!B50",
+         "apunta_a": [{"hoja": "Cash Flow Diario-Speed", "celda": "B50",
+                       "fila": 50, "rotulo": "Saldo cierre", "valor": 333.0}]}]})
+    hs = G.hallazgos(c2)
+    ok(len(hs) == 1 and "fecha vieja" in hs[0]["titulo"],
+       "y una a la primera columna del cashflow si", str(hs))
+
+    # Las NCR salen del dato: si no hay, no hay hallazgo.
+    c3 = dict(base, deuda_droguerias=[
+        {"fecha": "2026-09-20", "contraparte": "NCR SUIZO", "importe": -50.0,
+         "es_credito": True}])
+    hs3 = G.hallazgos(c3)
+    ok(any(h["monto"] == 50.0 for h in hs3),
+       "el hallazgo de las NCR sale del contrato, no esta escrito a mano")
+    ok(not G.hallazgos(base),
+       "y un contrato sin nada raro no genera ningun hallazgo")
+
+    # Los cheques endosados: solo si son una parte relevante de la cartera.
+    c4 = dict(base, cartera_cheques=[
+        {"fecha": "2026-09-10", "importe": 900.0, "estado": "ENDOSADO"},
+        {"fecha": "2026-09-10", "importe": 100.0, "estado": "RECIBIDO"}])
+    ok(any("90%" in h["titulo"] for h in G.hallazgos(c4)),
+       "y el de los cheques dice el porcentaje real de la cartera",
+       str([h["titulo"] for h in G.hallazgos(c4)]))
+
+    # Formato: seis decimales en las semanas hacen que parezca salida de script.
+    ok(G.semanas(1.285714) == "1,3 sem", "las semanas van con un decimal",
+       G.semanas(1.285714))
+    ok(G.semanas(3.0) == "3 sem", "y sin decimal cuando es redondo")
+
+
 if __name__ == "__main__":
     print("=" * 62)
     print("  TESTS DEL MOTOR finauto")
@@ -1281,6 +1345,7 @@ if __name__ == "__main__":
     test_posicion_por_unidad()
     test_retiro()
     test_modos_de_pago()
+    test_hallazgos_del_informe()
     test_proveedores()
     test_rigido_y_endoso()
     test_deuda_vencida()
