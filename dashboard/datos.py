@@ -194,7 +194,11 @@ def gastos_del_periodo(contrato, unidad, hoy, dias=45, tope=8):
     u = _unidad_real(unidad)
     hasta = (datetime.date.fromisoformat(hoy)
              + datetime.timedelta(days=dias)).isoformat()
+    # Se guarda el detalle ademas del total: sin eso la barra dice "cuanto" pero
+    # no "de que", y la primera pregunta frente a una barra grande es de que
+    # esta hecha.
     agg = defaultdict(float)
+    det = defaultdict(list)
 
     for x in contrato.get("egresos_cashflow", []):
         if x.get("intercompany"):
@@ -204,7 +208,10 @@ def gastos_del_periodo(contrato, unidad, hoy, dias=45, tope=8):
         f = x.get("fecha") or ""
         if not (hoy <= f <= hasta):
             continue
-        agg[(x.get("contraparte") or "?").strip()] += float(x.get("importe") or 0)
+        k = (x.get("contraparte") or "?").strip()
+        agg[k] += float(x.get("importe") or 0)
+        det[k].append({"fecha": f, "concepto": k,
+                       "monto": float(x.get("importe") or 0)})
 
     # Las droguerias, una barra por cada una y con su nombre.
     from simulador import proveedores as PROV
@@ -226,16 +233,27 @@ def gastos_del_periodo(contrato, unidad, hoy, dias=45, tope=8):
         cp = (x.get("contraparte") or "?").strip()
         if "REFINANC" in cp.upper():
             agg["Refinanciacion"] += v
+            det["Refinanciacion"].append(
+                {"fecha": f, "concepto": "Cuota del " + f[8:10] + "/" + f[5:7],
+                 "monto": v})
             continue
         pid, ficha = PROV._match(cp, fichas)
-        agg[(ficha or {}).get("nombre") or pid or cp] += v
+        k = (ficha or {}).get("nombre") or pid or cp
+        agg[k] += v
+        det[k].append({"fecha": f, "concepto": "Resumen del " + f[8:10] + "/" + f[5:7],
+                       "monto": v})
 
     filas = sorted(agg.items(), key=lambda kv: -kv[1])
-    top = [{"nombre": k, "monto": v} for k, v in filas[:tope]]
+    top = [{"nombre": k, "monto": v,
+            "detalle": sorted(det[k], key=lambda d: d["fecha"])} for k, v in filas[:tope]]
     resto = sum(v for _, v in filas[tope:])
     if resto:
+        sueltos = []
+        for k, _ in filas[tope:]:
+            sueltos.append({"fecha": "", "concepto": k, "monto": agg[k]})
         top.append({"nombre": "Otros gastos (%d conceptos)" % (len(filas) - tope),
-                    "monto": resto})
+                    "monto": resto,
+                    "detalle": sorted(sueltos, key=lambda d: -d["monto"])})
     return top
 
 
@@ -644,7 +662,41 @@ def proyeccion(contrato, unidad, hoy, dias=45):
                     "sale": {g: d.get(g, 0.0) for g, _, _ in PATEABLES if d.get(g)}})
         f += datetime.timedelta(days=1)
 
+    # EL DETALLE, PARA PODER TILDAR DE A UNO.
+    #
+    # Thomas: "me gustaria que haya un desplegable por cada concepto y poder
+    # tildar o destildar los conceptos desde ahi. Ejemplo deuda con drogueria y
+    # que salgan los resumenes que comprenden el timeline".
+    #
+    # Tiene sentido y es como se decide de verdad: no se patea "las droguerias",
+    # se patea el resumen de Suizo del 03/09 y se paga el de Cofaloza. Un
+    # interruptor por grupo obliga a elegir todo o nada, que es justo lo que el
+    # negocio no hace.
+    #
+    # Cada item lleva su id para que el navegador pueda sacarlo de la suma.
+    items = []
+    for x in r_e:
+        g = _grupo_de(x.get("clave") or x.get("tipo"))
+        if hoy <= x["fecha"] <= hasta:
+            items.append({"id": g + "|" + x["fecha"] + "|" + str(x.get("clave") or ""),
+                          "grupo": g, "fecha": x["fecha"],
+                          "concepto": (x.get("clave") or "?").title(),
+                          "monto": abs(float(x["importe"])), "estimado": True})
+    for x in deuda:
+        cp = str(x.get("contraparte") or "")
+        g = "refi" if "REFINANC" in cp.upper() else "droguerias"
+        if hoy <= x["fecha"] <= hasta:
+            items.append({"id": g + "|" + x["fecha"] + "|" + cp,
+                          "grupo": g, "fecha": x["fecha"],
+                          # En droguerias, cada monto es un RESUMEN con su fecha.
+                          "concepto": "Resumen del " + x["fecha"][8:10] + "/" +
+                                      x["fecha"][5:7] + " · " + cp,
+                          "monto": abs(float(x.get("importe") or 0)),
+                          "estimado": False})
+    items.sort(key=lambda i: (i["grupo"], i["fecha"], -i["monto"]))
+
     return {"desde": hoy, "hasta": hasta, "caja_inicial": caja, "dias": out,
+            "items": items,
             "grupos": [{"id": g, "nombre": n, "nota": t} for g, n, t in PATEABLES],
             "total_entra": sum(x["entra"] for x in out),
             "total_sale": sum(sum(x["sale"].values()) for x in out)}
