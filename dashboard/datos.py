@@ -495,10 +495,33 @@ def a_cobrar(contrato, unidad, hoy, dias=45):
 
 
 def proyeccion(contrato, unidad, hoy, dias=45):
-    """La curva de caja día por día, y el primer día en rojo.
+    """La curva de caja dia por dia, con LOS DOS LADOS DEL MISMO UNIVERSO.
 
-    Es lo único que contesta "¿qué día me quedo corto?" en vez de "¿cómo cierro
-    el período?". Un dueño no mira el final del período: mira el martes.
+    ERROR REAL (06/09/2026). Thomas: "la proyeccion no entiendo que toma para
+    dar esos numeros, nunca una caja aumenta tan exponencialmente".
+
+    Tenia razon y la causa era gruesa: **comparaba peras con manzanas.**
+
+        ingresos  <- bloque INGRESOS del cashflow      $37.390M historicos
+        egresos   <- solapa MOVIMIENTOS (los bancos)   $12.180M historicos
+
+    Dos fuentes distintas, de tamanos distintos. El bloque de egresos del
+    cashflow ($35.596M) y la deuda con droguerias ($10.400M) no entraban. Con
+    eso la caja subia $5.649M en 45 dias, que es justo lo que no pasa nunca.
+
+    Y ademas se proyectaban como ingreso $5.164M de movimientos INTERNOS
+    (transferencias entre las empresas del grupo, depositos de efectivo) que no
+    crean plata, la mueven de lugar, mas $9.263M de cartera de cheques que no
+    es caja hasta que se decide.
+
+    Ahora los dos lados salen del cashflow y se sacan los internos. Sobre los
+    datos reales pasa de +$6.581M a -$3.171M, con dia critico el 14/09 -- y eso
+    SI es coherente con el resto del tablero, que dice que hoy no alcanza para
+    cubrir lo vencido.
+
+    QUE FALTA DECIDIR: esta version asume que se paga TODO en fecha, incluida
+    la deuda con droguerias. En la practica se paga lo vencido y el resto se
+    corre, asi que el piso real esta entre esta curva y la de no pagarles nada.
     """
     from simulador import proyeccion as PR
     u = _unidad_real(unidad)
@@ -506,12 +529,21 @@ def proyeccion(contrato, unidad, hoy, dias=45):
     if u:
         caja = float((contrato.get("caja_por_unidad") or {}).get(u) or 0)
 
-    sub = dict(contrato)
-    if u:
-        sub["movimientos"] = [x for x in contrato.get("movimientos", [])
-                              if (x.get("unidad") or "") == u]
-        sub["cobros_previstos"] = [x for x in contrato.get("cobros_previstos", [])
-                                   if (x.get("unidad") or "") == u]
+    def _mia(x):
+        return (not u) or (x.get("unidad") or "") == u
+
+    ing = [x for x in contrato.get("cobros_previstos", [])
+           if _mia(x) and not x.get("interno")
+           and "CARTERA" not in str(x.get("concepto") or "").upper()]
+    egr = [dict(x, tipo=x.get("contraparte"))
+           for x in contrato.get("egresos_cashflow", [])
+           if _mia(x) and not x.get("intercompany")]
+    egr += [dict(x, tipo=x.get("contraparte"))
+            for x in contrato.get("deuda_droguerias", [])
+            if _mia(x) and not x.get("intercompany")
+            and float(x.get("importe") or 0) > 0]
+
+    sub = dict(contrato, cobros_previstos=ing, movimientos=egr)
     try:
         r = PR.proyectar_caja(sub, datetime.date.fromisoformat(hoy), dias,
                               caja_inicial=caja)
@@ -527,7 +559,8 @@ def proyeccion(contrato, unidad, hoy, dias=45):
             "curva": r["curva"], "critico": critico,
             "total_ingresos": r["total_ingresos"], "total_egresos": r["total_egresos"],
             "minimo": min([p["caja"] for p in r["curva"]] or [0]),
-            "final": r["curva"][-1]["caja"] if r["curva"] else caja}
+            "final": r["curva"][-1]["caja"] if r["curva"] else caja,
+            "supuesto": "se paga todo en fecha, incluida la deuda con droguerias"}
 
 
 def memoria_del_cliente(cliente):

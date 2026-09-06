@@ -713,10 +713,19 @@ function verProyeccion(){
   out.push(el('h2', null, 'La caja, dia por dia'));
   var cg = el('div', 'card');
   cg.appendChild(curvaCaja(p.curva, p.critico));
-  cg.appendChild(el('p', 'nota', 'Proyectado a partir del comportamiento de los ultimos ' +
-    'meses, no de una formula: cada tipo de movimiento se repite con su propio ritmo. ' +
-    'Lo que entra: ' + pesos(p.total_ingresos, true) + ' - lo que sale: ' +
-    pesos(p.total_egresos, true) + '.'));
+  cg.appendChild(el('p', 'nota',
+    '<b>Que toma:</b> el comportamiento de los ultimos meses, no una formula — cada ' +
+    'tipo de movimiento se repite con su propio ritmo. De los dos lados sale del ' +
+    'cashflow: entran ' + pesos(p.total_ingresos, true) + ' (sin las transferencias ' +
+    'entre empresas del grupo, que mueven plata pero no la crean, y sin la cartera de ' +
+    'cheques, que no es caja hasta que se decide) y salen ' + pesos(p.total_egresos, true) +
+    ' (egresos mas la deuda con droguerias).'));
+  var sup = el('div', 'card');
+  sup.style.borderLeft = '3px solid var(--amarillo)';
+  sup.innerHTML = '<b>El supuesto:</b> ' + (p.supuesto || '') + '. En la practica se ' +
+    'paga lo vencido y el resto se corre, asi que el piso real esta por encima de esta ' +
+    'curva. Es lo que falta terminar de definir.';
+  out.push(sup);
   out.push(cg);
   return out;
 }
