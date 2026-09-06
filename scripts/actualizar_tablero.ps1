@@ -2,9 +2,16 @@
 #
 # LA CADENA, Y POR QUE ESTA PARTIDA ASI
 # -------------------------------------
-#   Apps Script  ->  genera el contrato solo, todos los dias a las 7
-#   Google Drive ->  lo sincroniza a la carpeta local
-#   ESTE SCRIPT  ->  corre el motor y arma el tablero
+#   Apps Script (7:00)  ->  genera el contrato en Drive
+#   Google Drive        ->  lo baja a la carpeta local
+#   ESTE SCRIPT (8:00)  ->  corre el motor y ESCRIBE EL HTML en esa carpeta
+#   Google Drive        ->  sube el HTML solo
+#   Apps Script doGet   ->  lo sirve en una URL que abre el cliente
+#
+# El ultimo tramo es el que faltaba. Thomas: "como que un cliente no puede
+# abrir el archivo? Que sentido tiene?". Tenia razon -- un tablero que solo
+# abre el no es un producto, es un archivo. Apps Script no calcula: SIRVE lo
+# que ya calculo el motor.
 #
 # Thomas eligio (06/09/2026) "Apps Script hasta cerrar los primeros dos
 # clientes, despues servidor". La economia es correcta -- no pagar infra antes
@@ -32,6 +39,8 @@ param(
     [string]$Cliente = "maga",
     [string]$Salida  = "",
     [int]$Hora = 8,
+    [string]$Publicado = "finauto_tablero.html",
+    [switch]$NoPublicar,
     [switch]$Instalar
 )
 
@@ -128,4 +137,26 @@ try {
     Write-Host "  Tablero actualizado: $Salida" -ForegroundColor Green
 } finally {
     Pop-Location
+}
+
+# ------------------------------------------------------- publicar en Drive
+#
+# Se COPIA a la carpeta sincronizada y Drive lo sube solo. Sin API, sin
+# credenciales, sin nada que renovar: el mismo camino que trajo el contrato,
+# al reves.
+#
+# Del otro lado, el doGet de Apps Script lee ese archivo y lo sirve en una URL.
+# Asi el cliente abre un link y ve el tablero del dia, y el motor sigue siendo
+# uno solo.
+if (-not $NoPublicar) {
+    $destino = Join-Path $Carpeta $Publicado
+    try {
+        Copy-Item $Salida $destino -Force
+        Write-Host "  Publicado    : $destino" -ForegroundColor Green
+        Write-Host "  Drive lo sube solo; la URL de la Web App sirve este archivo."
+    } catch {
+        Write-Host "  No pude copiarlo a $destino" -ForegroundColor Yellow
+        Write-Host "  El tablero quedo armado igual, pero el cliente no lo va a ver" -ForegroundColor Yellow
+        Write-Host "  actualizado hasta que se resuelva." -ForegroundColor Yellow
+    }
 }
