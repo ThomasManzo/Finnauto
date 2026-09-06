@@ -1,0 +1,10 @@
+# LOS DATOS REALES DEL CLIENTE NO VAN A GIT.
+#
+# Son movimientos bancarios, deuda y cobranzas de una empresa que no es
+# nuestra. Aunque el repo sea privado hoy, un repo cambia de visibilidad con
+# dos clicks y un contrato exportado no se puede "des-publicar".
+#
+# Acá viven las copias locales de los contratos, que es lo único que queda si
+# se pierde el acceso a la planilla de origen.
+*.json
+!ejemplo*.json
