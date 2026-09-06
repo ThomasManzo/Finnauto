@@ -73,13 +73,41 @@ def cargar_proveedores(cliente):
     return out
 
 
-def _match(contraparte, proveedores):
-    """De 'SUIZO ARGENTINA S.A. (00282)' a la ficha de SUIZO.
+# Como se escribe el mismo proveedor en cada planilla.
+#
+# ERROR REAL (06/09/2026): en la vista del grupo, DDS aparecia DOS VECES --
+# "Drogueria del Sud (DDS)" desde la planilla de Speed y "Dds" desde la de MAGA.
+# Son el mismo proveedor y hay que sumarlos, porque la tolerancia es de la
+# relacion comercial, no de la planilla donde se cargo.
+#
+# Thomas: "a quien pagar no tiene sentido si lo mezclas como grupo porque
+# pusiste dos veces dds".
+#
+# Vive en codigo y no en el catalogo del cliente a proposito: son variantes de
+# escritura, no informacion de negocio. Si aparece una variante nueva se agrega
+# una linea, y el motor avisa cuando no reconoce un rotulo.
+ALIAS = {
+    "DDS": "DROG.DEL SUD",
+    "DROG.DEL SUD": "DROG.DEL SUD",
+    "DROGUERIA DEL SUD": "DROG.DEL SUD",
+    "DEL SUD": "DROG.DEL SUD",
+    "SUIZO": "SUIZO",
+    "COFALOZA": "COFALOZA",
+    "COFA": "COFALOZA",
+}
 
-    Se busca por contención en los dos sentidos: la planilla escribe el nombre
-    completo con el número de cuenta, y el catálogo lo tiene corto.
+
+def _match(contraparte, proveedores):
+    """De 'SUIZO ARGENTINA S.A. (00282)' o de 'Dds' a la misma ficha.
+
+    Se prueba primero por alias, que es lo que unifica las dos formas de
+    escribir la misma droguería, y despues por contencion.
     """
-    c = (contraparte or "").upper()
+    c = " ".join((contraparte or "").upper().split())
+    for k in sorted(ALIAS, key=len, reverse=True):
+        if c == k or c.startswith(k + " ") or (" " + k + " ") in (" " + c + " "):
+            pid = ALIAS[k]
+            return pid, proveedores.get(pid, {})
     for pid, p in proveedores.items():
         if pid in c or c.startswith(pid.split()[0]):
             return pid, p
@@ -120,17 +148,58 @@ def deuda_por_proveedor(contrato, proveedores, unidad=None, hoy=None):
     return agg
 
 
-def semanas_de_atraso(filas_vencidas, hoy):
-    """Cuántas semanas hace que hay deuda vencida sin pagar.
+# Un resto viejo y chico no puede definir el atraso de todo un proveedor.
+#
+# ERROR REAL (06/09/2026). El tablero decia que con Cofaloza habia 5,1 semanas
+# de atraso. Thomas: "es mentira, estas atrasado 1 semana nada mas".
+#
+# Tenia razon. Los vencidos de Cofaloza eran:
+#
+#     31/07      $1.320.670     <- un resto del 0,4% del total
+#     28/08    $190.533.715
+#     04/09    $153.169.969
+#
+# El motor medía desde el más viejo, así que ese resto de $1,3M --
+# probablemente una diferencia de imputación que nadie va a reclamar --
+# arrastraba el atraso de $345M enteros. Y el atraso es lo que decide a quién
+# se le paga primero: un número inflado manda a pagarle al proveedor
+# equivocado.
+#
+# La regla nueva: se ignoran los restos que no llegan al UMBRAL del total
+# vencido con ese proveedor. No se borran de la deuda -- se siguen debiendo y
+# se siguen mostrando -- pero no definen la antigüedad.
+UMBRAL_RESTO = 0.05      # 5% del vencido con ese proveedor
 
-    Se mide desde la MÁS VIEJA: si algo vence hace tres semanas, el proveedor
-    lleva tres semanas esperando, aunque después se le haya pagado algo.
+
+
+def _por_fecha(filas):
+    """Agrupa los vencidos por fecha de resumen: es como los ve el proveedor."""
+    agg = defaultdict(float)
+    for x in filas:
+        agg[x["fecha"]] += float(x.get("importe") or 0)
+    return [{"fecha": f, "monto": v} for f, v in sorted(agg.items())]
+
+
+def semanas_de_atraso(filas_vencidas, hoy):
+    """Hace cuánto que hay deuda que importa sin pagar.
+
+    Devuelve (semanas, fecha_del_resumen, ignorados) para poder mostrar SIEMPRE
+    de qué resumen sale el número. Un atraso sin su fecha no se puede discutir,
+    y el que lo mira no tiene forma de darse cuenta de que está mal.
     """
     if not filas_vencidas:
-        return 0.0
-    mas_vieja = min(x["fecha"] for x in filas_vencidas)
+        return 0.0, None, []
+    total = sum(abs(float(x.get("importe") or 0)) for x in filas_vencidas)
+    piso = total * UMBRAL_RESTO
+    materiales = [x for x in filas_vencidas
+                  if abs(float(x.get("importe") or 0)) >= piso]
+    ignorados = [x for x in filas_vencidas if x not in materiales]
+    if not materiales:
+        materiales = filas_vencidas
+        ignorados = []
+    mas_vieja = min(x["fecha"] for x in materiales)
     dias = (hoy - datetime.date.fromisoformat(mas_vieja)).days
-    return max(0.0, dias / 7.0)
+    return max(0.0, dias / 7.0), mas_vieja, ignorados
 
 
 def analizar(contrato, proveedores, caja, unidad=None, hoy=None, dias=21):
@@ -142,7 +211,7 @@ def analizar(contrato, proveedores, caja, unidad=None, hoy=None, dias=21):
     for clave, d in agg.items():
         p = proveedores.get(clave, {})
         tol = p.get("tolerancia_semanas")
-        atraso = semanas_de_atraso(d["vencido"], hoy)
+        atraso, desde_resumen, ignorados = semanas_de_atraso(d["vencido"], hoy)
         vence_pronto = [x for x in d["futuro"] if x["fecha"] <= hasta.isoformat()]
         out.append({
             "proveedor": clave,
@@ -151,6 +220,20 @@ def analizar(contrato, proveedores, caja, unidad=None, hoy=None, dias=21):
             "por_vencer": sum(float(x["importe"]) for x in vence_pronto),
             "credito": d["credito"],
             "atraso_semanas": atraso,
+            # De QUE resumen sale el atraso. Sin esto el numero no se puede
+            # discutir, y fue justamente lo que dejo pasar el error de Cofaloza.
+            "atraso_desde": desde_resumen,
+            "restos_ignorados": [{"fecha": x["fecha"],
+                                  "importe": float(x["importe"])} for x in ignorados],
+            # Cada monto vencido es un RESUMEN con su fecha. Thomas: "aclaremos
+            # que resumen suman esas deudas, ejemplo el resumen que vencio el
+            # viernes 4/9".
+            # UN RESUMEN POR FECHA, no una fila por planilla.
+            #
+            # DDS aparecia dos veces con el mismo dia porque la deuda estaba
+            # cargada en las dos planillas (Speed y MAGA). Para el proveedor es
+            # un solo resumen: hay que sumarlas.
+            "resumenes": _por_fecha(d["vencido"]),
             "tolerancia": tol,
             "margen": (tol - atraso) if tol is not None else None,
             "vence_dia": p.get("vence"),
@@ -158,9 +241,13 @@ def analizar(contrato, proveedores, caja, unidad=None, hoy=None, dias=21):
             "sin_ficha": d["sin_ficha"],
             "proximos": sorted(vence_pronto, key=lambda x: x["fecha"])[:6],
         })
-    # Primero el que menos margen le queda: es el que puede cortar la compra.
-    return sorted(out, key=lambda x: (x["margen"] if x["margen"] is not None else 99,
-                                      -x["vencido"]))
+    # PRIMERO EL MAS ATRASADO.
+    #
+    # Antes se ordenaba por "margen" (tolerancia menos atraso). Thomas lo saco:
+    # "no pongamos esa tolerancia, no ordenemos por tolerancia, ordenemos por
+    # atraso". Tiene sentido -- la tolerancia es una estimacion nuestra y el
+    # atraso es un hecho, y ordenar por una estimacion escondia el hecho.
+    return sorted(out, key=lambda x: (-x["atraso_semanas"], -x["vencido"]))
 
 
 def cobros_de_la_semana(contrato, unidad, hoy, dias):

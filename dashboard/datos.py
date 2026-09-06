@@ -105,6 +105,11 @@ def proveedores(contrato, unidad, cliente, hoy, dias=21):
         # tiene nada vencido ni por vencer, no va en la tabla de a quien pagar.
         if not (a["vencido"] or a["por_vencer"]):
             continue
+        # La refinanciacion NO es una drogueria. Thomas fue explicito: "no tiene
+        # nada que ver con las droguerias". Va en su propia linea del tablero,
+        # no mezclada en la tabla de a quien pagarle.
+        if "REFINANC" in str(a["proveedor"]).upper():
+            continue
         out.append({
             "nombre": a["nombre"],
             "vencido": a["vencido"],
@@ -116,10 +121,38 @@ def proveedores(contrato, unidad, cliente, hoy, dias=21):
             "margen": a["margen"],
             "vence_dia": a["vence_dia"],
             "sin_ficha": a["sin_ficha"],
+            "atraso_desde": a.get("atraso_desde"),
+            "resumenes": a.get("resumenes") or [],
+            "restos_ignorados": a.get("restos_ignorados") or [],
             "proximos": [{"fecha": x["fecha"], "monto": float(x["importe"])}
                          for x in a["proximos"]],
         })
     return out
+
+
+def refinanciacion(contrato, unidad, hoy, dias=45):
+    """La refi, aparte: es obligacion pero no tiene tolerancia de proveedor."""
+    u = _unidad_real(unidad)
+    hasta = (datetime.date.fromisoformat(hoy)
+             + datetime.timedelta(days=dias)).isoformat()
+    venc = fut = 0.0
+    cuotas = []
+    for x in contrato.get("deuda_droguerias", []):
+        if "REFINANC" not in str(x.get("contraparte") or "").upper():
+            continue
+        if u and (x.get("unidad") or "") != u:
+            continue
+        f = x.get("fecha") or ""
+        v = float(x.get("importe") or 0)
+        if f and f < hoy:
+            venc += v
+        elif hoy <= f <= hasta:
+            fut += v
+        else:
+            continue
+        cuotas.append({"fecha": f, "monto": v, "vencida": f < hoy})
+    cuotas.sort(key=lambda c: c["fecha"])
+    return {"vencido": venc, "por_vencer": fut, "cuotas": cuotas}
 
 
 def salidas(contrato, unidad, hoy, dias=15, tope=12):
@@ -147,12 +180,22 @@ def salidas(contrato, unidad, hoy, dias=15, tope=12):
     return filas[:tope]
 
 
-def gastos_del_periodo(contrato, unidad, hoy, dias=45, tope=9):
-    """Los egresos agrupados por concepto: en qué se va la plata."""
+def gastos_del_periodo(contrato, unidad, hoy, dias=45, tope=8):
+    """En que se va la plata, con las droguerias adentro.
+
+    Thomas: "grafico de gastos: droguerias suizo dds y cofa, cual suma mas, un
+    grafico de barras; pago de mercaderia, otros gastos".
+
+    Lo importante es que las DROGUERIAS ENTREN. Antes este grafico salia solo
+    del bloque de egresos del cashflow, donde la deuda con droguerias no esta:
+    mostraba "en que se te va la plata" sin el gasto mas grande que hay.
+    """
+    from simulador import disponibilidad as D
     u = _unidad_real(unidad)
     hasta = (datetime.date.fromisoformat(hoy)
              + datetime.timedelta(days=dias)).isoformat()
     agg = defaultdict(float)
+
     for x in contrato.get("egresos_cashflow", []):
         if x.get("intercompany"):
             continue
@@ -162,11 +205,36 @@ def gastos_del_periodo(contrato, unidad, hoy, dias=45, tope=9):
         if not (hoy <= f <= hasta):
             continue
         agg[(x.get("contraparte") or "?").strip()] += float(x.get("importe") or 0)
+
+    # Las droguerias, una barra por cada una y con su nombre.
+    from simulador import proveedores as PROV
+    try:
+        fichas = PROV.cargar_proveedores("maga")
+    except Exception:
+        fichas = {}
+    for x in contrato.get("deuda_droguerias", []):
+        if x.get("intercompany") or x.get("es_credito"):
+            continue
+        if u and (x.get("unidad") or "") != u:
+            continue
+        f = x.get("fecha") or ""
+        if not f or f > hasta:
+            continue
+        v = float(x.get("importe") or 0)
+        if v <= 0:
+            continue
+        cp = (x.get("contraparte") or "?").strip()
+        if "REFINANC" in cp.upper():
+            agg["Refinanciacion"] += v
+            continue
+        pid, ficha = PROV._match(cp, fichas)
+        agg[(ficha or {}).get("nombre") or pid or cp] += v
+
     filas = sorted(agg.items(), key=lambda kv: -kv[1])
     top = [{"nombre": k, "monto": v} for k, v in filas[:tope]]
     resto = sum(v for _, v in filas[tope:])
     if resto:
-        top.append({"nombre": "Otros (%d conceptos)" % (len(filas) - tope),
+        top.append({"nombre": "Otros gastos (%d conceptos)" % (len(filas) - tope),
                     "monto": resto})
     return top
 
@@ -310,18 +378,43 @@ def ingresos_por_dia(contrato, unidad, hoy, dias=30):
     }
 
 
-def a_cobrar(contrato, unidad, hoy, dias=45):
-    """Lo que nos deben: vencido, por vencer, y por contraparte.
+# Lo que se cobra de mostrador no es "a cobrar": ya esta cobrado.
+#
+# ERROR REAL (06/09/2026): la solapa "A cobrar" de MAGA decia $0 y Thomas
+# salto: "como que no te deben nada? Y el pago de obras sociales?".
+#
+# Tenia razon. Yo solo miraba las cuentas a cobrar a droguerias -- que son de
+# Speedmed, porque MAGA le COMPRA a las droguerias, no le vende. Pero MAGA si
+# tiene quien le deba: las OBRAS SOCIALES y PAMI, que es plata ya vendida y
+# todavia no cobrada. Que estuvieran cargadas en el bloque de ingresos del
+# cashflow no las hace menos cuentas a cobrar.
+COBRO_INMEDIATO = ('EFECTIVO', 'TARJETA')
 
-    OJO CON EL SENTIDO: MAGA le COMPRA a las droguerías. Esta vista es de
-    Speedmed, que les compra Y les vende. Confundir las dos puntas fue el error
-    más caro del proyecto.
+
+def _es_a_cobrar(concepto):
+    c = " ".join(str(concepto or "").upper().split())
+    for k in COBRO_INMEDIATO:
+        if k in c:
+            return False
+    return True
+
+
+def a_cobrar(contrato, unidad, hoy, dias=45):
+    """Lo que nos deben: por quien, vencido y por vencer.
+
+    Junta las dos puntas que estaban separadas en la planilla:
+      . cuentas a cobrar a droguerias  (Speedmed: les compra Y les vende)
+      . obras sociales, PAMI y farmacias (lo vendido y no cobrado)
+
+    OJO CON EL SENTIDO: MAGA le COMPRA a las droguerias. Confundir las dos
+    puntas fue el error mas caro del proyecto.
     """
     u = _unidad_real(unidad)
     hasta = (datetime.date.fromisoformat(hoy)
              + datetime.timedelta(days=dias)).isoformat()
-    agg = defaultdict(lambda: {"vencido": 0.0, "por_vencer": 0.0})
+    agg = defaultdict(lambda: {"vencido": 0.0, "por_vencer": 0.0, "que_es": ""})
     venc = fut = 0.0
+
     for x in contrato.get("cuentas_a_cobrar_droguerias", []):
         if x.get("intercompany"):
             continue
@@ -330,30 +423,75 @@ def a_cobrar(contrato, unidad, hoy, dias=45):
         f = x.get("fecha") or ""
         v = float(x.get("importe") or 0)
         cp = (x.get("contraparte") or "?").strip()
+        agg[cp]["que_es"] = "drogueria"
         if f and f < hoy:
             agg[cp]["vencido"] += v
             venc += v
         elif hoy <= f <= hasta:
             agg[cp]["por_vencer"] += v
             fut += v
+
+    for x in contrato.get("cobros_previstos", []):
+        if x.get("interno"):
+            continue
+        if u and (x.get("unidad") or "") != u:
+            continue
+        con = (x.get("concepto") or "?").strip()
+        if not _es_a_cobrar(con) or "CARTERA" in con.upper():
+            continue
+        # LOS DOS BLOQUES NO USAN LA MISMA CONVENCION, Y CONFUNDIRLOS INFLA
+        # LA CIFRA MAS IMPORTANTE DE ESTA PANTALLA.
+        #
+        # En el bloque de DEUDA y en el de COBRANZA A DROGUERIAS la celda se
+        # pone en cero cuando se salda, asi que un monto que sobrevive a su
+        # fecha es algo sin cobrar.
+        #
+        # En el bloque de INGRESOS del cashflow NO: la celda queda como
+        # historial de lo que entro. Contar una fecha pasada como "vencido y
+        # no cobrado" daba $4.314M de cuentas a cobrar de MAGA que en realidad
+        # ya se cobraron -- el numero mas grande de la pantalla, y falso.
+        #
+        # Por eso de esta fuente solo cuenta el futuro.
+        f = x.get("fecha") or ""
+        v = float(x.get("importe") or 0)
+        if not (hoy <= f <= hasta):
+            continue
+        agg[con]["que_es"] = "vendido y no cobrado"
+        agg[con]["por_vencer"] += v
+        fut += v
+
     filas = [{"nombre": k, "vencido": v["vencido"], "por_vencer": v["por_vencer"],
-              "total": v["vencido"] + v["por_vencer"]}
-             for k, v in agg.items()]
+              "total": v["vencido"] + v["por_vencer"], "que_es": v["que_es"]}
+             for k, v in agg.items() if (v["vencido"] or v["por_vencer"])]
     filas.sort(key=lambda x: -x["total"])
 
-    ch = []
+    # LA CARTERA DE CHEQUES ES DE UNA EMPRESA SOLA.
+    #
+    # Estaba saliendo sin unidad, asi que el tablero le mostraba a MAGA $208M
+    # de cheques que son de Speedmed. Thomas: "MAGA no tiene cheques en cartera
+    # actualmente". El exportador nuevo los marca; los contratos viejos no, y
+    # en ese caso se dice que no estan atribuidos en vez de repartirlos.
+    ch, sin_unidad = [], False
     for c in contrato.get("cartera_cheques", []):
         f = c.get("fecha") or ""
         est = str(c.get("estado") or "").upper()
         if est == "ANULADO" or not (hoy <= f <= hasta):
             continue
+        cu = c.get("unidad")
+        if not cu:
+            sin_unidad = True
+            if u:
+                continue
+        elif u and cu != u:
+            continue
         ch.append({"fecha": f, "importe": abs(float(c.get("importe") or 0)),
                    "librador": (c.get("librador") or "").strip()[:40],
-                   "estado": est})
+                   "estado": est, "id": (c.get("numero") or "") + "|" + f})
     ch.sort(key=lambda x: (x["fecha"], -x["importe"]))
     return {"filas": filas, "vencido": venc, "por_vencer": fut,
-            "cheques": ch[:20],
-            "cheques_total": sum(c["importe"] for c in ch)}
+            "cheques": ch[:40],
+            "cheques_total": sum(c["importe"] for c in ch),
+            "cheques_sin_unidad": sin_unidad}
 
 
 def proyeccion(contrato, unidad, hoy, dias=45):
@@ -445,6 +583,7 @@ def armar(contrato, cliente="maga"):
             "ingresos_dia": ingresos_por_dia(contrato, u, hoy),
             "a_cobrar": a_cobrar(contrato, u, hoy),
             "proyeccion": proyeccion(contrato, u, hoy),
+            "refi": refinanciacion(contrato, u, hoy),
         }
 
     return {
@@ -456,4 +595,17 @@ def armar(contrato, cliente="maga"):
         "datos": datos,
         "hallazgos": hallazgos(contrato),
         "memoria": memoria_del_cliente(cliente),
+        # A quien se puede endosar un cheque: las droguerias del catalogo del
+        # cliente, no una lista escrita a mano en el HTML.
+        "droguerias": droguerias_del_cliente(cliente),
     }
+
+
+def droguerias_del_cliente(cliente):
+    try:
+        from simulador import proveedores as PROV
+        fichas = PROV.cargar_proveedores(cliente)
+    except Exception:
+        return []
+    return [v.get("nombre") or k for k, v in fichas.items()
+            if "REFINANC" not in str(k).upper()]

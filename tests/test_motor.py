@@ -1386,11 +1386,39 @@ def test_tablero():
     c = DA.a_cobrar(contrato, "SPEEDMED", hoy)
     ok(abs(c["vencido"] - 50.0) < 0.01 and abs(c["por_vencer"] - 200.0) < 0.01,
        "a cobrar separa lo vencido de lo que viene")
-    ok(abs(c["cheques_total"] - 80.0) < 0.01,
-       "y los cheques anulados no cuentan", str(c["cheques_total"]))
+    cg = DA.a_cobrar(contrato, "GRUPO", hoy)
+    ok(abs(cg["cheques_total"] - 80.0) < 0.01,
+       "y los cheques anulados no cuentan", str(cg["cheques_total"]))
+    # LA CARTERA SIN UNIDAD NO SE LE ATRIBUYE A NADIE.
+    # Le estaba mostrando a MAGA $208M de cheques que son de Speedmed. Si el
+    # export no dice de quien son, se ven solo en el grupo y se avisa -- que es
+    # mejor que repartirlos con un criterio inventado.
+    ok(abs(c["cheques_total"]) < 0.01 and c["cheques_sin_unidad"],
+       "y una cartera sin empresa no se le atribuye a ninguna")
+    # UNA FARMACIA SI TIENE QUIEN LE DEBA: las obras sociales.
+    #
+    # El tablero le mostraba $0 a MAGA y Thomas salto: "como que no te deben
+    # nada? Y el pago de obras sociales?". Yo solo miraba las cuentas a cobrar
+    # a droguerias -- que son de Speedmed, porque MAGA les COMPRA. Que las
+    # obras sociales esten cargadas en el bloque de ingresos no las hace menos
+    # cuentas a cobrar.
+    contrato["cobros_previstos"].append(
+        {"fecha": "2026-09-15", "concepto": "Cobro O.Sociales", "importe": 400.0,
+         "unidad": "MAGA"})
     cm = DA.a_cobrar(contrato, "MAGA", hoy)
-    ok(not cm["filas"],
-       "una farmacia no tiene cuentas a cobrar a droguerias: le compra, no le vende")
+    ok(any("Sociales" in f["nombre"] for f in cm["filas"]),
+       "las obras sociales son cuentas a cobrar de la farmacia", str(cm["filas"]))
+    ok(not any(f["que_es"] == "drogueria" for f in cm["filas"]),
+       "pero no cuentas a cobrar a droguerias: a esas les compra, no les vende")
+    # Del bloque de ingresos solo cuenta el futuro: ahi la planilla no limpia
+    # la celda al cobrar, asi que una fecha pasada YA entro.
+    contrato["cobros_previstos"].append(
+        {"fecha": "2026-08-01", "concepto": "Cobro O.Sociales", "importe": 9999.0,
+         "unidad": "MAGA"})
+    cm2 = DA.a_cobrar(contrato, "MAGA", hoy)
+    ok(abs(cm2["vencido"]) < 0.01,
+       "y una fecha pasada del bloque de ingresos no es deuda vencida a favor",
+       str(cm2["vencido"]))
 
     # --- el paquete completo, que es lo que consume el HTML
     p = DA.armar(contrato, "maga")
@@ -1405,6 +1433,61 @@ def test_tablero():
     # no puede recalcular nada, porque entonces la cuenta viviria en el navegador.
     ok(sorted(p["datos"]["GRUPO"]["retiro"].keys()) == ["14", "30", "45", "7"],
        "las cuatro ventanas del retiro vienen resueltas de Python")
+
+
+def test_atraso_y_alias():
+    """EL ATRASO, Y LAS DOS FORMAS DE ESCRIBIR LA MISMA DROGUERIA.
+
+    Los dos errores que marco Thomas el 06/09/2026 mirando el tablero, y los
+    dos son de la clase que mas duele: numeros que parecen razonables y estan
+    mal, en la pantalla que decide a quien se le paga.
+    """
+    import datetime as dt
+    from simulador import proveedores as P
+
+    hoy = dt.date(2026, 9, 5)
+    fichas = {"COFALOZA": {"nombre": "Cofaloza", "tolerancia_semanas": 3},
+              "DROG.DEL SUD": {"nombre": "DDS", "tolerancia_semanas": 3}}
+
+    # UN RESTO VIEJO Y CHICO NO DEFINE EL ATRASO DE TODO EL PROVEEDOR.
+    # Thomas: "cofaloza dice que estas atrasado 5.1 semanas, pero es mentira,
+    # estas atrasado 1 semana nada mas". El resto de $1,3M del 31/07 -- el 0,4%
+    # del total -- arrastraba el atraso de $345M.
+    filas = [{"fecha": "2026-07-31", "importe": 1320670.0},
+             {"fecha": "2026-08-28", "importe": 190533715.0},
+             {"fecha": "2026-09-04", "importe": 153169969.0}]
+    sem, desde, ign = P.semanas_de_atraso(filas, hoy)
+    ok(desde == "2026-08-28", "el atraso se mide desde el resumen que importa", desde)
+    ok(abs(sem - 8 / 7.0) < 0.01, "o sea 1,1 semanas y no 5,1", str(sem))
+    ok(len(ign) == 1 and ign[0]["fecha"] == "2026-07-31",
+       "y el resto viejo se informa aparte, no se borra de la deuda")
+
+    # Si todos los montos son parecidos, no se ignora ninguno.
+    parejo = [{"fecha": "2026-08-01", "importe": 100.0},
+              {"fecha": "2026-09-01", "importe": 110.0}]
+    _, desde2, ign2 = P.semanas_de_atraso(parejo, hoy)
+    ok(desde2 == "2026-08-01" and not ign2,
+       "con montos parejos vale el mas viejo, que es la regla de siempre")
+
+    # LA MISMA DROGUERIA ESCRITA DE DOS FORMAS ES UNA SOLA.
+    # En la vista del grupo, DDS aparecia dos veces: "Drogueria del Sud (DDS)"
+    # desde la planilla de Speed y "Dds" desde la de MAGA.
+    for rotulo in ("Dds", "DROG.DEL SUD S.A (0013)", "Drogueria del Sud"):
+        pid, _ = P._match(rotulo, fichas)
+        ok(pid == "DROG.DEL SUD", "'%s' es la misma drogueria" % rotulo, str(pid))
+    ok(P._match("SUIZO ARGENTINA S.A. (00282)", fichas)[0] == "SUIZO",
+       "y el nombre largo con numero de cuenta tambien matchea")
+
+    # SE ORDENA POR ATRASO, NO POR TOLERANCIA.
+    # Thomas: "no ordenemos por tolerancia, ordenemos por atraso". La
+    # tolerancia es una estimacion nuestra; el atraso es un hecho.
+    contrato = {"deuda_droguerias": [
+        {"fecha": "2026-09-04", "contraparte": "Dds", "importe": 900.0},
+        {"fecha": "2026-08-20", "contraparte": "COFALOZA", "importe": 100.0}]}
+    an = P.analizar(contrato, fichas, 0, None, hoy, 21)
+    ok(an[0]["nombre"] == "Cofaloza",
+       "primero el mas atrasado, aunque le debas menos",
+       str([(a["nombre"], a["atraso_semanas"]) for a in an]))
 
 
 if __name__ == "__main__":
@@ -1431,6 +1514,7 @@ if __name__ == "__main__":
     test_modos_de_pago()
     test_hallazgos_del_informe()
     test_tablero()
+    test_atraso_y_alias()
     test_proveedores()
     test_rigido_y_endoso()
     test_deuda_vencida()

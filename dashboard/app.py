@@ -51,28 +51,37 @@ from dashboard import datos as DATOS
 
 
 CSS = """
+/* TEMA CLARO.
+ *
+ * Thomas, 06/09/2026: "el color tiene que ser claro de fondo, algo mucho mas
+ * limpio, no que parezca que vas a hackear la NASA".
+ *
+ * Tenia razon y el error era de encuadre: yo lo habia hecho oscuro copiando su
+ * tablero interno, que es una herramienta suya. Esto es otra cosa -- se le
+ * muestra al dueno de una cadena, se proyecta, se imprime. Ahi lo oscuro se ve
+ * a la defensiva y, en un proyector, directamente no se lee.
+ */
 :root{
-  --fondo:#0B0C0E; --panel:#141619; --panel2:#1B1E22; --linea:#25292E;
-  --tinta:#EDF1F4; --suave:#9AA5B1; --tenue:#6B7681;
-  --azul:#4C82F7; --verde:#31C48D; --rojo:#F26B6B; --naranja:#F79552;
-  --violeta:#9B7DF7; --amarillo:#E8C14A;
-  --verde-piso:rgba(49,196,141,.12); --rojo-piso:rgba(242,107,107,.12);
-  --ambar-piso:rgba(232,193,74,.12);
+  --fondo:#F6F8F7; --panel:#FFFFFF; --panel2:#F1F4F3; --linea:#E2E8E5;
+  --tinta:#152119; --suave:#5C6B63; --tenue:#8B978F;
+  --azul:#1B6FD6; --verde:#0F8A57; --rojo:#C0392B; --naranja:#D97A1F;
+  --violeta:#7A5AF0; --amarillo:#B07D08;
+  --verde-piso:#E6F5EE; --rojo-piso:#FBECEA; --ambar-piso:#FCF3DF;
 }
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--fondo);color:var(--tinta)}
-body{font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+body{font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   -webkit-font-smoothing:antialiased}
 .wrap{max-width:1120px;margin:0 auto;padding:26px 20px 90px}
 .cab{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
-h1{font-size:24px;margin:0;letter-spacing:-.02em}
+h1{font-size:25px;margin:0;letter-spacing:-.02em}
 .cab .meta{font-size:12.5px;color:var(--tenue);text-align:right;line-height:1.7}
 .sub{color:var(--suave);font-size:13.5px;margin:4px 0 0}
 .pills{display:flex;gap:8px;flex-wrap:wrap;margin:20px 0 4px}
 .pill{background:var(--panel);border:1px solid var(--linea);color:var(--suave);
   padding:8px 16px;border-radius:9px;cursor:pointer;font-size:14px;font-weight:600;
   font-family:inherit}
-.pill:hover{color:var(--tinta);border-color:#333a42}
+.pill:hover{color:var(--tinta);border-color:#C8D3CD}
 .pill[aria-pressed="true"]{background:var(--azul);border-color:var(--azul);color:#fff}
 .tabs{display:flex;gap:2px;margin:22px 0 18px;border-bottom:1px solid var(--linea);
   overflow-x:auto}
@@ -80,45 +89,34 @@ h1{font-size:24px;margin:0;letter-spacing:-.02em}
   padding:11px 16px;cursor:pointer;font-size:14px;font-weight:600;white-space:nowrap;
   font-family:inherit}
 .tab:hover{color:var(--tinta)}
-.tab[aria-selected="true"]{color:var(--tinta);border-bottom-color:var(--azul)}
-h2{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--tenue);
+.tab[aria-selected="true"]{color:var(--azul);border-bottom-color:var(--azul)}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--tenue);
   margin:30px 0 12px;font-weight:700}
 h2:first-child{margin-top:6px}
-.card{background:var(--panel);border:1px solid var(--linea);border-radius:14px;padding:20px}
-.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.card{background:var(--panel);border:1px solid var(--linea);border-radius:12px;padding:20px;
+  box-shadow:0 1px 2px rgba(16,32,24,.04)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
 .kpi .et{font-size:12.5px;color:var(--suave)}
 .kpi .n{font-size:27px;font-weight:750;letter-spacing:-.02em;margin:7px 0 3px;
   font-variant-numeric:tabular-nums}
 .kpi .pie{font-size:11.5px;color:var(--tenue)}
-.kpi.malo{background:var(--rojo-piso);border-color:rgba(242,107,107,.3)}
+.kpi.malo{background:var(--rojo-piso);border-color:#EFC9C3}
 .kpi.malo .n{color:var(--rojo)}
 .kpi.bien .n{color:var(--verde)}
 table{width:100%;border-collapse:collapse;font-size:14px}
-th{text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.06em;
+th{text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.05em;
   color:var(--tenue);font-weight:700;padding:0 0 10px}
 th:first-child,td:first-child{text-align:left}
-td{text-align:right;padding:10px 0;border-top:1px solid var(--linea);
+td{text-align:right;padding:11px 0;border-top:1px solid var(--linea);
   font-variant-numeric:tabular-nums}
-tr.tot td{font-weight:700;border-top:2px solid #39414a}
+tr.tot td{font-weight:700;border-top:2px solid var(--tinta)}
 .pos{color:var(--verde)} .neg{color:var(--rojo)}
 .chip{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:99px}
 .chip.ok{background:var(--verde-piso);color:var(--verde)}
 .chip.mal{background:var(--rojo-piso);color:var(--rojo)}
 .chip.medio{background:var(--ambar-piso);color:var(--amarillo)}
-.barra{height:9px;border-radius:99px;background:var(--azul);min-width:3px}
+.barra{height:10px;border-radius:99px;background:var(--azul);min-width:3px}
 .nota{font-size:12.5px;color:var(--tenue);margin:12px 0 0}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-.veredicto{border-radius:14px;padding:24px;border:1px solid;margin-bottom:14px}
-.veredicto.si{background:var(--verde-piso);border-color:rgba(49,196,141,.35)}
-.veredicto.no{background:var(--rojo-piso);border-color:rgba(242,107,107,.35)}
-.veredicto .n{font-size:38px;font-weight:780;letter-spacing:-.03em;margin:6px 0}
-.veredicto.si .n{color:var(--verde)} .veredicto.no .n{color:var(--rojo)}
-.campo{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:14px 0 0}
-input[type=text]{background:var(--panel2);border:1px solid var(--linea);color:var(--tinta);
-  padding:11px 14px;border-radius:9px;font-size:17px;width:240px;font-family:inherit;
-  font-variant-numeric:tabular-nums}
-input[type=text]:focus{outline:none;border-color:var(--azul)}
-input[type=range]{width:100%;accent-color:var(--azul);margin-top:14px}
 .hall{border-left:3px solid var(--amarillo)}
 .hall .t{font-weight:700;font-size:16px;margin-bottom:6px}
 .hall .m{font-size:22px;font-weight:750;color:var(--amarillo);margin-top:10px;
@@ -134,9 +132,19 @@ svg{display:block;width:100%;height:auto;overflow:visible}
 .ejeY{fill:var(--tenue);font-size:10px}
 .ejeX{fill:var(--tenue);font-size:9.5px}
 .rejilla{stroke:var(--linea);stroke-width:1}
-.critico{fill:var(--rojo-piso);stroke:var(--rojo);stroke-dasharray:3 3}
+.resumen{font-size:11.5px;color:var(--tenue);margin-top:3px}
+.resumen b{color:var(--rojo);font-weight:600}
+select{background:var(--panel);border:1px solid var(--linea);color:var(--tinta);
+  border-radius:7px;padding:5px 8px;font-family:inherit;font-size:12.5px}
+select:focus{outline:none;border-color:var(--azul)}
+.endosado{background:var(--verde-piso)}
+button.mini{background:var(--panel2);border:1px solid var(--linea);border-radius:7px;
+  padding:5px 10px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;
+  color:var(--suave)}
+button.mini:hover{color:var(--tinta)}
 [hidden]{display:none!important}
-@media (max-width:760px){.grid2{grid-template-columns:1fr}.veredicto .n{font-size:30px}}
+@media (max-width:760px){.kpis{grid-template-columns:1fr}}
+@media print{body{background:#fff}.card{break-inside:avoid;box-shadow:none}}
 """
 
 JS = r"""
@@ -275,6 +283,31 @@ function leyenda(nombres){
   return l;
 }
 
+
+// ---------------------------------------------------------------- endosos
+// El unico estado que el tablero guarda. Es una simulacion del usuario, no un
+// dato del negocio: por eso vive en el navegador y no toca el contrato.
+var ENDOSOS = {};
+try { ENDOSOS = JSON.parse(localStorage.getItem('finauto_endosos') || '{}'); }
+catch (e) { ENDOSOS = {}; }
+
+function guardarEndosos(){
+  try { localStorage.setItem('finauto_endosos', JSON.stringify(ENDOSOS)); }
+  catch (e) { }
+}
+
+function resumenEndosos(){
+  var por = {}, total = 0;
+  var ch = (actual().a_cobrar || {}).cheques || [];
+  ch.forEach(function(x){
+    var dest = ENDOSOS[x.id];
+    if (!dest) return;
+    por[dest] = (por[dest] || 0) + x.importe;
+    total += x.importe;
+  });
+  return {por: por, total: total};
+}
+
 // ---------------------------------------------------------------- estado
 var UNIDAD = D.unidades[0], SOLAPA = 'posicion', VENTANA = String(D.ventanas[0]);
 function actual(){ return D.datos[UNIDAD]; }
@@ -282,16 +315,21 @@ function actual(){ return D.datos[UNIDAD]; }
 // ---------------------------------------------------------------- capas
 function verPosicion(){
   var d = actual(), k = d.kpis, out = [];
+
+  // LOS TRES NUMEROS QUE SE MIRAN, Y NADA MAS.
+  //
+  // Antes habia un cuarto, "margen a 7 dias". Thomas lo saco: "no me gusta, no
+  // se entiende que toma". Tenia razon -- era caja + cobros - salidas de una
+  // ventana, o sea tres cosas mezcladas en un numero sin unidad clara. Un KPI
+  // que hay que explicar no es un KPI.
   var c = el('div', 'kpis');
   [['Caja de hoy', pesos(k.caja, true), k.efectivo_sin_asignar
       ? '+ ' + pesos(k.efectivo_sin_asignar, true) + ' de efectivo del grupo, sin asignar'
       : 'banco + efectivo', ''],
-   ['Deuda ya vencida', pesos(k.vencido, true), 'es la que puede cortarte la compra',
-      k.vencido > 0 ? 'malo' : ''],
-   ['Vence en 7 días', pesos(k.por_vencer, true), 'todavía no aprieta', ''],
-   ['Margen a 7 días', pesos(k.margen, true),
-      k.se_puede ? 'después de cubrir lo vencido' : 'falta ' + pesos(k.falta, true),
-      k.se_puede ? 'bien' : 'malo']
+   ['Deuda ya vencida', pesos(k.vencido, true),
+      'con droguerias, sin la refi', k.vencido > 0 ? 'malo' : 'bien'],
+   ['Vence en los proximos 7 dias', pesos(k.por_vencer, true),
+      'todavia no aprieta', '']
   ].forEach(function(x){
     var t = el('div', 'card kpi ' + x[3]);
     t.appendChild(el('div', 'et', x[0]));
@@ -301,31 +339,41 @@ function verPosicion(){
   });
   out.push(c);
 
-  out.push(el('h2', null, 'Cómo quedás a 45 días, según a quién le pagues'));
-  var ce = el('div', 'card'), t = el('table'), tb = el('tbody');
-  d.escenarios.forEach(function(e){
-    var nom = e.nombre.replace('  <<', '').replace(/^\d+\.\s*/, '');
-    var tr = el('tr');
-    tr.appendChild(el('td', null, '<b>' + nom + '</b>' +
-      (e.usa ? ' <span class="chip ok">lo que se hace</span>' : '')));
-    tr.appendChild(el('td', signo(e.monto), pesos(e.monto)));
-    tb.appendChild(tr);
-  });
-  t.appendChild(tb); ce.appendChild(el('div', 'envuelve')).appendChild(t);
-  if (d.escenarios.length >= 2) {
-    var dif = d.escenarios[0].monto - d.escenarios[d.escenarios.length-1].monto;
-    ce.appendChild(el('p', 'nota', 'La distancia entre el primero y el último —<b>' +
-      pesos(dif) + '</b>— es lo que te financian tus proveedores. Es tu línea de ' +
-      'crédito real: las bancarias están agotadas.'));
+  // La refi va aparte: es obligacion, pero no es una drogueria y no tiene
+  // tolerancia de proveedor. Mezclarla con las droguerias infla la deuda que
+  // "te puede cortar la compra", que es justo la que decide.
+  if (d.refi && (d.refi.vencido || d.refi.por_vencer)){
+    var cr = el('div', 'card');
+    cr.style.borderLeft = '3px solid var(--violeta)';
+    cr.innerHTML = '<b>Refinanciacion</b> — aparte de las droguerias: se puede ' +
+      'patear hasta el vencimiento del mes siguiente (2 semanas), y atrasarla no ' +
+      'hace que te corten la compra.<br>' +
+      '<span style="color:var(--suave)">Vencida: <b>' + pesos(d.refi.vencido) +
+      '</b> · por vencer: ' + pesos(d.refi.por_vencer) + '</span>';
+    out.push(cr);
   }
-  out.push(ce);
 
-  out.push(el('h2', null, 'En qué se te va la plata (45 días)'));
+  if (d.ingresos_dia && d.ingresos_dia.dias.length){
+    out.push(el('h2', null, 'Lo que entra, dia por dia'));
+    var ci = el('div', 'card');
+    ci.appendChild(leyenda(d.ingresos_dia.fuentes));
+    ci.appendChild(barrasApiladas(d.ingresos_dia));
+    ci.appendChild(el('p', 'nota', 'El total del mes no dice nada: lo que importa es ' +
+      'el RITMO. Un pico de PAMI y treinta dias de mostrador no es lo mismo que un ' +
+      'ingreso parejo, aunque sumen igual.'));
+    out.push(ci);
+  }
+
+  // EN QUE SE VA LA PLATA, CON LAS DROGUERIAS ADENTRO.
+  // Antes este grafico salia solo del bloque de egresos, donde la deuda con
+  // droguerias NO esta: mostraba en que se va la plata sin el gasto mas grande.
+  out.push(el('h2', null, 'En que se va la plata (45 dias)'));
   var cg = el('div', 'card');
   var max = Math.max.apply(null, d.gastos.map(function(g){ return g.monto; })) || 1;
   d.gastos.forEach(function(g){
     var f = el('div');
-    f.style.cssText = 'display:grid;grid-template-columns:190px 1fr 110px;gap:12px;align-items:center;margin-bottom:9px';
+    f.style.cssText = 'display:grid;grid-template-columns:210px 1fr 120px;gap:12px;' +
+                      'align-items:center;margin-bottom:10px';
     f.appendChild(el('div', null, '<span style="color:var(--suave);font-size:13.5px">' +
       g.nombre + '</span>'));
     var b = el('div'), bb = el('div', 'barra');
@@ -335,92 +383,95 @@ function verPosicion(){
       pesos(g.monto, true) + '</span>'));
     cg.appendChild(f);
   });
+  cg.appendChild(el('p', 'nota', 'Incluye lo que vence con cada drogueria, no solo ' +
+    'los egresos del cashflow. Sin eso faltaria el gasto mas grande que hay.'));
   out.push(cg);
 
-  if (d.ingresos_dia && d.ingresos_dia.dias.length){
-    out.push(el('h2', null, 'Lo que entra, dia por dia'));
-    var ci = el('div', 'card');
-    ci.appendChild(leyenda(d.ingresos_dia.fuentes));
-    ci.appendChild(barrasApiladas(d.ingresos_dia));
-    ci.appendChild(el('p', 'nota', 'El total del mes no dice nada: lo que importa es el ' +
-      'RITMO. Un pico de PAMI y treinta dias de mostrador no es lo mismo que un ingreso ' +
-      'parejo, aunque sumen igual.'));
-    out.push(ci);
-  }
-
-  out.push(el('h2', null, 'Próximas salidas'));
+  out.push(el('h2', null, 'Proximas salidas'));
   var cs = el('div', 'card'), ts = el('table');
   ts.innerHTML = '<tr><th>Fecha</th><th>Detalle</th><th>Importe</th></tr>';
-  d.salidas.forEach(function(s){
+  d.salidas.forEach(function(x){
     var tr = el('tr');
-    tr.appendChild(el('td', null, '<b>' + dia(s.fecha) + '</b>'));
-    tr.appendChild(el('td', null, '<span style="color:var(--suave)">' + s.detalle + '</span>'));
-    tr.appendChild(el('td', null, pesos(s.monto, true)));
+    tr.appendChild(el('td', null, '<b>' + dia(x.fecha) + '</b>'));
+    tr.appendChild(el('td', null, '<span style="color:var(--suave)">' + x.detalle + '</span>'));
+    tr.appendChild(el('td', null, pesos(x.monto, true)));
     ts.appendChild(tr);
   });
   var w = el('div', 'envuelve'); w.appendChild(ts); cs.appendChild(w);
-  if (!d.salidas.length) cs.appendChild(el('p', 'nota', 'No hay salidas cargadas en la ventana.'));
+  if (!d.salidas.length) cs.appendChild(el('p', 'nota', 'Sin salidas cargadas en la ventana.'));
   out.push(cs);
   return out;
 }
 
 function verPagar(){
   var d = actual(), out = [];
+
+  // ORDENADO POR ATRASO, Y CON EL RESUMEN A LA VISTA.
+  //
+  // Thomas, 06/09/2026: "el atraso que marcaste esta como el orto"; "no
+  // pongamos esa tolerancia, no ordenemos por tolerancia, ordenemos por
+  // atraso"; "aclaremos que resumen suman esas deudas".
+  //
+  // Las tres cosas van juntas. La tolerancia era una estimacion NUESTRA y el
+  // atraso es un hecho: ordenar por la estimacion escondia el hecho. Y un
+  // atraso sin la fecha del resumen del que sale no se puede discutir -- fue
+  // exactamente lo que dejo pasar el error de Cofaloza, donde un resto de
+  // $1,3M del 31/07 hacia figurar 5,1 semanas en vez de 1,1.
   var c = el('div', 'card'), t = el('table');
-  t.innerHTML = '<tr><th>Proveedor</th><th>Ya vencido</th><th>Vence pronto</th>' +
-                '<th>Atraso</th><th>Le queda</th></tr>';
+  var baja = resumenEndosos().por;
+  var hayEndoso = Object.keys(baja).length > 0;
+  t.innerHTML = '<tr><th>Drogueria</th><th>Vencido</th><th>Vence pronto</th>' +
+                (hayEndoso ? '<th>Endoso</th>' : '') + '<th>Atraso</th></tr>';
   d.proveedores.forEach(function(p){
-    var m = p.margen, cls = 'ok', txt = sem(m);
-    if (m === null) { cls = 'medio'; txt = 'sin tolerancia definida'; }
-    else if (m <= 0) { cls = 'mal'; txt = 'te puede cortar'; }
-    else if (m <= 1) { cls = 'medio'; }
     var tr = el('tr');
-    tr.appendChild(el('td', null, '<b>' + p.nombre + '</b>' +
-      (p.vence_dia ? '<div style="font-size:11.5px;color:var(--tenue)">vence ' +
-        p.vence_dia + '</div>' : '')));
-    tr.appendChild(el('td', p.vencido ? 'neg' : '', pesos(p.vencido)));
+    var det = '<b>' + p.nombre + '</b>';
+    if (p.vence_dia) det += '<div class="resumen">vence ' + p.vence_dia + '</div>';
+    tr.appendChild(el('td', null, det));
+
+    // Cada monto vencido es un RESUMEN con su fecha.
+    var venc = '<span class="' + (p.vencido ? 'neg' : '') + '">' + pesos(p.vencido) + '</span>';
+    if (p.resumenes && p.resumenes.length){
+      venc += '<div class="resumen">' + p.resumenes.map(function(r){
+        return 'resumen del <b>' + dia(r.fecha) + '</b> ' + pesos(r.monto, true);
+      }).join(' · ') + '</div>';
+    }
+    tr.appendChild(el('td', null, venc));
     tr.appendChild(el('td', null, pesos(p.por_vencer)));
-    tr.appendChild(el('td', null, sem(p.atraso)));
-    tr.appendChild(el('td', null, '<span class="chip ' + cls + '">' + txt + '</span>'));
+
+    // Si en la solapa de cheques se simulo un endoso, la deuda de esa
+    // drogueria baja aca tambien. Es la razon de ser del endoso: contestar
+    // "y si endoso este, como quedo?" sin ir a recalcular a otro lado.
+    if (hayEndoso){
+      var descuento = baja[p.nombre] || 0;
+      tr.appendChild(el('td', descuento ? 'pos' : '', descuento
+        ? '− ' + pesos(descuento) + '<div class="resumen">endoso simulado</div>' : '—'));
+    }
+
+    var at = '<b>' + sem(p.atraso) + '</b>';
+    if (p.atraso_desde) at += '<div class="resumen">desde el ' + dia(p.atraso_desde) + '</div>';
+    tr.appendChild(el('td', null, at));
     t.appendChild(tr);
   });
   var w = el('div', 'envuelve'); w.appendChild(t); c.appendChild(w);
-  c.appendChild(el('p', 'nota', 'Ordenado por <b>margen</b>, no por monto: primero ' +
-    'el que está más cerca de cortarte la compra, aunque le debas menos. ' +
-    '“Le queda” es la tolerancia de ese proveedor menos el atraso que ya tenés.'));
-  if (!d.proveedores.length) c.appendChild(el('p', 'nota', 'No hay deuda con droguerías en esta empresa.'));
-  out.push(c);
+  if (!d.proveedores.length){
+    c.appendChild(el('p', 'nota', 'Sin deuda con droguerias en esta empresa.'));
+  }
 
-  out.push(el('h2', null, 'El puente a 45 días'));
-  var cp = el('div', 'card'), tp = el('table');
-  tp.innerHTML = '<tr><th>Concepto</th><th>Monto</th></tr>';
-  var f0 = el('tr');
-  f0.appendChild(el('td', null, 'Caja de hoy'));
-  f0.appendChild(el('td', null, pesos(d.puente.caja)));
-  tp.appendChild(f0);
-  d.puente.entra.filter(function(x){ return x.seguro; }).forEach(function(x){
-    var tr = el('tr');
-    tr.appendChild(el('td', null, '<span style="color:var(--suave)">+ ' + x.nombre + '</span>'));
-    tr.appendChild(el('td', 'pos', pesos(x.monto)));
-    tp.appendChild(tr);
+  // Los restos viejos y chicos se muestran, pero no definen el atraso.
+  var restos = [];
+  d.proveedores.forEach(function(p){
+    (p.restos_ignorados || []).forEach(function(r){
+      restos.push(p.nombre + ': ' + pesos(r.importe) + ' del ' + dia(r.fecha));
+    });
   });
-  d.puente.sale.forEach(function(x){
-    var tr = el('tr');
-    tr.appendChild(el('td', null, '<span style="color:var(--suave)">' +
-      (x.monto >= 0 ? '− ' : '+ ') + x.nombre + '</span>'));
-    tr.appendChild(el('td', x.monto >= 0 ? 'neg' : 'pos', pesos(Math.abs(x.monto))));
-    tp.appendChild(tr);
-  });
-  var ft = el('tr', 'tot');
-  ft.appendChild(el('td', null, 'Queda'));
-  ft.appendChild(el('td', signo(d.puente.queda), pesos(d.puente.queda)));
-  tp.appendChild(ft);
-  var w2 = el('div', 'envuelve'); w2.appendChild(tp); cp.appendChild(w2);
-  if (d.puente.cheques) cp.appendChild(el('p', 'nota',
-    'No están contados <b>' + pesos(d.puente.cheques) + '</b> de cheques en cartera: ' +
-    'al llegar la fecha se decide entre depositarlos (entra plata) o endosarlos ' +
-    '(baja deuda y no entra).'));
-  out.push(cp);
+  if (restos.length){
+    c.appendChild(el('p', 'nota', 'Hay restos viejos que <b>se siguen debiendo</b> pero ' +
+      'no definen el atraso, porque son menos del 5% del vencido con ese proveedor y ' +
+      'suelen ser diferencias de imputacion: ' + restos.join(' · ') + '.'));
+  }
+  c.appendChild(el('p', 'nota', 'Ordenado por <b>atraso</b>: primero el que hace mas ' +
+    'que espera. El atraso se mide desde el resumen mas viejo sin pagar.'));
+  out.push(c);
   return out;
 }
 
@@ -517,7 +568,7 @@ function verCobrar(){
   var d = actual(), c = d.a_cobrar, out = [];
   var k = el('div', 'kpis');
   [['Nos deben, ya vencido', pesos(c.vencido, true),
-    'con fecha pasada y sin entrar', c.vencido ? 'malo' : ''],
+    'con fecha pasada y sin entrar', c.vencido ? 'malo' : 'bien'],
    ['Nos deben, por vencer', pesos(c.por_vencer, true), 'en los proximos 45 dias', ''],
    ['Cheques en cartera', pesos(c.cheques_total, true),
     'no son caja hasta que se decide', '']
@@ -536,40 +587,95 @@ function verCobrar(){
     t.innerHTML = '<tr><th>Contraparte</th><th>Vencido</th><th>Por vencer</th><th>Total</th></tr>';
     c.filas.forEach(function(f){
       var tr = el('tr');
-      tr.appendChild(el('td', null, '<b>' + f.nombre + '</b>'));
+      tr.appendChild(el('td', null, '<b>' + f.nombre + '</b>' +
+        '<div class="resumen">' + f.que_es + '</div>'));
       tr.appendChild(el('td', f.vencido ? 'neg' : '', pesos(f.vencido)));
       tr.appendChild(el('td', null, pesos(f.por_vencer)));
       tr.appendChild(el('td', null, '<b>' + pesos(f.total) + '</b>'));
       t.appendChild(tr);
     });
     var w = el('div', 'envuelve'); w.appendChild(t); cc.appendChild(w);
-    cc.appendChild(el('p', 'nota', 'OJO con el sentido: aca se ve lo que <b>nos deben</b>. ' +
-      'MAGA le COMPRA a las droguerias; esta vista es de Speedmed, que les compra y les vende.'));
+    cc.appendChild(el('p', 'nota', 'Las obras sociales y PAMI son cuentas a cobrar ' +
+      'aunque esten cargadas en el bloque de ingresos: es plata vendida y no cobrada. ' +
+      'De esa fuente solo cuenta el futuro, porque ahi la planilla no limpia la celda ' +
+      'al cobrar y una fecha pasada ya entro.'));
     out.push(cc);
-  } else {
-    out.push(el('div', 'card', 'Esta empresa no tiene cuentas a cobrar a droguerias. ' +
-      'Es lo esperable en una farmacia: le compra a la drogueria, no le vende.'));
   }
 
+  // EL ENDOSO, DESDE ACA.
+  //
+  // Thomas: "que los cheques que aparezcan les puedas cambiar el estado desde
+  // la app y que automaticamente bajen deuda, una opcion que diga Endoso y
+  // puedas endosarlo a suizo, dds o cofa".
+  //
+  // Es una SIMULACION y se dice: no toca la planilla ni el contrato. Sirve para
+  // contestar en la reunion "y si endoso este a Suizo, como quedo?" sin tener
+  // que ir a recalcular a otro lado.
   if (c.cheques.length){
-    out.push(el('h2', null, 'Cheques que vencen: cada uno es una decision'));
+    out.push(el('h2', null, 'Cheques que vencen — cada uno es una decision'));
     var ch = el('div', 'card'), tc = el('table');
-    tc.innerHTML = '<tr><th>Fecha</th><th>Librador</th><th>Estado</th><th>Importe</th></tr>';
+    tc.innerHTML = '<tr><th>Fecha</th><th>Librador</th><th>Importe</th>' +
+                   '<th>Que hago con este</th></tr>';
     c.cheques.forEach(function(x){
       var tr = el('tr');
+      if (ENDOSOS[x.id]) tr.className = 'endosado';
       tr.appendChild(el('td', null, '<b>' + dia(x.fecha) + '</b>'));
       tr.appendChild(el('td', null, '<span style="color:var(--suave)">' +
-        (x.librador || '-') + '</span>'));
-      tr.appendChild(el('td', null, '<span class="chip ' +
-        (x.estado.indexOf('ENDOS') >= 0 ? 'medio' : 'ok') + '">' + x.estado + '</span>'));
+        (x.librador || '—') + '</span>'));
       tr.appendChild(el('td', null, pesos(x.importe)));
+
+      var td = el('td');
+      var sel = document.createElement('select');
+      var ops = [['', 'depositar (entra plata)']];
+      (D.droguerias || []).forEach(function(n){ ops.push([n, 'endosar a ' + n]); });
+      ops.forEach(function(o){
+        var op = document.createElement('option');
+        op.value = o[0]; op.textContent = o[1];
+        if (ENDOSOS[x.id] === o[0]) op.selected = true;
+        sel.appendChild(op);
+      });
+      sel.onchange = function(){
+        if (sel.value) ENDOSOS[x.id] = sel.value;
+        else delete ENDOSOS[x.id];
+        guardarEndosos();
+        pintar();
+      };
+      td.appendChild(sel);
+      tr.appendChild(td);
       tc.appendChild(tr);
     });
     var w2 = el('div', 'envuelve'); w2.appendChild(tc); ch.appendChild(w2);
-    ch.appendChild(el('p', 'nota', 'Al llegar la fecha se elige: <b>depositar</b> (entra plata) ' +
-      'o <b>endosar</b> (no entra un peso, baja deuda con una drogueria). El estado que ' +
-      'trae la planilla es lo esperado, no lo decidido.'));
+    ch.appendChild(el('p', 'nota', 'Al llegar la fecha se elige: <b>depositar</b> ' +
+      '(entra plata al banco) o <b>endosar</b> (no entra un peso, baja la deuda con esa ' +
+      'drogueria). El estado que trae la planilla es lo esperado, no lo decidido.'));
     out.push(ch);
+
+    var res = resumenEndosos();
+    if (res.total){
+      var ce = el('div', 'card');
+      ce.style.borderLeft = '3px solid var(--verde)';
+      var lin = Object.keys(res.por).map(function(n){
+        return '<b>' + n + '</b>: ' + pesos(res.por[n]);
+      }).join(' · ');
+      ce.innerHTML = '<b>Si endosas eso, la deuda baja ' + pesos(res.total) + '.</b><br>' +
+        '<span style="color:var(--suave)">' + lin + '</span>' +
+        '<div class="nota">Es una simulacion: no toca la planilla ni el contrato. ' +
+        'Mira la solapa "A quien pagar" para ver como queda el atraso.</div>';
+      var b = el('button', 'mini', 'Deshacer todo');
+      b.style.marginTop = '12px';
+      b.onclick = function(){ ENDOSOS = {}; guardarEndosos(); pintar(); };
+      ce.appendChild(b);
+      out.push(ce);
+    }
+  }
+
+  if (c.cheques_sin_unidad){
+    var av = el('div', 'card');
+    av.style.borderLeft = '3px solid var(--amarillo)';
+    av.innerHTML = 'Este export trae la cartera de cheques <b>sin decir de que ' +
+      'empresa es</b>, asi que solo se muestra en la vista del grupo. Con el ' +
+      'exportador actualizado cada cheque viaja con su empresa.';
+    out.push(av);
   }
   return out;
 }
@@ -677,8 +783,7 @@ function verHallazgos(){
 
 // ---------------------------------------------------------------- pintar
 var CAPAS = {posicion: verPosicion, pagar: verPagar, cobrar: verCobrar,
-             proyeccion: verProyeccion, retiro: verRetiro,
-             hallazgos: verHallazgos};
+             proyeccion: verProyeccion, hallazgos: verHallazgos};
 
 function pintar(){
   document.querySelectorAll('[data-unidad]').forEach(function(b){
@@ -702,9 +807,13 @@ document.addEventListener('click', function(e){
 pintar();
 """
 
+# La solapa "Retiro" se saco: Thomas, 06/09/2026, "no tiene sentido".
+# La pregunta que contestaba -- cuanto puedo sacar -- se contesta mirando la
+# deuda vencida y la caja, que estan en Posicion. Una solapa entera para
+# repetir eso con otra aritmetica agregaba una respuesta mas para conciliar.
 CAPAS = [("posicion", "Posición"), ("pagar", "A quién pagar"),
          ("cobrar", "A cobrar"), ("proyeccion", "Proyección"),
-         ("retiro", "Retiro"), ("hallazgos", "Hallazgos")]
+         ("hallazgos", "Hallazgos")]
 
 
 def render(paquete):
