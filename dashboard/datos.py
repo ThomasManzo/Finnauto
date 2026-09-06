@@ -399,6 +399,19 @@ def _es_a_cobrar(concepto):
     return True
 
 
+
+def _dueno_de_la_cartera(contrato):
+    """Que empresa tiene la cartera de cheques, segun el propio contrato.
+
+    La fila "Cartera de CH" del bloque de ingresos del cashflow viene con su
+    unidad. Si esta, la cartera es de esa empresa.
+    """
+    for x in contrato.get("cobros_previstos", []):
+        if "CARTERA" in str(x.get("concepto") or "").upper() and x.get("unidad"):
+            return x["unidad"]
+    return None
+
+
 def a_cobrar(contrato, unidad, hoy, dias=45):
     """Lo que nos deben: por quien, vencido y por vencer.
 
@@ -471,13 +484,24 @@ def a_cobrar(contrato, unidad, hoy, dias=45):
     # de cheques que son de Speedmed. Thomas: "MAGA no tiene cheques en cartera
     # actualmente". El exportador nuevo los marca; los contratos viejos no, y
     # en ese caso se dice que no estan atribuidos en vez de repartirlos.
+    # DE QUE EMPRESA ES LA CARTERA, DEDUCIDO DEL PROPIO CONTRATO.
+    #
+    # Los exports viejos traen los cheques sin unidad. En vez de no mostrarlos
+    # -- que dejaba a Speedmed en $0 cuando la cartera es suya -- se deduce:
+    # la fila "Cartera de CH" del bloque de ingresos SI dice de que empresa es.
+    # Es una deduccion del dato, no un supuesto: si esa fila no existe, no se
+    # atribuye nada y se avisa.
+    dueno = _dueno_de_la_cartera(contrato)
     ch, sin_unidad = [], False
     for c in contrato.get("cartera_cheques", []):
         f = c.get("fecha") or ""
         est = str(c.get("estado") or "").upper()
-        if est == "ANULADO" or not (hoy <= f <= hasta):
+        # TODOS los que todavia no vencieron, no solo los de la ventana: cada
+        # uno es una decision pendiente y el que vence en 60 dias tambien
+        # cuenta como palanca.
+        if est == "ANULADO" or not f or f < hoy:
             continue
-        cu = c.get("unidad")
+        cu = c.get("unidad") or dueno
         if not cu:
             sin_unidad = True
             if u:
@@ -494,34 +518,71 @@ def a_cobrar(contrato, unidad, hoy, dias=45):
             "cheques_sin_unidad": sin_unidad}
 
 
+# Los grupos que se pueden patear, y en que orden se pateam.
+#
+# Thomas: "esta solapa lo que te tiene que mostrar es que puedo hacer para
+# llegar bien, que obligaciones tengo que patear". Para eso la proyeccion no
+# puede ser una curva sola: tiene que poder sacarse cosas y ver que pasa.
+#
+# El orden es el del catalogo: primero lo que menos duele.
+PATEABLES = [
+    ("droguerias", "Pago a droguerias",
+     "Se puede correr, pero el atraso se acumula y a las 2-3 semanas te bloquean la compra."),
+    ("refi", "Refinanciacion",
+     "Se puede patear hasta el vencimiento del mes siguiente: 2 semanas."),
+    ("socios", "Retiros de socios",
+     "Es una decision, no una obligacion: se corre sin consecuencia externa."),
+    ("mercaderia", "Pago de mercaderia con cheques",
+     "NO se puede patear: un cheque no puede rebotar."),
+    ("sueldos", "Sueldos y cargas",
+     "NO se puede patear."),
+    ("impuestos", "Impuestos y servicios",
+     "Se puede correr unos dias, con recargo."),
+    ("otros", "Otros egresos", ""),
+]
+
+
+def _grupo_de(nombre):
+    """De que grupo es un egreso, mirando como se llama la fila."""
+    n = " ".join(str(nombre or "").upper().split())
+    if "RETIRO" in n or "SOCIO" in n:
+        return "socios"
+    if "REFINANC" in n:
+        return "refi"
+    if "DROGUERIA" in n or "DROG" in n:
+        return "droguerias"
+    if "MERCADERIA" in n:
+        return "mercaderia"
+    if "SUELDO" in n or "CS SOC" in n or "COMISION" in n:
+        return "sueldos"
+    if "IMPUESTO" in n or "SERVICIO" in n or "AFIP" in n or "VEP" in n or "ALQUILER" in n:
+        return "impuestos"
+    return "otros"
+
+
 def proyeccion(contrato, unidad, hoy, dias=45):
-    """La curva de caja dia por dia, con LOS DOS LADOS DEL MISMO UNIVERSO.
+    """La caja dia por dia, ARMADA POR PARTES para que se pueda tocar.
 
     ERROR REAL (06/09/2026). Thomas: "la proyeccion no entiendo que toma para
     dar esos numeros, nunca una caja aumenta tan exponencialmente".
 
-    Tenia razon y la causa era gruesa: **comparaba peras con manzanas.**
+    La causa era gruesa: **comparaba peras con manzanas.**
 
         ingresos  <- bloque INGRESOS del cashflow      $37.390M historicos
         egresos   <- solapa MOVIMIENTOS (los bancos)   $12.180M historicos
 
-    Dos fuentes distintas, de tamanos distintos. El bloque de egresos del
-    cashflow ($35.596M) y la deuda con droguerias ($10.400M) no entraban. Con
-    eso la caja subia $5.649M en 45 dias, que es justo lo que no pasa nunca.
+    Dos fuentes de tamanos distintos. El bloque de egresos del cashflow
+    ($35.596M) y la deuda con droguerias ($10.400M) no entraban, y encima se
+    proyectaban como ingreso $5.164M de transferencias internas -- que mueven
+    plata pero no la crean -- mas $9.263M de cartera, que no es caja hasta que
+    se decide. Con eso la caja subia $5.649M en 45 dias.
 
-    Y ademas se proyectaban como ingreso $5.164M de movimientos INTERNOS
-    (transferencias entre las empresas del grupo, depositos de efectivo) que no
-    crean plata, la mueven de lugar, mas $9.263M de cartera de cheques que no
-    es caja hasta que se decide.
+    Ahora los dos lados salen del cashflow, sin internos.
 
-    Ahora los dos lados salen del cashflow y se sacan los internos. Sobre los
-    datos reales pasa de +$6.581M a -$3.171M, con dia critico el 14/09 -- y eso
-    SI es coherente con el resto del tablero, que dice que hoy no alcanza para
-    cubrir lo vencido.
-
-    QUE FALTA DECIDIR: esta version asume que se paga TODO en fecha, incluida
-    la deuda con droguerias. En la practica se paga lo vencido y el resto se
-    corre, asi que el piso real esta entre esta curva y la de no pagarles nada.
+    Y NO SE DEVUELVE UNA CURVA: se devuelven las PARTES por dia. La curva la
+    arma el navegador sumando los grupos que esten tildados, asi se puede ver
+    "que pasa si pateo las droguerias" sin volver a calcular nada. La cuenta
+    sigue siendo una suma de numeros que salieron de aca.
     """
     from simulador import proyeccion as PR
     u = _unidad_real(unidad)
@@ -538,29 +599,55 @@ def proyeccion(contrato, unidad, hoy, dias=45):
     egr = [dict(x, tipo=x.get("contraparte"))
            for x in contrato.get("egresos_cashflow", [])
            if _mia(x) and not x.get("intercompany")]
-    egr += [dict(x, tipo=x.get("contraparte"))
-            for x in contrato.get("deuda_droguerias", [])
-            if _mia(x) and not x.get("intercompany")
-            and float(x.get("importe") or 0) > 0]
+    deuda = [dict(x, tipo=x.get("contraparte"))
+             for x in contrato.get("deuda_droguerias", [])
+             if _mia(x) and not x.get("intercompany")
+             and float(x.get("importe") or 0) > 0]
 
-    sub = dict(contrato, cobros_previstos=ing, movimientos=egr)
+    desde = datetime.date.fromisoformat(hoy)
     try:
-        r = PR.proyectar_caja(sub, datetime.date.fromisoformat(hoy), dias,
-                              caja_inicial=caja)
+        r_i = PR.proyectar_horizonte(PR.perfilar(ing, desde)[0], desde, dias)
+        r_e = PR.proyectar_horizonte(PR.perfilar(egr, desde)[0], desde, dias)
     except Exception as e:
-        return {"error": str(e), "curva": []}
+        return {"error": str(e), "dias": []}
 
-    critico = None
-    for p in r["curva"]:
-        if p["caja"] < 0:
-            critico = p
-            break
-    return {"desde": r["desde"], "hasta": r["hasta"], "caja_inicial": r["caja_inicial"],
-            "curva": r["curva"], "critico": critico,
-            "total_ingresos": r["total_ingresos"], "total_egresos": r["total_egresos"],
-            "minimo": min([p["caja"] for p in r["curva"]] or [0]),
-            "final": r["curva"][-1]["caja"] if r["curva"] else caja,
-            "supuesto": "se paga todo en fecha, incluida la deuda con droguerias"}
+    # La deuda con droguerias NO se proyecta: ya tiene fecha y monto.
+    # Proyectarla seria inventar un vencimiento que la planilla ya dice.
+    hasta = (desde + datetime.timedelta(days=dias - 1)).isoformat()
+    por_dia = {}
+
+    def _sumar(f, grupo, monto):
+        if not (hoy <= f <= hasta):
+            return
+        d = por_dia.setdefault(f, {"entra": 0.0})
+        if grupo == "entra":
+            d["entra"] += monto
+        else:
+            d[grupo] = d.get(grupo, 0.0) + monto
+
+    for x in r_i:
+        _sumar(x["fecha"], "entra", abs(float(x["importe"])))
+    for x in r_e:
+        # proyectar_horizonte devuelve la etiqueta en "clave", no en "tipo":
+        # leyendo la que no era, TODO caia en "otros" y la solapa perdia
+        # justamente lo que sirve, que es poder patear un grupo y no otro.
+        _sumar(x["fecha"], _grupo_de(x.get("clave") or x.get("tipo")),
+               abs(float(x["importe"])))
+    for x in deuda:
+        g = "refi" if "REFINANC" in str(x.get("contraparte") or "").upper() else "droguerias"
+        _sumar(x["fecha"], g, abs(float(x["importe"])))
+
+    f, out = desde, []
+    while f.isoformat() <= hasta:
+        d = por_dia.get(f.isoformat(), {"entra": 0.0})
+        out.append({"fecha": f.isoformat(), "entra": d.get("entra", 0.0),
+                    "sale": {g: d.get(g, 0.0) for g, _, _ in PATEABLES if d.get(g)}})
+        f += datetime.timedelta(days=1)
+
+    return {"desde": hoy, "hasta": hasta, "caja_inicial": caja, "dias": out,
+            "grupos": [{"id": g, "nombre": n, "nota": t} for g, n, t in PATEABLES],
+            "total_entra": sum(x["entra"] for x in out),
+            "total_sale": sum(sum(x["sale"].values()) for x in out)}
 
 
 def memoria_del_cliente(cliente):
