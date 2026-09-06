@@ -5,7 +5,26 @@
 
 **Última actualización:** 2026-09-04
 **Repo:** github.com/ThomasManzo/Finnauto — *se queda con doble N (decidido)*
-**Cliente #1:** MAGA+ / Speedmed
+**Cliente #1:** MAGA+ / Speedmed — **prospecto, ya no empleador**
+
+> **06/09/2026 — cambió el encuadre.** Thomas ya no trabaja en MAGA+. Su
+> posición: *"no voy a trabajar sobre el cash original de MAGA y Speedmed sin
+> que antes me pague"*.
+>
+> Consecuencias directas sobre el plan:
+>
+> - **No hay cash de producción.** La copia ES el entorno. El paso "pasar el
+>   export a producción" queda sin sentido hasta que haya contrato.
+> - **Los bots están frenados por partida doble**: contraseñas cambiadas y sin
+>   acceso. Ya estaban parados hasta el primer cliente; ahora no es una
+>   decisión, es un hecho.
+> - **El trigger del clasificador tampoco se instala**: no hay operación diaria
+>   que automatizar.
+> - **El dato es una foto del 05/09/2026 y no se puede refrescar.** Alcanza para
+>   construir y demostrar; no alcanza para operar.
+>
+> **Lo único que mueve la aguja ahora es lo que sirva para vender.** El motor ya
+> está; lo que no existe es con qué mostrarlo.
 
 ---
 
