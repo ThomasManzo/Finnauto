@@ -1586,6 +1586,78 @@ def test_detalle_para_desplegar():
        "y el detalle suma exactamente la barra: si no, una de las dos miente")
 
 
+def test_plan_minimo():
+    """QUE ES LO MINIMO QUE HAY QUE PATEAR — el salto de tablero a asesor.
+
+    El tablero dice "el 14/09 quedas en rojo". Lo que se paga es la respuesta
+    siguiente: "y que hago". Thomas: "esta solapa tiene que mostrar que puedo
+    hacer para llegar bien, que obligaciones tengo que patear".
+    """
+    from simulador import plan as PL
+
+    def proy(items, entra=0.0, caja=100.0, n=10):
+        dias = []
+        for k in range(n):
+            f = (datetime.date(2026, 9, 5) + datetime.timedelta(days=k)).isoformat()
+            dias.append({"fecha": f, "entra": entra, "sale": {}})
+        return {"caja_inicial": caja, "dias": dias, "items": items}
+
+    def it(fecha, grupo, monto, concepto="x"):
+        return {"id": grupo + fecha + str(monto), "grupo": grupo, "fecha": fecha,
+                "concepto": concepto, "monto": monto, "estimado": False}
+
+    # Si la caja no se da vuelta, no hay nada que aconsejar.
+    p = PL.armar(proy([it("2026-09-07", "droguerias", 50.0)]))
+    ok(not p["hace_falta"], "sin rojo no propone nada")
+
+    # UN PLAN DE 30 MOVIMIENTOS NO ES UN PLAN.
+    # La primera version pateaba todos los chicos antes de tocar uno grande:
+    # para llegar a 14 dias proponia 30 movimientos. Nadie hace eso.
+    chicos = [it("2026-09-06", "socios", 5.0, "retiro %d" % k) for k in range(20)]
+    grande = it("2026-09-06", "droguerias", 500.0, "Resumen del 06/09 · SUIZO")
+    p = PL.armar(proy(chicos + [grande], caja=100.0))
+    ok(p["alcanza"], "encuentra un plan que llega")
+    ok(len(p["pasos"]) == 1, "y es de UN paso, no de veinte", str(len(p["pasos"])))
+
+    # PERO SI ALCANZA CON LO BARATO, NO SE TOCA AL PROVEEDOR.
+    # El orden es por consecuencia, no por monto: correr un retiro no rompe
+    # nada, atrasar una drogueria puede costar el suministro.
+    p2 = PL.armar(proy([it("2026-09-06", "socios", 500.0, "retiro"),
+                        it("2026-09-06", "droguerias", 500.0, "Resumen · SUIZO")],
+                       caja=100.0))
+    ok(p2["pasos"][0]["grupo"] == "socios",
+       "prefiere lo que no rompe nada, aunque el otro alcance igual",
+       str(p2["pasos"][0]["grupo"]))
+
+    # LO INTOCABLE NO SE PROPONE NUNCA.
+    # "Un cheque no puede rebotar, no es un escenario que se permite."
+    p3 = PL.armar(proy([it("2026-09-06", "mercaderia", 500.0),
+                        it("2026-09-06", "sueldos", 500.0)], caja=100.0))
+    ok(not any(x["grupo"] in ("mercaderia", "sueldos") for x in p3["pasos"]),
+       "no propone patear cheques ni sueldos")
+    ok(not p3["alcanza"] and not p3.get("corto_por_tope"),
+       "y dice que asi no se arregla, en vez de proponer algo que no se puede")
+
+    # EL DIA ROJO SE CORRE AL PATEAR, y los pagos de los dias nuevos tienen que
+    # poder entrar. Con el filtro de fecha fijo se quedaba masticando el primer
+    # tramo y decia "no alcanza" cuando si alcanzaba.
+    p4 = PL.armar(proy([it("2026-09-06", "socios", 120.0),
+                        it("2026-09-09", "socios", 300.0)], caja=100.0, n=10))
+    ok(p4["alcanza"] and len(p4["pasos"]) == 2,
+       "puede patear algo de un dia posterior al rojo original",
+       str([(x["fecha"], x["monto"]) for x in p4["pasos"]]))
+
+    # EL COSTO SE DICE SIEMPRE. Un plan que dice "llegas" sin decir a costa de
+    # que no es un consejo.
+    fichas = {"SUIZO": {"nombre": "Suizo Argentina", "tolerancia_semanas": 3}}
+    p5 = PL.armar(proy([it("2026-09-06", "droguerias", 500.0,
+                           "Resumen del 06/09 · SUIZO")], caja=100.0),
+                  proveedores=fichas)
+    c = p5["costo"][0]
+    ok(c["quien"] == "Suizo Argentina" and c["tolerancia_semanas"] == 3,
+       "el costo sale con el nombre y la tolerancia de la ficha", str(c))
+
+
 if __name__ == "__main__":
     print("=" * 62)
     print("  TESTS DEL MOTOR finauto")
@@ -1613,6 +1685,7 @@ if __name__ == "__main__":
     test_atraso_y_alias()
     test_proyeccion_por_partes()
     test_detalle_para_desplegar()
+    test_plan_minimo()
     test_proveedores()
     test_rigido_y_endoso()
     test_deuda_vencida()

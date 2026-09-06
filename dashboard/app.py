@@ -181,6 +181,17 @@ function el(t, c, h){ var e = document.createElement(t);
   if (c) e.className = c; if (h !== undefined) e.innerHTML = h; return e; }
 function signo(v){ return v >= 0 ? 'pos' : 'neg'; }
 
+// El plan se precalcula para unas pocas ventanas; el slider se mueve de a un
+// dia. Se usa la mas cercana y se dice para cual es, en vez de no mostrar nada.
+function cercana(claves, v){
+  var mejor = null, dif = 1e9;
+  claves.forEach(function(k){
+    var d = Math.abs(Number(k) - v);
+    if (d < dif){ dif = d; mejor = Number(k); }
+  });
+  return mejor;
+}
+
 
 // ---------------------------------------------------------------- graficos
 // SVG escrito a mano, sin ninguna libreria.
@@ -878,6 +889,55 @@ function verProyeccion(){
   var critico = null;
   for (var i = 0; i < curva.length; i++) if (curva[i].caja < 0){ critico = curva[i]; break; }
   var minimo = Math.min.apply(null, curva.map(function(x){ return x.caja; }));
+
+  // EL CONSEJO PRIMERO, arriba de todo.
+  //
+  // Un tablero contesta "el 14/09 quedas en rojo". Eso ya lo tiene cualquiera.
+  // Lo que se paga es la respuesta siguiente: "y que hago". Por eso el plan va
+  // arriba y los tildes abajo -- primero la propuesta, despues el detalle para
+  // el que quiera discutirla.
+  var plan = (d.planes || {})[String(VENTANA)] ||
+             (d.planes || {})[String(cercana(Object.keys(d.planes || {}), VENTANA))];
+  if (plan && plan.frase){
+    var col = plan.hace_falta ? (plan.alcanza ? 'var(--verde)' : 'var(--rojo)')
+                              : 'var(--verde)';
+    var cc = el('div', 'card');
+    cc.style.borderLeft = '3px solid ' + col;
+    cc.appendChild(el('div', null,
+      '<span style="font-size:11.5px;text-transform:uppercase;letter-spacing:.09em;' +
+      'font-weight:700;color:var(--tenue)">Que hago para llegar</span>'));
+    cc.appendChild(el('div', null, '<div style="font-size:16px;font-weight:650;' +
+      'margin:8px 0 4px">' + plan.frase + '</div>'));
+    if (plan.pasos && plan.pasos.length){
+      var tp = el('table');
+      tp.style.marginTop = '10px';
+      plan.pasos.forEach(function(p, n){
+        var tr = el('tr');
+        tr.appendChild(el('td', null, '<b>' + (n + 1) + '.</b> correr el pago del <b>' +
+          dia(p.fecha) + '</b><br><span style="color:var(--suave)">' + p.concepto +
+          '</span><div class="resumen">' + (p.motivo || '') + '</div>'));
+        tr.appendChild(el('td', 'pos', pesos(p.monto)));
+        tp.appendChild(tr);
+      });
+      var we = el('div', 'envuelve'); we.appendChild(tp); cc.appendChild(we);
+    }
+    if (plan.costo && plan.costo.length){
+      cc.appendChild(el('div', null, '<div style="margin-top:14px;font-size:13.5px">' +
+        '<b>Lo que cuesta:</b> ' + plan.costo.map(function(c){
+          if (c.tipo !== 'drogueria') return c.quien + ' ' + pesos(c.monto);
+          var t = '<b>' + c.quien + '</b> ' + pesos(c.monto);
+          if (c.tolerancia_semanas) t += ' <span style="color:var(--tenue)">(aguanta ' +
+            c.tolerancia_semanas + ' semanas)</span>';
+          return t;
+        }).join(' · ') + '</div>'));
+    }
+    if (plan.intocable && plan.intocable.length){
+      cc.appendChild(el('p', 'nota', 'No se propone tocar: ' +
+        plan.intocable.map(function(i){ return '<b>' + i.grupo + '</b> — ' + i.por_que; })
+                      .join(' · ')));
+    }
+    out.push(cc);
+  }
 
   var ct = el('div', 'card');
   ct.appendChild(el('div', null,
