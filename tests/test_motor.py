@@ -1490,6 +1490,54 @@ def test_atraso_y_alias():
        str([(a["nombre"], a["atraso_semanas"]) for a in an]))
 
 
+def test_proyeccion_por_partes():
+    """LA PROYECCION VIAJA POR PARTES, para que se pueda tocar.
+
+    Thomas: "esta solapa lo que te tiene que mostrar es que puedo hacer para
+    llegar bien, que obligaciones tengo que patear". Una curva cerrada no
+    contesta eso.
+
+    Se devuelven los montos por dia Y POR GRUPO, ya resueltos; el navegador
+    suma los grupos tildados. Sigue valiendo que la plata se calcula en Python:
+    lo que hace el HTML es una suma, no un modelo.
+    """
+    from dashboard import datos as DA
+
+    ok(DA._grupo_de("Retiro de Socios") == "socios", "los retiros son su propio grupo")
+    ok(DA._grupo_de("REFINANCIACION") == "refi", "la refi tambien")
+    ok(DA._grupo_de("Pago a droguerias") == "droguerias",
+       "y 'Pago a droguerias' del bloque de egresos es drogueria",
+       DA._grupo_de("Pago a droguerias"))
+    ok(DA._grupo_de("Pago de mercaderia CHEQUES") == "mercaderia",
+       "los cheques a pagar van aparte: no se pueden patear")
+    ok(DA._grupo_de("Sueldos y Cs Soc Comafi") == "sueldos", "los sueldos tampoco")
+
+    hoy = "2026-09-05"
+    contrato = {"generado": hoy + "T00:00:00Z", "caja_hoy": 1000.0,
+                "cobros_previstos": [], "egresos_cashflow": [],
+                "deuda_droguerias": [
+                    {"fecha": "2026-09-10", "contraparte": "SUIZO", "importe": 300.0},
+                    {"fecha": "2026-09-12", "contraparte": "REFINANCIACION",
+                     "importe": 100.0}]}
+    p = DA.proyeccion(contrato, "GRUPO", hoy, dias=20)
+    ok(len(p["dias"]) == 20, "un punto por dia del horizonte", str(len(p["dias"])))
+
+    # LA DEUDA CON DROGUERIAS NO SE PROYECTA: ya tiene fecha y monto.
+    # Proyectarla seria inventar un vencimiento que la planilla ya dice.
+    dias = {x["fecha"]: x["sale"] for x in p["dias"]}
+    ok(abs(dias["2026-09-10"].get("droguerias", 0) - 300.0) < 0.01,
+       "la deuda cae el dia que dice la planilla, no uno estimado")
+    ok(abs(dias["2026-09-12"].get("refi", 0) - 100.0) < 0.01,
+       "y la refi va en su propio grupo, separada de las droguerias")
+
+    # Patear un grupo es no sumarlo: la curva se arma sumando lo tildado.
+    total = sum(sum(x["sale"].values()) for x in p["dias"])
+    sin_drog = sum(v for x in p["dias"] for g, v in x["sale"].items()
+                   if g != "droguerias")
+    ok(abs(total - 400.0) < 0.01 and abs(sin_drog - 100.0) < 0.01,
+       "y sacar un grupo de la suma es exactamente patearlo")
+
+
 if __name__ == "__main__":
     print("=" * 62)
     print("  TESTS DEL MOTOR finauto")
@@ -1515,6 +1563,7 @@ if __name__ == "__main__":
     test_hallazgos_del_informe()
     test_tablero()
     test_atraso_y_alias()
+    test_proyeccion_por_partes()
     test_proveedores()
     test_rigido_y_endoso()
     test_deuda_vencida()
