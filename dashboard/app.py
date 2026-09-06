@@ -127,6 +127,14 @@ input[type=range]{width:100%;accent-color:var(--azul);margin-top:14px}
 ul.limpia{margin:0;padding-left:19px;color:var(--suave);font-size:14px}
 ul.limpia li{margin-bottom:8px}
 .envuelve{overflow-x:auto}
+svg{display:block;width:100%;height:auto;overflow:visible}
+.leyenda{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--suave);margin-bottom:14px}
+.leyenda i{width:10px;height:10px;border-radius:3px;display:inline-block;margin-right:6px;
+  vertical-align:-1px}
+.ejeY{fill:var(--tenue);font-size:10px}
+.ejeX{fill:var(--tenue);font-size:9.5px}
+.rejilla{stroke:var(--linea);stroke-width:1}
+.critico{fill:var(--rojo-piso);stroke:var(--rojo);stroke-dasharray:3 3}
 [hidden]{display:none!important}
 @media (max-width:760px){.grid2{grid-template-columns:1fr}.veredicto .n{font-size:30px}}
 """
@@ -151,6 +159,121 @@ function dia(iso){ var p = String(iso).split('-'); return p[2] + '/' + p[1]; }
 function el(t, c, h){ var e = document.createElement(t);
   if (c) e.className = c; if (h !== undefined) e.innerHTML = h; return e; }
 function signo(v){ return v >= 0 ? 'pos' : 'neg'; }
+
+
+// ---------------------------------------------------------------- graficos
+// SVG escrito a mano, sin ninguna libreria.
+//
+// No es purismo: el archivo tiene que abrirse en una reunion sin internet.
+// Cualquier <script src> de un CDN es una forma de que el tablero aparezca
+// vacio justo cuando importa. Un grafico de barras son cuatro rectangulos.
+var PALETA = ['#4C82F7', '#31C48D', '#F79552', '#9B7DF7', '#E8C14A', '#F26B6B'];
+
+function svgEl(t, attrs){
+  var e = document.createElementNS('http://www.w3.org/2000/svg', t);
+  for (var k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+
+function barrasApiladas(datos, alto){
+  alto = alto || 210;
+  var ancho = 900, izq = 62, abajo = 26, arriba = 8;
+  var max = 0;
+  datos.dias.forEach(function(d){ if (d.total > max) max = d.total; });
+  if (!max) max = 1;
+  var svg = svgEl('svg', {viewBox: '0 0 ' + ancho + ' ' + (alto + abajo),
+                          preserveAspectRatio: 'none'});
+  svg.style.height = (alto + abajo) + 'px';
+  svg.removeAttribute('preserveAspectRatio');
+
+  // rejilla y eje
+  for (var i = 0; i <= 3; i++){
+    var y = arriba + (alto - arriba) * i / 3;
+    svg.appendChild(svgEl('line', {x1: izq, y1: y, x2: ancho, y2: y, class: 'rejilla'}));
+    var t = svgEl('text', {x: izq - 8, y: y + 3, class: 'ejeY', 'text-anchor': 'end'});
+    t.textContent = pesos(max * (3 - i) / 3, true);
+    svg.appendChild(t);
+  }
+  var w = (ancho - izq) / Math.max(1, datos.dias.length);
+  datos.dias.forEach(function(d, k){
+    var x = izq + k * w, acum = 0;
+    d.valores.forEach(function(v, j){
+      if (!v) return;
+      var h = (alto - arriba) * v / max;
+      var y = alto - acum - h;
+      svg.appendChild(svgEl('rect', {x: x + w * 0.15, y: y, width: w * 0.7, height: h,
+        fill: PALETA[j % PALETA.length], rx: 1.5}));
+      acum += h;
+    });
+    if (datos.dias.length <= 40 && k % 2 === 0){
+      var tx = svgEl('text', {x: x + w / 2, y: alto + 15, class: 'ejeX', 'text-anchor': 'middle'});
+      tx.textContent = d.fecha.slice(8);
+      svg.appendChild(tx);
+    }
+  });
+  return svg;
+}
+
+function curvaCaja(curva, critico){
+  var ancho = 900, alto = 230, izq = 72, abajo = 26, arriba = 10;
+  if (!curva.length) return el('p', 'nota', 'Sin datos para proyectar.');
+  var vals = curva.map(function(p){ return p.caja; });
+  var max = Math.max.apply(null, vals), min = Math.min.apply(null, vals, [0]);
+  if (max === min) max = min + 1;
+  var svg = svgEl('svg', {viewBox: '0 0 ' + ancho + ' ' + (alto + abajo)});
+  svg.style.height = (alto + abajo) + 'px';
+  function Y(v){ return arriba + (alto - arriba) * (max - v) / (max - min); }
+
+  for (var i = 0; i <= 3; i++){
+    var v = max - (max - min) * i / 3, y = Y(v);
+    svg.appendChild(svgEl('line', {x1: izq, y1: y, x2: ancho, y2: y, class: 'rejilla'}));
+    var t = svgEl('text', {x: izq - 8, y: y + 3, class: 'ejeY', 'text-anchor': 'end'});
+    t.textContent = pesos(v, true);
+    svg.appendChild(t);
+  }
+  // La linea del cero es la que importa: cruzarla es quedarse sin caja.
+  if (min < 0){
+    var y0 = Y(0);
+    svg.appendChild(svgEl('line', {x1: izq, y1: y0, x2: ancho, y2: y0,
+      stroke: 'var(--rojo)', 'stroke-width': 1, 'stroke-dasharray': '4 3'}));
+  }
+  var w = (ancho - izq) / Math.max(1, curva.length - 1);
+  var d = '', da = '';
+  curva.forEach(function(p, k){
+    var x = izq + k * w, y = Y(p.caja);
+    d += (k ? 'L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1) + ' ';
+  });
+  da = d + 'L' + (izq + (curva.length - 1) * w).toFixed(1) + ' ' + Y(Math.max(0, min)) +
+       ' L' + izq + ' ' + Y(Math.max(0, min)) + ' Z';
+  svg.appendChild(svgEl('path', {d: da, fill: 'rgba(76,130,247,.12)'}));
+  svg.appendChild(svgEl('path', {d: d, fill: 'none', stroke: 'var(--azul)', 'stroke-width': 2}));
+
+  if (critico){
+    var k = curva.findIndex(function(p){ return p.fecha === critico.fecha; });
+    if (k >= 0){
+      var x = izq + k * w;
+      svg.appendChild(svgEl('line', {x1: x, y1: arriba, x2: x, y2: alto,
+        stroke: 'var(--rojo)', 'stroke-width': 1.5}));
+      svg.appendChild(svgEl('circle', {cx: x, cy: Y(critico.caja), r: 4, fill: 'var(--rojo)'}));
+    }
+  }
+  curva.forEach(function(p, k){
+    if (k % Math.ceil(curva.length / 10) !== 0) return;
+    var t = svgEl('text', {x: izq + k * w, y: alto + 16, class: 'ejeX', 'text-anchor': 'middle'});
+    t.textContent = dia(p.fecha);
+    svg.appendChild(t);
+  });
+  return svg;
+}
+
+function leyenda(nombres){
+  var l = el('div', 'leyenda');
+  nombres.forEach(function(n, i){
+    l.appendChild(el('span', null, '<i style="background:' + PALETA[i % PALETA.length] +
+      '"></i>' + n));
+  });
+  return l;
+}
 
 // ---------------------------------------------------------------- estado
 var UNIDAD = D.unidades[0], SOLAPA = 'posicion', VENTANA = String(D.ventanas[0]);
@@ -213,6 +336,17 @@ function verPosicion(){
     cg.appendChild(f);
   });
   out.push(cg);
+
+  if (d.ingresos_dia && d.ingresos_dia.dias.length){
+    out.push(el('h2', null, 'Lo que entra, dia por dia'));
+    var ci = el('div', 'card');
+    ci.appendChild(leyenda(d.ingresos_dia.fuentes));
+    ci.appendChild(barrasApiladas(d.ingresos_dia));
+    ci.appendChild(el('p', 'nota', 'El total del mes no dice nada: lo que importa es el ' +
+      'RITMO. Un pico de PAMI y treinta dias de mostrador no es lo mismo que un ingreso ' +
+      'parejo, aunque sumen igual.'));
+    out.push(ci);
+  }
 
   out.push(el('h2', null, 'Próximas salidas'));
   var cs = el('div', 'card'), ts = el('table');
@@ -378,6 +512,109 @@ function verRetiro(){
   return out;
 }
 
+
+function verCobrar(){
+  var d = actual(), c = d.a_cobrar, out = [];
+  var k = el('div', 'kpis');
+  [['Nos deben, ya vencido', pesos(c.vencido, true),
+    'con fecha pasada y sin entrar', c.vencido ? 'malo' : ''],
+   ['Nos deben, por vencer', pesos(c.por_vencer, true), 'en los proximos 45 dias', ''],
+   ['Cheques en cartera', pesos(c.cheques_total, true),
+    'no son caja hasta que se decide', '']
+  ].forEach(function(x){
+    var t = el('div', 'card kpi ' + x[3]);
+    t.appendChild(el('div', 'et', x[0]));
+    t.appendChild(el('div', 'n', x[1]));
+    t.appendChild(el('div', 'pie', x[2]));
+    k.appendChild(t);
+  });
+  out.push(k);
+
+  if (c.filas.length){
+    out.push(el('h2', null, 'Quien nos debe'));
+    var cc = el('div', 'card'), t = el('table');
+    t.innerHTML = '<tr><th>Contraparte</th><th>Vencido</th><th>Por vencer</th><th>Total</th></tr>';
+    c.filas.forEach(function(f){
+      var tr = el('tr');
+      tr.appendChild(el('td', null, '<b>' + f.nombre + '</b>'));
+      tr.appendChild(el('td', f.vencido ? 'neg' : '', pesos(f.vencido)));
+      tr.appendChild(el('td', null, pesos(f.por_vencer)));
+      tr.appendChild(el('td', null, '<b>' + pesos(f.total) + '</b>'));
+      t.appendChild(tr);
+    });
+    var w = el('div', 'envuelve'); w.appendChild(t); cc.appendChild(w);
+    cc.appendChild(el('p', 'nota', 'OJO con el sentido: aca se ve lo que <b>nos deben</b>. ' +
+      'MAGA le COMPRA a las droguerias; esta vista es de Speedmed, que les compra y les vende.'));
+    out.push(cc);
+  } else {
+    out.push(el('div', 'card', 'Esta empresa no tiene cuentas a cobrar a droguerias. ' +
+      'Es lo esperable en una farmacia: le compra a la drogueria, no le vende.'));
+  }
+
+  if (c.cheques.length){
+    out.push(el('h2', null, 'Cheques que vencen: cada uno es una decision'));
+    var ch = el('div', 'card'), tc = el('table');
+    tc.innerHTML = '<tr><th>Fecha</th><th>Librador</th><th>Estado</th><th>Importe</th></tr>';
+    c.cheques.forEach(function(x){
+      var tr = el('tr');
+      tr.appendChild(el('td', null, '<b>' + dia(x.fecha) + '</b>'));
+      tr.appendChild(el('td', null, '<span style="color:var(--suave)">' +
+        (x.librador || '-') + '</span>'));
+      tr.appendChild(el('td', null, '<span class="chip ' +
+        (x.estado.indexOf('ENDOS') >= 0 ? 'medio' : 'ok') + '">' + x.estado + '</span>'));
+      tr.appendChild(el('td', null, pesos(x.importe)));
+      tc.appendChild(tr);
+    });
+    var w2 = el('div', 'envuelve'); w2.appendChild(tc); ch.appendChild(w2);
+    ch.appendChild(el('p', 'nota', 'Al llegar la fecha se elige: <b>depositar</b> (entra plata) ' +
+      'o <b>endosar</b> (no entra un peso, baja deuda con una drogueria). El estado que ' +
+      'trae la planilla es lo esperado, no lo decidido.'));
+    out.push(ch);
+  }
+  return out;
+}
+
+function verProyeccion(){
+  var d = actual(), p = d.proyeccion, out = [];
+  if (p.error || !p.curva.length){
+    out.push(el('div', 'card', 'No se pudo proyectar: ' + (p.error || 'faltan datos.')));
+    return out;
+  }
+  var k = el('div', 'kpis');
+  [['Caja al arrancar', pesos(p.caja_inicial, true), p.desde, ''],
+   ['El dia mas bajo', pesos(p.minimo, true),
+     p.minimo < 0 ? 'la caja se da vuelta' : 'nunca toca cero', p.minimo < 0 ? 'malo' : 'bien'],
+   ['Caja al cierre', pesos(p.final, true), p.hasta, p.final >= 0 ? 'bien' : 'malo']
+  ].forEach(function(x){
+    var t = el('div', 'card kpi ' + x[3]);
+    t.appendChild(el('div', 'et', x[0]));
+    t.appendChild(el('div', 'n', x[1]));
+    t.appendChild(el('div', 'pie', x[2]));
+    k.appendChild(t);
+  });
+  out.push(k);
+
+  if (p.critico){
+    var av = el('div', 'card');
+    av.style.borderLeft = '3px solid var(--rojo)';
+    av.innerHTML = '<b style="font-size:16px">El dia critico es el ' + dia(p.critico.fecha) +
+      '.</b><br><span style="color:var(--suave)">Ahi la caja proyectada queda en ' +
+      pesos(p.critico.caja) + '. Un dueno no mira el final del periodo: mira el dia que ' +
+      'se queda corto, y ese dia tiene fecha.</span>';
+    out.push(av);
+  }
+
+  out.push(el('h2', null, 'La caja, dia por dia'));
+  var cg = el('div', 'card');
+  cg.appendChild(curvaCaja(p.curva, p.critico));
+  cg.appendChild(el('p', 'nota', 'Proyectado a partir del comportamiento de los ultimos ' +
+    'meses, no de una formula: cada tipo de movimiento se repite con su propio ritmo. ' +
+    'Lo que entra: ' + pesos(p.total_ingresos, true) + ' - lo que sale: ' +
+    pesos(p.total_egresos, true) + '.'));
+  out.push(cg);
+  return out;
+}
+
 function verHallazgos(){
   var out = [];
   if (!D.hallazgos.length) {
@@ -407,11 +644,40 @@ function verHallazgos(){
     'cargado en la planilla de MAGA, así que el escenario “Speed como proveedor ' +
     'rígido” no se puede calcular.'));
   c.appendChild(u); out.push(c);
+
+  // LA MEMORIA: que se prometio antes y si se cumplio.
+  // Es el activo de una asesoria recurrente. Sin esto cada visita arranca de
+  // cero, y el motor es una promesa que nunca mostro un acierto.
+  out.push(el('h2', null, 'La memoria: que proyectamos antes'));
+  var cm = el('div', 'card');
+  if (!D.memoria || !D.memoria.snapshots.length){
+    cm.innerHTML = 'Todavia no hay ninguna proyeccion guardada para comparar.';
+  } else {
+    var tm = el('table');
+    tm.innerHTML = '<tr><th>Corte</th><th>Proyecta hasta</th><th>Movimientos</th>' +
+                   '<th>Conciliada</th></tr>';
+    D.memoria.snapshots.forEach(function(s){
+      var tr = el('tr');
+      tr.appendChild(el('td', null, '<b>' + s.corte + '</b>' +
+        (s.etiqueta ? '<div style="font-size:11.5px;color:var(--tenue)">' + s.etiqueta +
+         '</div>' : '')));
+      tr.appendChild(el('td', null, s.hasta));
+      tr.appendChild(el('td', null, String(s.movimientos)));
+      tr.appendChild(el('td', null, '<span class="chip medio">falta el dato real</span>'));
+      tm.appendChild(tr);
+    });
+    var wm = el('div', 'envuelve'); wm.appendChild(tm); cm.appendChild(wm);
+    cm.appendChild(el('p', 'nota', 'Para conciliar una proyeccion hace falta el cash del ' +
+      'periodo que proyecta. Mientras no se concilie, el motor es una promesa: ' +
+      '<b>lo que se vende es "te lo dije y paso", no "el motor calcula bien".</b>'));
+  }
+  out.push(cm);
   return out;
 }
 
 // ---------------------------------------------------------------- pintar
-var CAPAS = {posicion: verPosicion, pagar: verPagar, retiro: verRetiro,
+var CAPAS = {posicion: verPosicion, pagar: verPagar, cobrar: verCobrar,
+             proyeccion: verProyeccion, retiro: verRetiro,
              hallazgos: verHallazgos};
 
 function pintar(){
@@ -437,6 +703,7 @@ pintar();
 """
 
 CAPAS = [("posicion", "Posición"), ("pagar", "A quién pagar"),
+         ("cobrar", "A cobrar"), ("proyeccion", "Proyección"),
          ("retiro", "Retiro"), ("hallazgos", "Hallazgos")]
 
 

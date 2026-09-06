@@ -1323,6 +1323,90 @@ def test_hallazgos_del_informe():
     ok(G.semanas(3.0) == "3 sem", "y sin decimal cuando es redondo")
 
 
+def test_tablero():
+    """LAS CAPAS DEL TABLERO, cada una con lo suyo.
+
+    El tablero es hoy el entregable: es lo que se muestra en la reunion. Si una
+    capa se rompe en silencio, el que se entera es el cliente.
+
+    Y hay un invariante que vale la pena fijar: TODO SE CALCULA EN PYTHON. El
+    JavaScript solo muestra. Por eso estos tests le pegan a datos.py y no al
+    HTML: si la plata se calculara en el navegador, no habria nada que testear.
+    """
+    from dashboard import datos as DA
+
+    hoy = "2026-09-05"
+    contrato = {
+        "generado": hoy + "T00:00:00Z",
+        "cliente": "Prueba",
+        "caja_hoy": 1000.0,
+        "caja_por_unidad": {"MAGA": 600.0, "SPEEDMED": 400.0},
+        "cobros_previstos": [
+            {"fecha": "2026-09-08", "concepto": "Tarjeta y MP", "importe": 300.0,
+             "unidad": "MAGA"},
+            {"fecha": "2026-09-08", "concepto": "PAMI", "importe": 700.0,
+             "unidad": "MAGA"},
+            {"fecha": "2026-09-09", "concepto": "Tarjeta y MP", "importe": 100.0,
+             "unidad": "MAGA"},
+            {"fecha": "2026-09-08", "concepto": "Transf MAGA+", "importe": 999.0,
+             "unidad": "SPEEDMED", "interno": True},
+        ],
+        "cuentas_a_cobrar_droguerias": [
+            {"fecha": "2026-08-20", "contraparte": "DDS", "importe": 50.0,
+             "unidad": "SPEEDMED"},
+            {"fecha": "2026-09-20", "contraparte": "DDS", "importe": 200.0,
+             "unidad": "SPEEDMED"},
+        ],
+        "cartera_cheques": [
+            {"fecha": "2026-09-10", "importe": 80.0, "estado": "RECIBIDO",
+             "librador": "Farmacia X"},
+            {"fecha": "2026-09-10", "importe": 20.0, "estado": "ANULADO"},
+        ],
+        "deuda_droguerias": [
+            {"fecha": "2026-09-01", "contraparte": "SUIZO", "importe": 100.0,
+             "unidad": "MAGA"}],
+        "egresos_cashflow": [
+            {"fecha": "2026-09-07", "contraparte": "Sueldos", "importe": 90.0,
+             "unidad": "MAGA"}],
+        "movimientos": [],
+    }
+
+    # --- el grafico de ingresos: por dia y por fuente
+    g = DA.ingresos_por_dia(contrato, "MAGA", hoy)
+    ok(g["fuentes"][0] == "PAMI",
+       "las fuentes se ordenan por peso, no alfabeticamente", str(g["fuentes"]))
+    ok(len(g["dias"]) == 2, "un punto por dia con movimiento", str(len(g["dias"])))
+    ok(all(len(d["valores"]) == len(g["fuentes"]) for d in g["dias"]),
+       "y todos los dias tienen una barra por fuente (aunque sea cero)")
+    # Lo interno mueve plata de lugar: no es un ingreso del grupo.
+    gs = DA.ingresos_por_dia(contrato, "SPEEDMED", hoy)
+    ok(not gs["dias"], "una transferencia entre empresas del grupo no entra al grafico")
+
+    # --- a cobrar: el sentido importa
+    c = DA.a_cobrar(contrato, "SPEEDMED", hoy)
+    ok(abs(c["vencido"] - 50.0) < 0.01 and abs(c["por_vencer"] - 200.0) < 0.01,
+       "a cobrar separa lo vencido de lo que viene")
+    ok(abs(c["cheques_total"] - 80.0) < 0.01,
+       "y los cheques anulados no cuentan", str(c["cheques_total"]))
+    cm = DA.a_cobrar(contrato, "MAGA", hoy)
+    ok(not cm["filas"],
+       "una farmacia no tiene cuentas a cobrar a droguerias: le compra, no le vende")
+
+    # --- el paquete completo, que es lo que consume el HTML
+    p = DA.armar(contrato, "maga")
+    ok(p["unidades"][0] == "GRUPO", "la primera vista es el grupo entero")
+    for u in p["unidades"]:
+        d = p["datos"][u]
+        for k in ("kpis", "puente", "proveedores", "salidas", "gastos",
+                  "escenarios", "retiro", "ingresos_dia", "a_cobrar", "proyeccion"):
+            ok(k in d, "el paquete de %s trae %s" % (u, k))
+
+    # Las cuatro ventanas vienen PRECALCULADAS: mover el selector en el tablero
+    # no puede recalcular nada, porque entonces la cuenta viviria en el navegador.
+    ok(sorted(p["datos"]["GRUPO"]["retiro"].keys()) == ["14", "30", "45", "7"],
+       "las cuatro ventanas del retiro vienen resueltas de Python")
+
+
 if __name__ == "__main__":
     print("=" * 62)
     print("  TESTS DEL MOTOR finauto")
@@ -1346,6 +1430,7 @@ if __name__ == "__main__":
     test_retiro()
     test_modos_de_pago()
     test_hallazgos_del_informe()
+    test_tablero()
     test_proveedores()
     test_rigido_y_endoso()
     test_deuda_vencida()
