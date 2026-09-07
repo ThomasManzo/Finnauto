@@ -129,6 +129,31 @@ if (-not $py) {
     exit 1
 }
 
+# EL CONTROL ANTES DE PUBLICAR, NO DESPUES.
+#
+# Thomas: "no puedo ofrecer algo lleno de bugs y si yo no me fijo no se que
+# puede pasar". La segunda parte es la que importa: si el no lo mira, nadie lo
+# mira. Entonces lo mira el script, todos los dias, antes de que el tablero
+# llegue a la URL que abre el cliente.
+#
+# Casi todos los bugs que tuvimos fueron plata del contrato que no llegaba a
+# la pantalla, o que llegaba dos veces. cobertura.py verifica exactamente eso.
+Push-Location $repo
+$coberturaOk = $true
+try {
+    & $py "auditoria\cobertura.py" --contrato $archivo.FullName --cliente $Cliente
+    if ($LASTEXITCODE -ne 0) { $coberturaOk = $false }
+} catch { $coberturaOk = $false }
+Pop-Location
+if (-not $coberturaOk) {
+    Write-Host ""
+    Write-Host "  EL CONTROL DE COBERTURA FALLO." -ForegroundColor Red
+    Write-Host "  Hay plata del contrato que no llega al tablero, o que llega dos" -ForegroundColor Red
+    Write-Host "  veces. NO se publica: es preferible que el cliente vea el tablero" -ForegroundColor Red
+    Write-Host "  de ayer a que vea uno nuevo con un numero mal." -ForegroundColor Red
+    exit 1
+}
+
 Push-Location $repo
 try {
     & $py "dashboard\app.py" --contrato $archivo.FullName --cliente $Cliente --salida $Salida
@@ -148,6 +173,29 @@ try {
 # Del otro lado, el doGet de Apps Script lee ese archivo y lo sirve en una URL.
 # Asi el cliente abre un link y ve el tablero del dia, y el motor sigue siendo
 # uno solo.
+# LA MEMORIA TAMBIEN SE RESPALDA.
+#
+# clientes/*/memoria/ esta en .gitignore -- y con razon: son proyecciones de
+# un cliente real y un repo pasa de privado a publico con dos clicks. Pero eso
+# dejaba el activo del negocio existiendo en UNA sola computadora, que ademas
+# hay que devolver.
+#
+# Va a Drive por el mismo camino que el tablero: sin API, sin credenciales.
+if (-not $NoPublicar) {
+    $memoria = Join-Path $repo "clientes\$Cliente\memoria"
+    if (Test-Path $memoria) {
+        $dm = Join-Path $Carpeta "finauto_memoria_$Cliente"
+        try {
+            if (-not (Test-Path $dm)) { New-Item -ItemType Directory -Path $dm | Out-Null }
+            Copy-Item (Join-Path $memoria "*") $dm -Force -ErrorAction SilentlyContinue
+            $n = @(Get-ChildItem $dm -File -ErrorAction SilentlyContinue).Count
+            Write-Host "  Memoria      : $n archivo(s) respaldados en Drive" -ForegroundColor Green
+        } catch {
+            Write-Host "  No pude respaldar la memoria en $dm" -ForegroundColor Yellow
+        }
+    }
+}
+
 if (-not $NoPublicar) {
     $destino = Join-Path $Carpeta $Publicado
     try {
