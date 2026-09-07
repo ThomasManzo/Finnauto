@@ -783,6 +783,30 @@ def planes_por_ventana(contrato, unidad, hoy, cliente, ventanas=(7, 14, 21, 30, 
     return out
 
 
+
+def _memoria_tablero(cliente, paquete):
+    """Concilia el tablero de hoy contra el ultimo snapshot ANTERIOR.
+
+    Se busca el mas reciente que NO sea de hoy: comparar contra si mismo daria
+    0% de desvio siempre, que es peor que no medir -- da una sensacion de
+    precision que no existe.
+    """
+    try:
+        from memoria import tablero as MT
+        rutas = [r for r in MT.snapshots(cliente)
+                 if paquete["fecha"] not in os.path.basename(r)]
+        if not rutas:
+            return {"hay": False,
+                    "por_que": "todavia no hay ninguna proyeccion guardada de "
+                               "otro dia contra la cual comparar"}
+        snap = MT.leer(rutas[-1])
+        c = MT.conciliar(snap, paquete)
+        return {"hay": True, "desde": snap["corte"],
+                "frases": MT.en_palabras(c), "unidades": c["unidades"]}
+    except Exception as e:
+        return {"hay": False, "por_que": "no se pudo leer la memoria: %s" % e}
+
+
 def armar(contrato, cliente="maga"):
     hoy = D.hoy_de(contrato)
     us = POS.unidades(contrato)
@@ -821,6 +845,7 @@ def armar(contrato, cliente="maga"):
             "refi": refinanciacion(contrato, u, hoy),
         }
 
+    paquete_parcial = {"fecha": hoy, "unidades": unidades, "datos": datos}
     return {
         "cliente": contrato.get("cliente") or "finauto",
         "fecha": hoy,
@@ -830,6 +855,9 @@ def armar(contrato, cliente="maga"):
         "datos": datos,
         "hallazgos": hallazgos(contrato),
         "memoria": memoria_del_cliente(cliente),
+        # LO QUE DIJIMOS LA VEZ PASADA, contra lo que pasa hoy.
+        # Es lo que hace que la segunda visita valga mas que la primera.
+        "memoria_tablero": _memoria_tablero(cliente, paquete_parcial),
         # A quien se puede endosar un cheque: las droguerias del catalogo del
         # cliente, no una lista escrita a mano en el HTML.
         "droguerias": droguerias_del_cliente(cliente),

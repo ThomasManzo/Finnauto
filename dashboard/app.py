@@ -407,7 +407,7 @@ function desplegable(id, cabecera, contenido){
 // dato del negocio: por eso vive en el navegador y no toca el contrato.
 var ENDOSOS = {};
 // Lo que el usuario esta simulando en la solapa de proyeccion.
-var VENTANA = 45, PATEADO = {}, SUELTO = {}, CON_IC = false;
+var VENTANA = 45, PATEADO = {}, SUELTO = {}, CON_IC = false, PARCIAL = {};
 try { ENDOSOS = JSON.parse(localStorage.getItem('finauto_endosos') || '{}'); }
 catch (e) { ENDOSOS = {}; }
 
@@ -880,11 +880,18 @@ function verProyeccion(){
   function pateado(it){
     return PATEADO[it.grupo] || SUELTO[it.id];
   }
+  // Cuanto sale de verdad por este item: 0 si se patea, el parcial si se
+  // cargo uno, el total si no.
+  function saleDe(it){
+    if (pateado(it)) return 0;
+    var pa = PARCIAL[it.id];
+    return pa === undefined ? it.monto : pa;
+  }
   function armar(){
     var porDia = {};
     (p.items || []).forEach(function(it){
-      if (it.fecha > hasta || pateado(it)) return;
-      porDia[it.fecha] = (porDia[it.fecha] || 0) + it.monto;
+      if (it.fecha > hasta) return;
+      porDia[it.fecha] = (porDia[it.fecha] || 0) + saleDe(it);
     });
     var caja = p.caja_inicial, curva = [];
     for (var i = 0; i < Math.min(VENTANA, p.dias.length); i++){
@@ -999,7 +1006,7 @@ function verProyeccion(){
     });
     if (!items.length) return;
     var total = items.reduce(function(a, x){ return a + x.monto; }, 0);
-    var pateados = items.filter(pateado).reduce(function(a, x){ return a + x.monto; }, 0);
+    var pateados = items.reduce(function(a, x){ return a + (x.monto - saleDe(x)); }, 0);
 
     var cab = el('div');
     cab.style.cssText = 'display:flex;gap:10px;align-items:baseline;flex:1;padding:7px 0';
@@ -1035,7 +1042,42 @@ function verProyeccion(){
         '<span style="color:var(--suave)">' + it.concepto + '</span>' +
         (it.estimado ? ' <span class="chip medio">estimado</span>' : '')));
       tr.appendChild(td1);
-      tr.appendChild(el('td', pateado(it) ? 'pos' : '', pesos(it.monto)));
+
+      // PAGAR UNA PARTE, que es lo que se hace de verdad.
+      //
+      // Thomas: "montos parciales tambien". Tiene razon y cambia el modelo:
+      // hasta aca un resumen se pagaba entero o se pateaba entero, y en la
+      // realidad a Suizo le pagas 200 de los 500. Un interruptor de todo o
+      // nada obliga a elegir entre dos cosas que nadie hace.
+      //
+      // Solo tiene sentido en lo DIVISIBLE. A una drogueria le podes transferir
+      // una parte; un cheque es todo o nada -- o lo cubris o rebota -- y un
+      // sueldo tampoco se paga por mitades.
+      var tdM = el('td');
+      if (it.grupo === 'droguerias' && !PATEADO[g.id] && !SUELTO[it.id]){
+        var pagado = PARCIAL[it.id];
+        var inp = document.createElement('input');
+        inp.type = 'text';
+        inp.value = pagado !== undefined ? Math.round(pagado).toLocaleString('es-AR')
+                                         : Math.round(it.monto).toLocaleString('es-AR');
+        inp.style.cssText = 'width:150px;font-size:13px;padding:5px 8px;text-align:right';
+        inp.onchange = function(){
+          var n = Number(String(inp.value).replace(/[^\d]/g, '')) || 0;
+          n = Math.max(0, Math.min(n, it.monto));
+          if (Math.abs(n - it.monto) < 1) delete PARCIAL[it.id];
+          else PARCIAL[it.id] = n;
+          pintar();
+        };
+        tdM.appendChild(inp);
+        if (pagado !== undefined){
+          tdM.appendChild(el('div', 'resumen', 'quedan ' + pesos(it.monto - pagado) +
+                             ' sin pagar'));
+        }
+      } else {
+        tdM.className = pateado(it) ? 'pos' : '';
+        tdM.innerHTML = pesos(it.monto);
+      }
+      tr.appendChild(tdM);
       det.appendChild(tr);
     });
     lista.appendChild(desplegable('g_' + g.id, cab, det));
@@ -1059,7 +1101,8 @@ function verProyeccion(){
   });
   out.push(k);
 
-  var hayPateo = Object.keys(PATEADO).length || Object.keys(SUELTO).length;
+  var hayPateo = Object.keys(PATEADO).length || Object.keys(SUELTO).length ||
+               Object.keys(PARCIAL).length;
   if (critico){
     var av = el('div', 'card');
     av.style.borderLeft = '3px solid var(--rojo)';
@@ -1071,9 +1114,8 @@ function verProyeccion(){
   } else if (hayPateo){
     var ok = el('div', 'card');
     ok.style.borderLeft = '3px solid var(--verde)';
-    var pat = (p.items || []).filter(function(it){
-      return it.fecha <= hasta && pateado(it);
-    }).reduce(function(a, x){ return a + x.monto; }, 0);
+    var pat = (p.items || []).filter(function(it){ return it.fecha <= hasta; })
+                             .reduce(function(a, x){ return a + (x.monto - saleDe(x)); }, 0);
     ok.innerHTML = '<b>Asi llegas.</b> Corriendo ' + pesos(pat) + ' la caja no se da ' +
       'vuelta en ' + VENTANA + ' dias. La deuda no desaparece: se patea, y el atraso ' +
       'se acumula.';
@@ -1096,6 +1138,33 @@ function verProyeccion(){
 
 function verHallazgos(){
   var out = [];
+
+  // LO QUE DIJIMOS LA VEZ PASADA, arriba de todo.
+  //
+  // Es el activo de una asesoria recurrente. La frase que la sostiene no es
+  // "acertamos el 83% de los movimientos": es "el mes pasado te dije que el 14
+  // quedabas corto, quedaste el 16". Sin esto, cada visita arranca de cero y lo
+  // que se cobra es una foto, no una relacion.
+  var mem = D.memoria_tablero || {};
+  var cm = el('div', 'card');
+  cm.style.borderLeft = '3px solid var(--violeta)';
+  cm.appendChild(el('div', null,
+    '<span style="font-size:11.5px;text-transform:uppercase;letter-spacing:.09em;' +
+    'font-weight:700;color:var(--tenue)">Lo que te dijimos la vez pasada</span>'));
+  if (mem.hay && (mem.frases || []).length){
+    var u = el('ul', 'limpia');
+    u.style.marginTop = '10px';
+    mem.frases.forEach(function(f){ u.appendChild(el('li', null, f)); });
+    cm.appendChild(u);
+    cm.appendChild(el('p', 'nota', 'Se compara contra la proyeccion guardada el ' +
+      mem.desde + '. Solo se juzga lo que ya vencio: una proyeccion a 45 dias ' +
+      'mirada a los 10 no se cumplio ni se incumplio.'));
+  } else {
+    cm.appendChild(el('p', 'nota', (mem.por_que || 'sin memoria todavia') +
+      '. Se guarda una foto cada vez que se actualiza el tablero; desde la ' +
+      'segunda, aca aparece si le acertamos.'));
+  }
+  out.push(cm);
   if (!D.hallazgos.length) {
     out.push(el('div', 'card', 'No se encontró nada raro en los datos de este export.'));
   }
@@ -1233,6 +1302,8 @@ def main():
     ap.add_argument("--contrato", required=True)
     ap.add_argument("--cliente", default="maga")
     ap.add_argument("--salida", default="salidas/finauto.html")
+    ap.add_argument("--sin-memoria", action="store_true",
+                    help="no guardar la foto de esta corrida")
     args = ap.parse_args()
 
     with io.open(args.contrato, encoding="utf-8") as f:
@@ -1246,6 +1317,19 @@ def main():
         os.makedirs(d)
 
     paquete = DATOS.armar(contrato, args.cliente)
+
+    # SE GUARDA LA FOTO DE LO QUE SE MOSTRO.
+    #
+    # Antes de escribir el HTML, para que lo que quede registrado sea
+    # exactamente lo que el cliente va a ver. Si se guardara despues y algo
+    # fallara en el medio, quedaria una promesa que nadie hizo.
+    if not args.sin_memoria:
+        try:
+            from memoria import tablero as MT
+            ruta, _ = MT.guardar(args.cliente, paquete)
+            print("Foto guardada: %s" % os.path.basename(ruta))
+        except Exception as e:
+            print("OJO: no se pudo guardar la foto de la memoria (%s)" % e)
     with io.open(salida, "w", encoding="utf-8") as f:
         f.write("<!doctype html>\n<html lang=\"es\">\n")
         f.write(render(paquete))

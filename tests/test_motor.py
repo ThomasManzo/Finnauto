@@ -1743,6 +1743,70 @@ def test_cobertura_detecta_los_bugs_reales():
         DA.proyeccion = real
 
 
+def test_memoria_del_tablero():
+    """LO QUE DIJIMOS, CONTRA LO QUE PASO.
+
+    Es el activo de una asesoria recurrente. La frase que la sostiene no es
+    "acertamos el 83% de los movimientos": es *"el mes pasado te dije que el 14
+    quedabas corto; quedaste el 16"*. Sin esto, cada visita arranca de cero y
+    lo que se cobra es una foto, no una relacion.
+
+    Se guarda la CURVA y el DIA CRITICO, no los movimientos: el tablero
+    proyecta desde el cashflow y el modulo viejo guardaba desde la solapa
+    MOVIMIENTOS. Mezclar los dos universos ya nos costo cuatro bugs.
+    """
+    from memoria import tablero as MT
+
+    def paquete(fecha, caja, salidas):
+        dias = []
+        for k in range(20):
+            f = (datetime.date(2026, 9, 5) + datetime.timedelta(days=k)).isoformat()
+            dias.append({"fecha": f, "entra": 0.0,
+                         "sale": {"droguerias": salidas.get(f, 0.0)}})
+        return {"fecha": fecha, "unidades": ["MAGA"],
+                "datos": {"MAGA": {
+                    "proyeccion": {"caja_inicial": caja, "dias": dias,
+                                   "hasta": dias[-1]["fecha"], "items": []},
+                    "kpis": {"vencido": 0.0},
+                    "planes": {"14": {"frase": "no hace falta patear nada",
+                                      "pasos": []}}}}}
+
+    # Lo que dijimos el 05: la caja se da vuelta el 09.
+    dicho = paquete("2026-09-05", 100.0, {"2026-09-09": 150.0})
+    _, snap = MT.guardar("_test", dicho, "prueba")
+    ok(snap["unidades"]["MAGA"]["critico"]["fecha"] == "2026-09-09",
+       "la foto guarda el dia critico que se le mostro al cliente")
+
+    # Lo que paso: se dio vuelta el 11, dos dias despues.
+    paso = paquete("2026-09-15", 100.0, {"2026-09-11": 150.0})
+    c = MT.conciliar(snap, paso)
+    u = c["unidades"][0]
+    ok(u["critico_real"] == "2026-09-11" and u["dias_de_diferencia"] == 2,
+       "y la conciliacion dice cuantos dias erramos", str(u))
+    ok(u["acerto_critico"],
+       "con dos dias de diferencia se considera acertado: mueve la misma decision")
+    frase = MT.en_palabras(c)[0]
+    ok("05/09" in frase and "09/09" in frase and "11/09" in frase,
+       "la frase se puede leer en voz alta en una reunion", frase)
+
+    # SOLO SE JUZGA LO QUE YA VENCIO.
+    # Una proyeccion a 45 dias mirada a los 10 no se cumplio ni se incumplio.
+    temprano = paquete("2026-09-04", 100.0, {})
+    c2 = MT.conciliar(snap, temprano)
+    ok(c2["unidades"][0].get("todavia_no"),
+       "una proyeccion que todavia no vencio no se juzga")
+
+    # Y NO SE COMPARA CONTRA SI MISMA: daria 0% de desvio siempre, que es peor
+    # que no medir -- da una sensacion de precision que no existe.
+    from dashboard import datos as DA
+    m = DA._memoria_tablero("_test_sin_nada", {"fecha": "2026-09-05", "datos": {}})
+    ok(not m["hay"] and "comparar" in m["por_que"],
+       "sin una foto anterior, se dice que no hay con que comparar", str(m))
+
+    import shutil, os as _os
+    shutil.rmtree(_os.path.join(BASE_REPO, "clientes", "_test"), ignore_errors=True)
+
+
 if __name__ == "__main__":
     print("=" * 62)
     print("  TESTS DEL MOTOR finauto")
@@ -1772,6 +1836,7 @@ if __name__ == "__main__":
     test_detalle_para_desplegar()
     test_plan_minimo()
     test_cobertura_detecta_los_bugs_reales()
+    test_memoria_del_tablero()
     test_proveedores()
     test_rigido_y_endoso()
     test_deuda_vencida()
