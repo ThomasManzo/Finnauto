@@ -1,4 +1,4 @@
-# actualizar_tablero.ps1 — el ultimo eslabon de la cadena automatica.
+﻿# actualizar_tablero.ps1 — el ultimo eslabon de la cadena automatica.
 #
 # LA CADENA, Y POR QUE ESTA PARTIDA ASI
 # -------------------------------------
