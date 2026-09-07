@@ -1658,6 +1658,91 @@ def test_plan_minimo():
        "el costo sale con el nombre y la tolerancia de la ficha", str(c))
 
 
+def test_cobertura_detecta_los_bugs_reales():
+    """EL CONTROL QUE HABRIA ATAJADO CASI TODOS LOS BUGS.
+
+    Thomas, 06/09/2026: "vamos cortando con estos bugs porque estamos
+    complicados, no puedo ofrecer algo lleno de bugs y si yo no me fijo no se
+    que puede pasar".
+
+    Lo importante es la segunda parte: SI EL NO LO MIRA, NADIE LO MIRA.
+
+    Mirando los bugs juntos, casi todos fueron el mismo: plata que estaba en el
+    contrato y no llego a la pantalla, o llego dos veces. Ninguno fue de
+    aritmetica y ninguno rompio nada -- el tablero salio limpio, con un numero
+    mal.
+
+    Este test no prueba que el control ande cuando todo esta bien: prueba que
+    SUENA cuando se rompe. Un control que nunca fallo no demuestra nada.
+    """
+    from auditoria import cobertura as COB
+    from dashboard import datos as DA
+
+    hoy = "2026-09-05"
+    contrato = {
+        "generado": hoy + "T00:00:00Z",
+        "caja_hoy": 1000.0,
+        "caja_por_unidad": {"SPEEDMED": 1000.0},
+        "cobros_previstos": [
+            {"fecha": "2026-09-10", "concepto": "FCIAS", "importe": 100.0,
+             "unidad": "SPEEDMED"}],
+        "cuentas_a_cobrar_droguerias": [
+            {"fecha": "2026-09-12", "contraparte": "DDS", "importe": 500.0,
+             "unidad": "SPEEDMED"}],
+        "egresos_cashflow": [
+            {"fecha": "2026-09-11", "contraparte": "Sueldos", "importe": 200.0,
+             "unidad": "SPEEDMED"}],
+        "deuda_droguerias": [
+            {"fecha": "2026-09-13", "contraparte": "SUIZO", "importe": 300.0,
+             "unidad": "SPEEDMED"}],
+    }
+
+    filas, _ = COB.revisar(contrato, dias=45)
+    f = [x for x in filas if x["unidad"] == "SPEEDMED"][0]
+    ok(abs(f["entra"]["dif"]) < 1 and abs(f["sale"]["dif"]) < 1,
+       "con todo bien, el control no suena", str(f))
+    ok(abs(f["entra"]["esperado"] - 600.0) < 1,
+       "y cuenta las dos puntas del que compra Y vende")
+
+    # EL BUG REAL: faltaba la cobranza a droguerias en la proyeccion.
+    # Se simula sacandola y se verifica que el control lo cante.
+    real = DA.proyeccion
+
+    def sin_cobranza(c, u, h, dias=45, con_intercompany=False):
+        p = real(c, u, h, dias, con_intercompany)
+        cob = sum(abs(float(x.get("importe") or 0))
+                  for x in c.get("cuentas_a_cobrar_droguerias", []))
+        return dict(p, total_entra=p["total_entra"] - cob)
+
+    DA.proyeccion = sin_cobranza
+    try:
+        filas2, _ = COB.revisar(contrato, dias=45)
+        f2 = [x for x in filas2 if x["unidad"] == "SPEEDMED"][0]
+        ok(abs(f2["entra"]["dif"]) > 1,
+           "y SUENA cuando falta una punta -- el bug de Speed", str(f2["entra"]))
+        ok(abs(f2["entra"]["dif"] + 500.0) < 1,
+           "diciendo exactamente cuanta plata no llego a la pantalla",
+           str(f2["entra"]["dif"]))
+    finally:
+        DA.proyeccion = real
+
+    # EL OTRO BUG REAL: contar algo dos veces (los egresos estimados ADEMAS de
+    # los cargados). Se simula duplicando y tiene que sonar igual.
+    def duplicado(c, u, h, dias=45, con_intercompany=False):
+        p = real(c, u, h, dias, con_intercompany)
+        return dict(p, total_sale=p["total_sale"] * 2)
+
+    DA.proyeccion = duplicado
+    try:
+        filas3, _ = COB.revisar(contrato, dias=45)
+        f3 = [x for x in filas3 if x["unidad"] == "SPEEDMED"][0]
+        ok(f3["sale"]["dif"] > 1,
+           "y tambien cuando algo se cuenta dos veces -- el doble conteo",
+           str(f3["sale"]))
+    finally:
+        DA.proyeccion = real
+
+
 if __name__ == "__main__":
     print("=" * 62)
     print("  TESTS DEL MOTOR finauto")
@@ -1686,6 +1771,7 @@ if __name__ == "__main__":
     test_proyeccion_por_partes()
     test_detalle_para_desplegar()
     test_plan_minimo()
+    test_cobertura_detecta_los_bugs_reales()
     test_proveedores()
     test_rigido_y_endoso()
     test_deuda_vencida()
