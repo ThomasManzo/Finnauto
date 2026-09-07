@@ -1807,6 +1807,72 @@ def test_memoria_del_tablero():
     shutil.rmtree(_os.path.join(BASE_REPO, "clientes", "_test"), ignore_errors=True)
 
 
+def test_intercompany_y_cheques():
+    """DOS BUGS QUE MARCO THOMAS MIRANDO LA PANTALLA (07/09/2026).
+
+    Los dos son de la misma clase que veniamos persiguiendo: no rompen nada,
+    salen prolijos, y estan mal.
+    """
+    from dashboard import datos as DA
+
+    hoy = "2026-09-05"
+
+    # 1) LA DIRECCION DEL PAGO ENTRE EMPRESAS.
+    #
+    # "En el selector de Speed sale como si Speed le tendria que pagar a MAGA,
+    # cuando en realidad MAGA le debe a Speed."
+    #
+    # La fila esta escrita dentro del bloque de DEUDA de la planilla de Speed,
+    # asi que yo la leia como algo que Speed paga. Pero la linea siguiente del
+    # cash dice "Con pago DE MAGA+": es plata que Speed RECIBE. Donde esta
+    # cargada es una decision de layout, no de signo.
+    contrato = {
+        "generado": hoy + "T00:00:00Z", "caja_hoy": 0.0,
+        "caja_por_unidad": {"MAGA": 100.0, "SPEEDMED": 100.0},
+        "cobros_previstos": [], "cuentas_a_cobrar_droguerias": [],
+        "egresos_cashflow": [],
+        "deuda_droguerias": [
+            {"fecha": "2026-09-10", "contraparte": "MAGA+", "importe": 500.0,
+             "unidad": "SPEEDMED", "intercompany": True}],
+    }
+    sp = DA.proyeccion(contrato, "SPEEDMED", hoy, con_intercompany=True)
+    mg = DA.proyeccion(contrato, "MAGA", hoy, con_intercompany=True)
+    ok(abs(sp["total_entra"] - 500.0) < 0.01,
+       "a Speedmed le ENTRA: la fila dice que MAGA le paga", str(sp["total_entra"]))
+    ok(abs(mg["total_sale"] - 500.0) < 0.01,
+       "y a MAGA le SALE, aunque el dato solo este cargado del otro lado",
+       str(mg["total_sale"]))
+
+    # EL INVARIANTE, que casi rompo al arreglar la direccion: en la vista del
+    # grupo no cambia nada, porque la plata no sale del grupo.
+    g0 = DA.proyeccion(contrato, "GRUPO", hoy)
+    g1 = DA.proyeccion(contrato, "GRUPO", hoy, con_intercompany=True)
+    ok(abs(g1["total_entra"] - g0["total_entra"]) < 0.01
+       and abs(g1["total_sale"] - g0["total_sale"]) < 0.01,
+       "y en el grupo no cambia nada: la plata no sale del grupo")
+
+    # 2) CADA CHEQUE ES UNA DECISION PROPIA.
+    #
+    # "Cuando le das a endosar un cheque automaticamente le da endosar al que
+    # se encuentre en el mismo dia, lo cual esta mal: podes endosar uno y el
+    # otro no."
+    #
+    # El id era numero + fecha, y en esta cartera NINGUN cheque trae numero:
+    # los 365 vienen vacios. Dos del mismo dia compartian id.
+    c2 = dict(contrato, cartera_cheques=[
+        {"fecha": "2026-09-10", "importe": 100.0, "estado": "RECIBIDO",
+         "librador": "A", "unidad": "SPEEDMED"},
+        {"fecha": "2026-09-10", "importe": 200.0, "estado": "RECIBIDO",
+         "librador": "B", "unidad": "SPEEDMED"},
+        {"fecha": "2026-09-10", "importe": 100.0, "estado": "RECIBIDO",
+         "librador": "C", "unidad": "SPEEDMED"}])
+    a = DA.a_cobrar(c2, "SPEEDMED", hoy)
+    ids = [x["id"] for x in a["cheques"]]
+    ok(len(set(ids)) == 3, "tres cheques del mismo dia, tres ids distintos", str(ids))
+    ok(len(set(ids[0:1] + ids[2:3])) == 2,
+       "incluso dos del mismo dia y el MISMO importe", str(ids))
+
+
 if __name__ == "__main__":
     print("=" * 62)
     print("  TESTS DEL MOTOR finauto")
@@ -1837,6 +1903,7 @@ if __name__ == "__main__":
     test_plan_minimo()
     test_cobertura_detecta_los_bugs_reales()
     test_memoria_del_tablero()
+    test_intercompany_y_cheques()
     test_proveedores()
     test_rigido_y_endoso()
     test_deuda_vencida()

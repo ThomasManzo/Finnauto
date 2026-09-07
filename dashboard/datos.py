@@ -537,7 +537,7 @@ def a_cobrar(contrato, unidad, hoy, dias=45):
     # atribuye nada y se avisa.
     dueno = _dueno_de_la_cartera(contrato)
     ch, sin_unidad = [], False
-    for c in contrato.get("cartera_cheques", []):
+    for idx, c in enumerate(contrato.get("cartera_cheques", [])):
         f = c.get("fecha") or ""
         est = str(c.get("estado") or "").upper()
         # TODOS los que todavia no vencieron, no solo los de la ventana: cada
@@ -552,9 +552,24 @@ def a_cobrar(contrato, unidad, hoy, dias=45):
                 continue
         elif u and cu != u:
             continue
+        # UN ID POR CHEQUE, NO POR DIA.
+        #
+        # ERROR REAL (07/09/2026). Thomas: "cuando le das a endosar un cheque
+        # automaticamente le da endosar al que se encuentre en el mismo dia, lo
+        # cual esta mal: podes endosar uno y el otro no".
+        #
+        # El id era numero + fecha, y en esta cartera NINGUN cheque trae numero
+        # -- los 365 vienen vacios. Asi que dos cheques del mismo dia
+        # terminaban con el mismo id y el endoso de uno movia al otro.
+        #
+        # Se agrega la posicion en la lista: es lo unico que garantiza unicidad
+        # cuando la planilla no trae un identificador propio.
         ch.append({"fecha": f, "importe": abs(float(c.get("importe") or 0)),
                    "librador": (c.get("librador") or "").strip()[:40],
-                   "estado": est, "id": (c.get("numero") or "") + "|" + f})
+                   "estado": est,
+                   "id": "%s|%s|%s|%d" % ((c.get("numero") or "").strip(), f,
+                                          int(abs(float(c.get("importe") or 0))),
+                                          idx)})
     ch.sort(key=lambda x: (x["fecha"], -x["importe"]))
     return {"filas": filas, "vencido": venc, "por_vencer": fut,
             "cheques": ch[:40],
@@ -587,6 +602,14 @@ PATEABLES = [
      "solo transfiere cuando Speed necesita cubrir cheques."),
     ("otros", "Otros egresos", ""),
 ]
+
+
+
+def _mismo(a, b):
+    """Si dos rotulos nombran a la misma empresa ('MAGA' y 'MAGA+')."""
+    x = "".join(ch for ch in str(a or "").upper() if ch.isalnum())
+    y = "".join(ch for ch in str(b or "").upper() if ch.isalnum())
+    return bool(x) and bool(y) and (x in y or y in x)
 
 
 def _grupo_de(nombre):
@@ -691,14 +714,51 @@ def proyeccion(contrato, unidad, hoy, dias=45, con_intercompany=False):
         items.append({"id": g + "|" + f + "|" + cp, "grupo": g, "fecha": f,
                       "concepto": cp, "monto": v, "estimado": False})
 
+    # EL PAGO ENTRE EMPRESAS VA EN LA DIRECCION QUE DICE THOMAS, NO LA QUE
+    # SUGIERE EL BLOQUE DONDE ESTA CARGADO.
+    #
+    # ERROR REAL (07/09/2026): "en el selector de Speed sale como si Speed le
+    # tendria que pagar a MAGA, cuando en realidad MAGA le debe a Speed".
+    #
+    # La fila "MAGA+" esta escrita dentro del bloque de deuda de la planilla de
+    # Speed, asi que yo la tomaba como algo que Speed paga. Pero la linea
+    # siguiente del cash dice "Con pago DE MAGA+": es plata que Speed RECIBE.
+    # La ubicacion en la planilla es una decision de layout, no de signo.
+    #
+    # La regla: la CONTRAPARTE le paga a la unidad donde esta cargada la fila.
+    # Y como el dato existe de un solo lado, para la otra empresa se deriva con
+    # el signo opuesto -- que ademas es lo unico que mantiene el invariante:
+    # un pago dentro del grupo no puede cambiar el total del grupo.
+    inter_entra, inter_sale = [], []
+    for x in contrato.get("deuda_droguerias", []):
+        if x.get("intercompany"):
+            f = x.get("fecha") or ""
+            v = abs(float(x.get("importe") or 0))
+            duena = x.get("unidad") or ""
+            otra = str(x.get("contraparte") or "").strip()
+            if not (_dentro(f) and v):
+                continue
+            # EN LA VISTA DEL GRUPO NO CUENTA NI DE UN LADO NI DEL OTRO.
+            #
+            # Un pago entre dos empresas del mismo grupo no puede cambiar el
+            # total del grupo: entra por una puerta y sale por la otra. Es el
+            # mismo invariante que ya tenia test, y al arreglar la direccion
+            # casi lo rompo -- en GRUPO sumaba la entrada sin la salida.
+            if not u:
+                continue
+            if u == duena:
+                inter_entra.append({"fecha": f, "monto": v, "de": otra})
+            elif _mismo(u, otra):
+                inter_sale.append({"fecha": f, "monto": v, "a": duena})
+
     for x in contrato.get("deuda_droguerias", []):
         if not _mia(x):
             continue
         cp = str(x.get("contraparte") or "")
         # Lo intercompany solo cuenta en el escenario "con pago a la otra
         # empresa": es plata que se mueve dentro del grupo.
-        if x.get("intercompany") and not con_intercompany:
-            continue
+        if x.get("intercompany"):
+            continue          # se maneja aparte, con su direccion correcta
         f = x.get("fecha") or ""
         v = float(x.get("importe") or 0)
         if not _dentro(f) or v <= 0:
@@ -714,6 +774,16 @@ def proyeccion(contrato, unidad, hoy, dias=45, con_intercompany=False):
                       "concepto": ("Resumen del " + f[8:10] + "/" + f[5:7] +
                                    " · " + cp) if g == "droguerias" else cp,
                       "monto": v, "estimado": False})
+
+    if con_intercompany:
+        for x in inter_entra:
+            _sumar(x["fecha"], "entra", x["monto"])
+        for x in inter_sale:
+            _sumar(x["fecha"], "intercompany", x["monto"])
+            items.append({"id": "intercompany|" + x["fecha"] + "|" + x["a"],
+                          "grupo": "intercompany", "fecha": x["fecha"],
+                          "concepto": "Pago a " + x["a"], "monto": x["monto"],
+                          "estimado": False})
 
     f, out = desde, []
     while f.isoformat() <= hasta:
