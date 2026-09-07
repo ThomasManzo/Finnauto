@@ -830,13 +830,28 @@ function verCobrar(){
           return t;
         }).join('<br>') + '</div>');
     }
+    // ESTA LINEA ESTABA MAL Y ADEMAS NO SE ENTENDIA.
+    //
+    // Thomas (07/09/2026) marco: "explicame que quiere decir esa linea porque
+    // no entiendo". Decia "faltan $1.066.774.053" justo despues de decir que
+    // el endoso bajaba $191.597.425 de deuda -- y no lo restaba.
+    //
+    // Lo vencido se cubre de DOS formas: depositando cheques (entra plata para
+    // pagarlo) y endosando (baja la deuda directamente). Contar solo el
+    // deposito hacia parecer que el endoso no servia para nada.
     var venc = d.kpis.vencido;
-    if (deposita >= venc && venc > 0){
-      lin.push('<div style="margin-top:10px" class="pos">Con eso cubris toda la deuda ' +
-               'vencida (' + pesos(venc) + ').</div>');
-    } else if (venc > 0){
-      lin.push('<div style="margin-top:10px" class="neg">Depositando eso NO alcanza para ' +
-               'cubrir lo vencido: faltan ' + pesos(venc - deposita) + '.</div>');
+    if (venc > 0){
+      var cubierto = deposita + res.total;
+      var falta = venc - cubierto;
+      var det = 'Lo vencido son <b>' + pesos(venc) + '</b>. Contra eso van los ' +
+        pesos(deposita) + ' que depositas' +
+        (res.total ? ' mas los ' + pesos(res.total) + ' que endosas' : '') + '.';
+      lin.push('<div style="margin-top:12px;padding-top:10px;' +
+        'border-top:1px solid var(--linea)">' + det + '<br>' + (falta <= 0
+          ? '<span class="pos"><b>Alcanza para cubrirlo todo</b>' +
+            (falta < 0 ? ', y sobran ' + pesos(-falta) : '') + '.</span>'
+          : '<span class="neg"><b>Faltan ' + pesos(falta) + '</b> para cubrirlo. ' +
+            'Ese resto sigue vencido y suma atraso.</span>') + '</div>');
     }
     cj.innerHTML = lin.join(' ');
     if (res.total){
@@ -957,20 +972,41 @@ function verProyeccion(){
   }
 
   // El interruptor del pago entre empresas, arriba del timeline.
-  if (d.proyeccion_ic && (d.proyeccion_ic.items || []).some(function(i){
-        return i.grupo === 'intercompany'; })){
+  // EL BOTON DICE EN QUE DIRECCION VA LA PLATA.
+  //
+  // Thomas (07/09/2026): "en el selector de Speed sale como si Speed le
+  // tendria que pagar a MAGA, cuando en realidad MAGA le debe a Speed. Y ese
+  // boton sumalo en MAGA tambien: en Speed 'si te paga MAGA' y en MAGA 'si le
+  // pago a Speed'".
+  //
+  // La direccion no se puede inferir del bloque donde esta cargada la fila --
+  // esta en el de deuda de Speed y sin embargo es plata que Speed RECIBE. Se
+  // deduce de si el escenario le suma ingresos o egresos a esta empresa.
+  var pic = d.proyeccion_ic || {};
+  var masEntra = (pic.total_entra || 0) - (d.proyeccion.total_entra || 0);
+  var masSale = (pic.total_sale || 0) - (d.proyeccion.total_sale || 0);
+  if (Math.abs(masEntra) > 1 || Math.abs(masSale) > 1){
+    var cobra = masEntra > 1;
+    var otra = (pic.items || []).filter(function(i){ return i.grupo === 'intercompany'; })
+                                .map(function(i){ return i.concepto.replace('Pago a ', ''); })[0]
+               || (UNIDAD === 'MAGA' ? 'Speedmed' : 'MAGA');
     var cic = el('div', 'card');
+    cic.style.borderLeft = '3px solid var(--violeta)';
     var lab = document.createElement('label');
     lab.style.cssText = 'display:flex;gap:9px;align-items:flex-start;cursor:pointer';
     var cbic = document.createElement('input');
     cbic.type = 'checkbox'; cbic.checked = CON_IC;
     cbic.onchange = function(){ CON_IC = cbic.checked; pintar(); };
-    var otra = UNIDAD === 'MAGA' ? 'Speedmed' : (UNIDAD === 'SPEEDMED' ? 'MAGA' : 'la otra empresa');
     lab.appendChild(cbic);
-    lab.appendChild(el('span', null, '<b>Contar el pago a ' + otra + '</b>' +
-      '<div class="resumen">Hoy no se paga como a un proveedor: se transfiere ' +
+    lab.appendChild(el('span', null,
+      '<b>' + (cobra ? 'Contar que te paga ' + otra
+                     : 'Contar que le pagas a ' + otra) + '</b> ' +
+      '<span style="color:var(--tenue)">' +
+      (cobra ? '+' : '−') + pesos(cobra ? masEntra : masSale) + '</span>' +
+      '<div class="resumen">Hoy no se maneja como un proveedor: se transfiere ' +
       'cuando hace falta cubrir cheques. Tildarlo muestra como quedarias si ' +
-      'fuera una obligacion mas.</div>'));
+      'fuera una obligacion mas. En la vista del grupo no cambia nada, porque ' +
+      'la plata no sale del grupo.</div>'));
     cic.appendChild(lab);
     out.push(cic);
   }
@@ -991,7 +1027,64 @@ function verProyeccion(){
   ct.appendChild(sl);
   out.push(ct);
 
-  // QUE PATEO — con desplegable por concepto.
+  var k = el('div', 'kpis');
+  var fin = curva.length ? curva[curva.length - 1].caja : p.caja_inicial;
+  [['Caja al arrancar', pesos(p.caja_inicial, true), p.desde, ''],
+   ['El dia mas bajo', pesos(minimo, true),
+     minimo < 0 ? 'la caja se da vuelta' : 'nunca toca cero', minimo < 0 ? 'malo' : 'bien'],
+   ['Caja a los ' + VENTANA + ' dias', pesos(fin, true), dia(hasta),
+     fin >= 0 ? 'bien' : 'malo']
+  ].forEach(function(x){
+    var t = el('div', 'card kpi ' + x[3]);
+    t.appendChild(el('div', 'et', x[0]));
+    t.appendChild(el('div', 'n', x[1]));
+    t.appendChild(el('div', 'pie', x[2]));
+    k.appendChild(t);
+  });
+  out.push(k);
+
+  var hayPateo = Object.keys(PATEADO).length || Object.keys(SUELTO).length ||
+               Object.keys(PARCIAL).length;
+  if (critico){
+    var av = el('div', 'card');
+    av.style.borderLeft = '3px solid var(--rojo)';
+    av.innerHTML = '<b style="font-size:16px">El dia critico es el ' + dia(critico.fecha) +
+      '.</b><br><span style="color:var(--suave)">Ahi la caja queda en ' +
+      pesos(critico.caja) + '. Un dueno no mira el final del periodo: mira el dia que ' +
+      'se queda corto, y ese dia tiene fecha.</span>';
+    out.push(av);
+  } else if (hayPateo){
+    var ok = el('div', 'card');
+    ok.style.borderLeft = '3px solid var(--verde)';
+    var pat = (p.items || []).filter(function(it){ return it.fecha <= hasta; })
+                             .reduce(function(a, x){ return a + (x.monto - saleDe(x)); }, 0);
+    ok.innerHTML = '<b>Asi llegas.</b> Corriendo ' + pesos(pat) + ' la caja no se da ' +
+      'vuelta en ' + VENTANA + ' dias. La deuda no desaparece: se patea, y el atraso ' +
+      'se acumula.';
+    out.push(ok);
+  }
+
+  var cg = el('div', 'card');
+  cg.appendChild(curvaCaja(curva, critico));
+  var sale = curva.reduce(function(a, x){ return a + x.sale; }, 0);
+  var entra = curva.reduce(function(a, x){ return a + x.entra; }, 0);
+  cg.appendChild(el('p', 'nota',
+    '<b>Que toma:</b> el comportamiento de los ultimos meses — cada tipo de movimiento ' +
+    'se repite con su propio ritmo. La deuda con droguerias NO se estima: ya tiene ' +
+    'fecha y monto en la planilla, por eso sus resumenes salen sin la marca de ' +
+    '“estimado”. En ' + VENTANA + ' dias entran ' + pesos(entra) + ' y salen ' +
+    pesos(sale) + '.'));
+  out.push(cg);
+
+  // LA CAJA PRIMERO, LOS INTERRUPTORES DESPUES.
+  //
+  // Thomas (07/09/2026): "en la parte de proyeccion deberia ser al reves, el
+  // tema de la caja y demas arriba de todo, para luego abajo ver que se puede
+  // patear y se vaya acomodando solo".
+  //
+  // Tiene razon y es como se usa: primero se mira como queda, y si no cierra
+  // se baja a tocar. Al reves obligaba a leer una lista de opciones antes de
+  // saber si hacia falta abrirla.
   var cp = el('div', 'card');
   cp.appendChild(el('div', null, '<b>Que puedo patear para llegar</b>'));
   cp.appendChild(el('p', 'nota', 'Tildar un grupo entero, o abrirlo y elegir de a uno. ' +
@@ -1085,54 +1178,6 @@ function verProyeccion(){
   cp.appendChild(lista);
   out.push(cp);
 
-  var k = el('div', 'kpis');
-  var fin = curva.length ? curva[curva.length - 1].caja : p.caja_inicial;
-  [['Caja al arrancar', pesos(p.caja_inicial, true), p.desde, ''],
-   ['El dia mas bajo', pesos(minimo, true),
-     minimo < 0 ? 'la caja se da vuelta' : 'nunca toca cero', minimo < 0 ? 'malo' : 'bien'],
-   ['Caja a los ' + VENTANA + ' dias', pesos(fin, true), dia(hasta),
-     fin >= 0 ? 'bien' : 'malo']
-  ].forEach(function(x){
-    var t = el('div', 'card kpi ' + x[3]);
-    t.appendChild(el('div', 'et', x[0]));
-    t.appendChild(el('div', 'n', x[1]));
-    t.appendChild(el('div', 'pie', x[2]));
-    k.appendChild(t);
-  });
-  out.push(k);
-
-  var hayPateo = Object.keys(PATEADO).length || Object.keys(SUELTO).length ||
-               Object.keys(PARCIAL).length;
-  if (critico){
-    var av = el('div', 'card');
-    av.style.borderLeft = '3px solid var(--rojo)';
-    av.innerHTML = '<b style="font-size:16px">El dia critico es el ' + dia(critico.fecha) +
-      '.</b><br><span style="color:var(--suave)">Ahi la caja queda en ' +
-      pesos(critico.caja) + '. Un dueno no mira el final del periodo: mira el dia que ' +
-      'se queda corto, y ese dia tiene fecha.</span>';
-    out.push(av);
-  } else if (hayPateo){
-    var ok = el('div', 'card');
-    ok.style.borderLeft = '3px solid var(--verde)';
-    var pat = (p.items || []).filter(function(it){ return it.fecha <= hasta; })
-                             .reduce(function(a, x){ return a + (x.monto - saleDe(x)); }, 0);
-    ok.innerHTML = '<b>Asi llegas.</b> Corriendo ' + pesos(pat) + ' la caja no se da ' +
-      'vuelta en ' + VENTANA + ' dias. La deuda no desaparece: se patea, y el atraso ' +
-      'se acumula.';
-    out.push(ok);
-  }
-
-  var cg = el('div', 'card');
-  cg.appendChild(curvaCaja(curva, critico));
-  var sale = curva.reduce(function(a, x){ return a + x.sale; }, 0);
-  var entra = curva.reduce(function(a, x){ return a + x.entra; }, 0);
-  cg.appendChild(el('p', 'nota',
-    '<b>Que toma:</b> el comportamiento de los ultimos meses — cada tipo de movimiento ' +
-    'se repite con su propio ritmo. La deuda con droguerias NO se estima: ya tiene ' +
-    'fecha y monto en la planilla, por eso sus resumenes salen sin la marca de ' +
-    '“estimado”. En ' + VENTANA + ' dias entran ' + pesos(entra) + ' y salen ' +
-    pesos(sale) + '.'));
-  out.push(cg);
   return out;
 }
 
