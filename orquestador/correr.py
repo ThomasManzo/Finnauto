@@ -60,26 +60,107 @@ def correr_banco(cliente, banco, modo_forzado=None):
     return _loop.correr(bot, ctx, usuario, clave)
 
 
+
+
+def _bancos_de(cliente, modo):
+    """Todos los bancos activos de un cliente, uno por vez.
+
+    Si uno falla los demas siguen: que venza la clave de Comafi no puede dejar
+    sin extractos a Galicia. Al final se levanta el error para que el que llamo
+    sepa que este cliente no quedo completo.
+    """
+    perfil = _config.cargar_perfil(BASE_REPO, cliente)
+    activos = [b for b, c in (perfil.get("bancos", {})).items()
+               if (c or {}).get("activo", True)]
+    if not activos:
+        raise SystemExit("El perfil de %s no tiene bancos activos." % cliente)
+    fallaron = []
+    for b in activos:
+        try:
+            correr_banco(cliente, b, modo)
+        except SystemExit:
+            raise
+        except Exception:
+            log("ERROR corriendo %s de %s:" % (b, cliente))
+            log(traceback.format_exc())
+            fallaron.append(b)
+    if fallaron:
+        raise RuntimeError("fallaron " + ", ".join(fallaron))
+
+
+def _clientes_disponibles():
+    base = os.path.join(BASE_REPO, "clientes")
+    if not os.path.isdir(base):
+        return []
+    out = []
+    for n in sorted(os.listdir(base)):
+        if n.startswith("_") or n.startswith("."):
+            continue
+        if os.path.isfile(os.path.join(base, n, "perfil.json")):
+            out.append(n)
+    return out
+
+
+def _todos_los_clientes(args):
+    """Corre todos los bancos activos de todos los clientes, uno por vez.
+
+    SI UNO FALLA, LOS DEMAS SIGUEN. Un cliente con la clave vencida no puede
+    dejar sin extractos a los otros dos -- y al final se dice cual fallo, para
+    que el problema no quede escondido en el medio de la salida.
+    """
+    clientes = _clientes_disponibles()
+    if not clientes:
+        raise SystemExit("No hay ningun cliente en clientes/ con perfil.json.")
+
+    log("Clientes a correr: %s" % ", ".join(clientes))
+    fallaron = []
+    for c in clientes:
+        log("")
+        log("=" * 60)
+        log("  CLIENTE: %s" % c)
+        log("=" * 60)
+        try:
+            _bancos_de(c, args.modo)
+        except Exception as e:
+            fallaron.append((c, str(e)))
+            log("FALLO el cliente %s: %s" % (c, e))
+
+    log("")
+    if fallaron:
+        log("TERMINO CON ERRORES. Fallaron: %s"
+            % ", ".join("%s (%s)" % (c, e[:60]) for c, e in fallaron))
+        return 1
+    log("Todos los clientes corrieron bien.")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description="finauto - descarga de extractos bancarios")
-    ap.add_argument("--cliente", required=True, help="carpeta del cliente (ej: maga)")
+    # UN CLIENTE, O TODOS.
+    #
+    # Thomas (07/09/2026): "¿cómo pega eso con que se tenga que consultar el
+    # bot 2 bancos distintos de dos empresas distintas?".
+    #
+    # Cada cliente ya tiene lo suyo separado -- su perfil, sus bancos, sus
+    # credenciales cifradas y su carpeta de destino -- pero habia que
+    # invocarlos de a uno. Con dos clientes eso son cuatro comandos a mano
+    # todos los dias, que es exactamente como se olvida uno.
+    #
+    # Los bancos corren en SERIE y no en paralelo, a proposito: son sesiones de
+    # home banking con login, y dos navegadores compitiendo por la misma
+    # maquina hacen fallar los dos.
+    ap.add_argument("--cliente", help="carpeta del cliente (ej: maga). "
+                                      "Sin esto, corren TODOS los clientes")
     ap.add_argument("--banco", help="banco a correr (galicia/comafi/santander)")
     ap.add_argument("--todos", action="store_true", help="correr todos los bancos activos del perfil")
     ap.add_argument("--modo", choices=["prueba", "produccion"], help="visible / invisible")
     args = ap.parse_args()
 
+    if not args.cliente:
+        return _todos_los_clientes(args)
+
     if args.todos:
-        perfil = _config.cargar_perfil(BASE_REPO, args.cliente)
-        activos = [b for b, c in (perfil.get("bancos", {})).items() if (c or {}).get("activo", True)]
-        if not activos:
-            raise SystemExit("El perfil no tiene bancos activos.")
-        for b in activos:
-            try:
-                correr_banco(args.cliente, b, args.modo)
-            except SystemExit:
-                raise
-            except Exception:
-                log("ERROR corriendo %s:\n%s" % (b, traceback.format_exc()))
+        _bancos_de(args.cliente, args.modo)
         return
 
     if not args.banco:
