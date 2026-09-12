@@ -1,0 +1,358 @@
+{
+  "_comentario": "CATALOGO de NAVAR S.A.: el vocabulario con el que se leen sus movimientos. Es POR CLIENTE: no se parece en nada al de MAGA (aca no hay droguerias ni obras sociales; hay hoja verde, cosecha, canchada, estampillas). El codigo no conoce estos valores: los lee de aca.",
+  "_estado": "BORRADOR (12/09/2026). Los conceptos salen de la planilla de cashflow que mandaron. Las tolerancias en null son LA pregunta para la reunion con quien carga los numeros: '¿si el lunes no alcanza la plata, este pago se puede correr? ¿cuantos dias? ¿que pasa si no?'. Nada de esto se adivina.",
+  "_como_leer_dias_tolerancia": "0 = no se mueve (rebota, te embargan, te cortan). N = se puede correr N dias sin consecuencia. null = todavia no se pregunto.",
+  "unidades": {
+    "_ayuda": "Valor de la columna EMPRESA. En la planilla aparecen como 'A' y 'AA' (Cobranza A / Cobranza AA, Caja AA, Proveedores AA). Son las dos empresas que tienen en Tango.",
+    "_pendiente": "¿Que razon social es 'A' y cual es 'AA'? ¿Las dos son NAVAR S.A. o hay otra sociedad? ¿Se pasan plata entre ellas (movimientos internos)?",
+    "valores": [
+      {
+        "id": "A",
+        "nombre": "Empresa A (a confirmar)",
+        "rubro": "yerbatera"
+      },
+      {
+        "id": "AA",
+        "nombre": "Empresa AA (a confirmar)",
+        "rubro": "yerbatera"
+      }
+    ]
+  },
+  "bancos": {
+    "_ayuda": "Valor de la columna BANCO. EFVO (efectivo) se trata como un origen de fondos mas. En la planilla vieja bancos y efectivo van sumados en una sola fila ('Bancos + efectivo'); en el cash nuevo conviene una fila por banco: con situacion 2 en dos de ellos, importa en CUAL esta la plata.",
+    "separar_caja_efectivo": true,
+    "valores": [
+      {
+        "id": "NACION",
+        "nombre": "Banco Nacion",
+        "tipo": "banco",
+        "situacion_bcra": 2
+      },
+      {
+        "id": "CORRIENTES",
+        "nombre": "Banco de Corrientes",
+        "tipo": "banco",
+        "situacion_bcra": 2
+      },
+      {
+        "id": "MACRO",
+        "nombre": "Banco Macro",
+        "tipo": "banco"
+      },
+      {
+        "id": "BBVA",
+        "nombre": "BBVA (Frances)",
+        "tipo": "banco"
+      },
+      {
+        "id": "GALICIA",
+        "nombre": "Banco Galicia",
+        "tipo": "banco",
+        "_nota": "El que menos usan. Unico con API a Tango."
+      },
+      {
+        "id": "EFVO",
+        "nombre": "Efectivo",
+        "tipo": "caja"
+      }
+    ]
+  },
+  "tipos": {
+    "_ayuda": "Valor de la columna TIPO. Uno por cada fila de egresos del cashflow. Ordenados por lo que mueven en las 8 semanas proyectadas de la planilla del 31/08, para que en la reunion se empiece por los que pesan.",
+    "valores": [
+      {
+        "id": "PROVEEDOR",
+        "nombre": "Proveedores (materia prima y logistica)",
+        "categoria": "proveedores",
+        "dias_tolerancia": null,
+        "consecuencia": "comercial",
+        "divisible": true,
+        "_peso": "$539M en 8 semanas (43% de los egresos). El mas grande por lejos.",
+        "_pendiente": "¿Quienes son? ¿Cuanto atraso aguanta cada uno antes de cortar la entrega? Hoy ya hay $206M de deuda ATRASADA con proveedores, y los plazos 'no se cargan en ningun lado'. Esto es lo primero que hay que relevar: es la linea de credito real del negocio."
+      },
+      {
+        "id": "SUELDO",
+        "nombre": "Sueldos y jornales",
+        "categoria": "personal",
+        "dias_tolerancia": 0,
+        "consecuencia": "laboral",
+        "_peso": "$194M en 8 semanas. Sale de Tango (modulo Sueldos).",
+        "_pendiente": "¿Se pagan quincenal o mensual? En la planilla caen el 31/08, 07/09 y 05/10 con montos distintos ($48,5M / $48,5M / $97M): ¿son quincenas?"
+      },
+      {
+        "id": "IMPUESTO",
+        "nombre": "Impuestos (ARCA y provinciales)",
+        "categoria": "impuestos",
+        "dias_tolerancia": 0,
+        "consecuencia": "fiscal",
+        "_peso": "$195M en 8 semanas. Ademas hay $399M de deuda impositiva YA atrasada.",
+        "_pendiente": "¿Que parte es del mes y que parte es plan de pagos de deuda vieja? ¿Hay planes de facilidades vigentes (esos se debitan en fecha exacta)? El objetivo declarado del cliente es 'adelantarse a los vencimientos impositivos': esto es el centro."
+      },
+      {
+        "id": "COSECHA",
+        "nombre": "Pago de cosecha",
+        "categoria": "proveedores",
+        "dias_tolerancia": null,
+        "consecuencia": null,
+        "divisible": true,
+        "_peso": "$138M en 8 semanas, concentrado en agosto/septiembre. Sale de Tango.",
+        "_pendiente": "¿Es el pago a los cosecheros / tareferos (mano de obra) o a quien vende la hoja cosechada? ¿Se puede correr o es gente que cobra por semana y no espera? ¿Cuando termina la zafra? (define la estacionalidad de toda la caja)"
+      },
+      {
+        "id": "PRESTAMO",
+        "nombre": "Pago de prestamos bancarios",
+        "categoria": "financiero",
+        "dias_tolerancia": 0,
+        "consecuencia": "financiera",
+        "_peso": "$312M en 8 semanas. Situacion 2 en Nacion y Corrientes: un atraso mas los manda a situacion 3 y se cierran las lineas.",
+        "_pendiente": "¿Que prestamos hay, en que banco, con que cuota y vencimiento? La planilla muestra ~$400M de deuda bancaria pero el cliente declaro ~$2.700M: la planilla mira una parte. ¿Cual?"
+      },
+      {
+        "id": "CHEQUE",
+        "nombre": "Cheques emitidos",
+        "categoria": "proveedores",
+        "dias_tolerancia": 0,
+        "consecuencia": "BCRA",
+        "_peso": "$47M en 8 semanas (la planilla dice $85M por un error de formula, ver diagnostico).",
+        "_nota": "EL intocable: si no se cubre, rebota y va al BCRA. Con situacion 2 en dos bancos, un rechazo es todavia mas caro. Sale de Tango (cheques emitidos)."
+      },
+      {
+        "id": "HONORARIO_DIVIDENDO",
+        "nombre": "Honorarios y dividendos",
+        "categoria": "socios",
+        "dias_tolerancia": null,
+        "consecuencia": "ninguna",
+        "divisible": true,
+        "_peso": "$26M en 8 semanas.",
+        "_pendiente": "¿Son honorarios de directorio (fecha fija) o retiros de socios (la variable de ajuste)? Estan juntos en una fila y son cosas opuestas: uno no se mueve, el otro es lo primero que se posterga."
+      },
+      {
+        "id": "HOJA_VERDE",
+        "nombre": "Compra de hoja verde",
+        "categoria": "proveedores",
+        "dias_tolerancia": null,
+        "consecuencia": "comercial",
+        "divisible": true,
+        "_peso": "$35M en 8 semanas (Catalina-Dolores $24M, Carolina $10,6M, Otros).",
+        "_pendiente": "¿Catalina-Dolores y Carolina son productores / establecimientos que les venden hoja? ¿Que plazo tienen? ¿El precio lo fija el INYM? ¿Hay contratos de zafra?"
+      },
+      {
+        "id": "INSUMOS",
+        "nombre": "Insumos",
+        "categoria": "proveedores",
+        "dias_tolerancia": null,
+        "consecuencia": "comercial",
+        "divisible": true,
+        "_pendiente": "Categoria nueva del cash limpio (no estaba en el viejo). ¿Que entra aca: envases, etiquetas, repuestos? ¿Que plazo tienen?"
+      },
+      {
+        "id": "ESTAMPILLAS",
+        "nombre": "Estampillas (INYM)",
+        "categoria": "impuestos",
+        "dias_tolerancia": 0,
+        "consecuencia": "fiscal",
+        "_peso": "$22,5M en 8 semanas, todas las semanas.",
+        "_pendiente": "Asumo que es la estampilla obligatoria del INYM para vender yerba: sin estampilla no se puede despachar. ¿Es asi? ¿Se paga por semana segun lo que se va a despachar?"
+      },
+      {
+        "id": "OTROS_GASTOS",
+        "nombre": "Otros gastos (CCG, Rodolfo, T. Agr...)",
+        "categoria": "varios",
+        "dias_tolerancia": null,
+        "consecuencia": null,
+        "divisible": true,
+        "_peso": "$39M real la semana del 24/08; $0 proyectado en las 8 siguientes.",
+        "_pendiente": "Es un cajon de sastre (mismo problema que 'PAGO' en MAGA). ¿Que hay adentro? Que se proyecte $0 y salgan $39M reales dice que ahi hay gastos recurrentes sin nombre."
+      },
+      {
+        "id": "TRANSFERENCIA",
+        "nombre": "Transferencia interna (entre cuentas propias o entre A y AA)",
+        "categoria": "interno",
+        "interno": true,
+        "consecuencia": "ninguna",
+        "_nota": "No es un gasto: la plata no sale del grupo. Se deja definido desde el dia uno para no repetir el error #1 de MAGA (internos contados como egreso)."
+      }
+    ]
+  },
+  "ingresos": {
+    "_ayuda": "Modelo de ingresos. FIJO = entra si o si (ya facturado, con fecha). VARIABLE = estimacion. El escenario conservador solo cuenta los FIJOS.",
+    "_ayuda_efecto": "'caja' = entra plata al banco. 'cartera' = entra un CHEQUE, que es caja recien en su fecha (y en NAVAR el 75% del 'saldo inicial' son cheques en cartera). 'menos_deuda' = no entra un peso, baja lo que se debe.",
+    "A": {
+      "fuentes": [
+        {
+          "id": "COBRANZA_FACTURAS",
+          "nombre": "Cobranza de facturas (A)",
+          "naturaleza": "FIJO",
+          "carga": "Tango",
+          "efecto": null,
+          "_pendiente": "¿Cobran en transferencia o en cheque? Si es cheque, el efecto es 'cartera', no 'caja'. ¿A que plazo venden? ¿A quien (distribuidores, supermercados, exportacion)?"
+        },
+        {
+          "id": "COBRANZA_CANCHADA",
+          "nombre": "Cobranza canchada",
+          "naturaleza": "FIJO",
+          "carga": "Tango",
+          "_pendiente": "Asumo que es venta de yerba canchada (a granel, sin molienda) a otros molinos. ¿Es asi? ¿Es regular o por oportunidad?"
+        },
+        {
+          "id": "COBRANZA_PROYECTADA",
+          "nombre": "Cobranza proyectada (estimacion por kg)",
+          "naturaleza": "VARIABLE",
+          "carga": "manual",
+          "_nota": "EL PUNTO DEBIL, dicho por ellos y medido: es el 67% de los ingresos proyectados a 8 semanas ($746M de $1.114M) y en las 6 pestañas historicas el 'real' de esta fila es siempre 0 (cuando entra, se registra como cobranza de facturas). O sea que nunca se pudo medir si la estimacion acierta.",
+          "_pendiente": "¿Como se calcula? (kg a despachar x precio x % que se cobra en la semana?) ¿De donde salen los kg?"
+        }
+      ]
+    },
+    "AA": {
+      "fuentes": [
+        {
+          "id": "COBRANZA_FACTURAS",
+          "nombre": "Cobranza de facturas (AA)",
+          "naturaleza": "FIJO",
+          "carga": "Tango"
+        },
+        {
+          "id": "COBRANZA_PROYECTADA",
+          "nombre": "Cobranza proyectada (AA)",
+          "naturaleza": "VARIABLE",
+          "carga": "manual"
+        }
+      ]
+    }
+  },
+  "excepciones_por_concepto": {
+    "_ayuda": "Cuando dentro de un mismo tipo hay cosas con flexibilidad distinta. Se llena mirando los exports de Tango, con datos reales. Vacio a proposito: no hay que inventar reglas antes de ver los movimientos.",
+    "reglas": []
+  },
+  "entidades_propias": {
+    "_ayuda": "Empresas y sociedades DEL PROPIO GRUPO. Un pago a alguna de estas es interno, no gasto.",
+    "_pendiente": "Confirmar los nombres de A y AA, y si hay otras sociedades (campos, transporte...).",
+    "valores": [
+      "NAVAR"
+    ]
+  },
+  "orden_de_pateo": {
+    "_ayuda": "Cuando falta plata, en que orden se proponen los pagos a postergar. Lo decide el dueño, no el sistema. Esta es una PROPUESTA para discutir, basada en el patron general (primero lo que no tiene consecuencia externa, despues proveedores segun tolerancia, nunca cheques/sueldos/bancos).",
+    "_pendiente": "Confirmar con el dueño. En especial: ¿un atraso con un proveedor de hoja verde es distinto de uno con un proveedor de logistica? ¿Cosecha se puede correr una semana?",
+    "prioridad_por_tipo": [
+      "HONORARIO_DIVIDENDO",
+      "OTROS_GASTOS",
+      "INSUMOS",
+      "PROVEEDOR",
+      "HOJA_VERDE",
+      "COSECHA"
+    ],
+    "criterio_secundario": "mas_tolerancia_primero",
+    "_regla_dura": "Solo se puede proponer mover un pago si su tolerancia alcanza para pasar el dia critico. Cheques, sueldos, impuestos con plan y cuotas de banco NO se proponen nunca."
+  },
+  "proveedores": {
+    "_ayuda": "Los proveedores que financian al negocio, con su tolerancia real. Reemplaza a la 'caja minima' como limite: acumular mas atraso que la tolerancia hace que te corten. Hoy: $206M de deuda atrasada con proveedores y NADIE sabe los plazos ('no se carga en ningun lado').",
+    "_pendiente": "Sale del export de cuentas a pagar de Tango + la reunion. Por ahora solo los que se ven en la planilla.",
+    "valores": [
+      {
+        "id": "CATALINA-DOLORES",
+        "nombre": "Catalina - Dolores (hoja verde)",
+        "tolerancia_semanas": null,
+        "le_compra": [
+          "A"
+        ],
+        "plazo_dias": null
+      },
+      {
+        "id": "CAROLINA",
+        "nombre": "Carolina (hoja verde)",
+        "tolerancia_semanas": null,
+        "le_compra": [
+          "A"
+        ],
+        "plazo_dias": null
+      }
+    ]
+  },
+  "obligaciones": {
+    "_ayuda": "Compromisos que no son proveedores y no son intocables del todo, pero que tienen su propio reloj. En NAVAR son los dos que el cliente quiere 'adelantar'.",
+    "valores": [
+      {
+        "id": "DEUDA_IMPOSITIVA",
+        "nombre": "Deuda impositiva atrasada (ARCA)",
+        "monto_al_31_08": 398641199,
+        "pateable": false,
+        "_pendiente": "¿Esta en plan de pagos o es deuda en mora? ¿Hay intimaciones? Define si es una cuota fija por mes (rigida) o un monto a negociar."
+      },
+      {
+        "id": "DEUDA_BANCARIA",
+        "nombre": "Deuda bancaria (5 bancos)",
+        "monto_al_31_08_segun_planilla": 400646168,
+        "monto_declarado_por_el_cliente": 2700000000,
+        "pateable": false,
+        "situacion_bcra": {
+          "NACION": 2,
+          "CORRIENTES": 2
+        },
+        "_pendiente": "La diferencia entre $400M y $2.700M hay que entenderla antes de mostrar cualquier numero de deuda. Probablemente la planilla solo mira las cuotas de las proximas semanas, no el capital."
+      }
+    ]
+  },
+  "_por_que_la_caja_esta_en_rojo": {
+    "_ayuda": "Lectura de la planilla del 31/08, a confirmar con ellos.",
+    "lo_que_dice_la_planilla": "La caja proyectada queda negativa desde la semana del 31/08 (-$16M) y no vuelve a positivo en 8 semanas (llega a -$228M el 19/10). Mientras tanto, la deuda atrasada con proveedores crece $65-80M por semana.",
+    "lo_que_significa": "No es que 'falta plata una semana': es que el negocio se esta financiando con atraso a proveedores, deuda impositiva y bancos, los tres a la vez. La pregunta semanal 'que pago priorizo' es la correcta, pero la respuesta hoy sale de una planilla que ademas tiene errores de formula (ver privado/diagnostico).",
+    "_no_afirmar_todavia": "La 'cobranza proyectada' puede estar muy subestimada o sobreestimada (error historico de ±48% en ingresos). Hasta no tener los exports de Tango, el rojo es una hipotesis de la planilla, no un dato."
+  },
+  "mapa_categorias": {
+    "_ayuda": "Como se llama cada categoria en la planilla 'NAVAR - Cash Flow' (columna Categoria de Movimientos y de Cuentas a Pagar) -> que tipo del catalogo es. Lo usa lector/cash_limpio.py. Si en la planilla agregan una categoria, se agrega aca; el codigo no cambia.",
+    "egresos": {
+      "Cheques": "CHEQUE",
+      "Sueldos y Jornales": "SUELDO",
+      "Impuestos": "IMPUESTO",
+      "Cosecha": "COSECHA",
+      "Proveedores MP y Logist.": "PROVEEDOR",
+      "Proveedores AA": "PROVEEDOR",
+      "Hoja Verde": "HOJA_VERDE",
+      "Insumos": "INSUMOS",
+      "Honorarios y Dividendos": "HONORARIO_DIVIDENDO",
+      "Estampillas": "ESTAMPILLAS",
+      "Otros": "OTROS_GASTOS",
+      "Prestamo": "PRESTAMO"
+    },
+    "ingresos": {
+      "_ayuda": "categoria -> (id de fuente, naturaleza). FIJO entra si o si; VARIABLE es estimacion.",
+      "Cobranza Facturas": [
+        "COBRANZA_FACTURAS",
+        "FIJO"
+      ],
+      "Cobranza Canchada": [
+        "COBRANZA_CANCHADA",
+        "FIJO"
+      ],
+      "Cobranza Proyectada": [
+        "COBRANZA_PROYECTADA",
+        "VARIABLE"
+      ],
+      "Cheques": [
+        "COBRO_CHEQUES",
+        "FIJO"
+      ],
+      "Prestamo": [
+        "INGRESO_PRESTAMO",
+        "FIJO"
+      ],
+      "Otros": [
+        "OTROS_INGRESOS",
+        "VARIABLE"
+      ]
+    }
+  },
+  "vocabulario": {
+    "_ayuda": "Como le habla el tablero a ESTE cliente. Lo lee dashboard/datos.py y lo usa el HTML. Cada cliente tiene su vocabulario: en una farmacia el proveedor es 'la drogueria', en una yerbatera es 'el proveedor de hoja'.",
+    "proveedor": "proveedor",
+    "proveedores": "proveedores",
+    "Proveedor": "Proveedor",
+    "nota_vencido": "con proveedores, sin bancos ni ARCA",
+    "tiene_refi": false,
+    "nota_ritmo": "Una cobranza grande de un cliente y treinta dias de despachos parejos no es lo mismo, aunque sumen igual.",
+    "nota_a_cobrar": "Las facturas a clientes son cuentas a cobrar: plata ya vendida y no cobrada. Recien es caja el dia que se acredita (o el dia de cobro del cheque, si pagan con cheque).",
+    "no_sabe_cobranza": "<b>Cuánto y cuándo entra la cobranza proyectada por kg.</b> Es el 67% de los ingresos previstos y es una estimacion: hasta que no haya historial de cobros reales por cliente, es el numero menos firme del tablero."
+  }
+}

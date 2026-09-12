@@ -309,8 +309,15 @@ function curvaCaja(curva, critico){
   var ancho = 900, alto = 230, izq = 72, abajo = 26, arriba = 10;
   if (!curva.length) return el('p', 'nota', 'Sin datos para proyectar.');
   var vals = curva.map(function(p){ return p.caja; });
-  var max = Math.max.apply(null, vals), min = Math.min.apply(null, vals, [0]);
-  if (max === min) max = min + 1;
+  // El cero SIEMPRE entra en el rango: la linea de "caja en cero" es el
+  // dato del grafico. (Antes decia Math.min.apply(null, vals, [0]) -- el
+  // tercer argumento de apply se ignora, asi que el 0 nunca entraba. Con una
+  // curva plana en -190M el rango quedaba en 1 peso y el relleno del area
+  // se dibujaba a -41.000 millones de pixeles, tapando la pantalla entera.
+  // Aparecio con NAVAR: datos semanales, todos el mismo dia, curva plana.)
+  var max = Math.max.apply(null, vals.concat([0])), min = Math.min.apply(null, vals.concat([0]));
+  var margen = Math.max((max - min) * 0.05, 1);
+  max += margen; min -= margen;
   var svg = svgEl('svg', {viewBox: '0 0 ' + ancho + ' ' + (alto + abajo)});
   svg.style.height = (alto + abajo) + 'px';
   function Y(v){ return arriba + (alto - arriba) * (max - v) / (max - min); }
@@ -445,6 +452,9 @@ function bajaVencido(nombre, monto){
 
 // ---------------------------------------------------------------- estado
 var UNIDAD = D.unidades[0], SOLAPA = 'posicion', VENTANA = String(D.ventanas[0]);
+// Las palabras con las que el tablero le habla a ESTE cliente (catalogo.vocabulario).
+var V = D.vocab || {proveedor:'proveedor', proveedores:'proveedores', Proveedor:'Proveedor',
+                    nota_vencido:'con proveedores', tiene_refi:false, nota_ritmo:'', nota_a_cobrar:'', no_sabe_cobranza:''};
 function actual(){ return D.datos[UNIDAD]; }
 
 // ---------------------------------------------------------------- capas
@@ -462,7 +472,7 @@ function verPosicion(){
       ? '+ ' + pesos(k.efectivo_sin_asignar, true) + ' de efectivo del grupo, sin asignar'
       : 'banco + efectivo', ''],
    ['Deuda ya vencida', pesos(k.vencido, true),
-      'con droguerias, sin la refi', k.vencido > 0 ? 'malo' : 'bien'],
+      V.nota_vencido, k.vencido > 0 ? 'malo' : 'bien'],
    ['Vence en los proximos 7 dias', pesos(k.por_vencer, true),
       'todavia no aprieta', '']
   ].forEach(function(x){
@@ -480,7 +490,7 @@ function verPosicion(){
   if (d.refi && (d.refi.vencido || d.refi.por_vencer)){
     var cr = el('div', 'card');
     cr.style.borderLeft = '3px solid var(--violeta)';
-    cr.innerHTML = '<b>Refinanciacion</b> — aparte de las droguerias: se puede ' +
+    cr.innerHTML = '<b>Refinanciacion</b> — aparte de las ' + V.proveedores + ': se puede ' +
       'patear hasta el vencimiento del mes siguiente (2 semanas), y atrasarla no ' +
       'hace que te corten la compra.<br>' +
       '<span style="color:var(--suave)">Vencida: <b>' + pesos(d.refi.vencido) +
@@ -494,8 +504,7 @@ function verPosicion(){
     ci.appendChild(leyenda(d.ingresos_dia.fuentes));
     ci.appendChild(barrasApiladas(d.ingresos_dia));
     ci.appendChild(el('p', 'nota', 'El total del mes no dice nada: lo que importa es ' +
-      'el RITMO. Un pico de PAMI y treinta dias de mostrador no es lo mismo que un ' +
-      'ingreso parejo, aunque sumen igual.'));
+      'el RITMO. ' + V.nota_ritmo));
     out.push(ci);
   }
 
@@ -531,7 +540,7 @@ function verPosicion(){
     var env = el('div', 'envuelve'); env.appendChild(det);
     cg.appendChild(desplegable('gasto_' + gi, f, env));
   });
-  cg.appendChild(el('p', 'nota', 'Incluye lo que vence con cada drogueria, no solo ' +
+  cg.appendChild(el('p', 'nota', 'Incluye lo que vence con cada ' + V.proveedor + ', no solo ' +
     'los egresos del cashflow. Sin eso faltaria el gasto mas grande que hay.'));
   out.push(cg);
 
@@ -568,7 +577,7 @@ function verPagar(){
   var c = el('div', 'card'), t = el('table');
   var baja = resumenEndosos().por;
   var hayEndoso = Object.keys(baja).length > 0;
-  t.innerHTML = '<tr><th>Drogueria</th><th>Vencido</th><th>Vence pronto</th>' +
+  t.innerHTML = '<tr><th>' + V.Proveedor + '</th><th>Vencido</th><th>Vence pronto</th>' +
                 (hayEndoso ? '<th>Endoso</th>' : '') + '<th>Atraso</th></tr>';
   d.proveedores.forEach(function(p){
     var tr = el('tr');
@@ -602,7 +611,7 @@ function verPagar(){
   });
   var w = el('div', 'envuelve'); w.appendChild(t); c.appendChild(w);
   if (!d.proveedores.length){
-    c.appendChild(el('p', 'nota', 'Sin deuda con droguerias en esta empresa.'));
+    c.appendChild(el('p', 'nota', 'Sin deuda con ' + V.proveedores + ' en esta empresa.'));
   }
 
   // Los restos viejos y chicos se muestran, pero no definen el atraso.
@@ -644,7 +653,7 @@ function verRetiro(){
     '<span style="font-size:16px;font-weight:600">Faltan ' + pesos(-r.margen) +
     ' para cubrir lo que ya venció</span>'));
   v.appendChild(el('p', 'nota',
-    'La regla: primero se cubre la deuda con droguerías que <b>ya venció</b> ' +
+    'La regla: primero se cubre la deuda con ' + V.proveedores + ' que <b>ya venció</b> ' +
     '—la que puede hacer que te corten la compra— y recién lo que sobra se saca.'));
   out.push(v);
 
@@ -736,17 +745,14 @@ function verCobrar(){
     c.filas.forEach(function(f){
       var tr = el('tr');
       tr.appendChild(el('td', null, '<b>' + f.nombre + '</b>' +
-        '<div class="resumen">' + f.que_es + '</div>'));
+        '<div class="resumen">' + (f.que_es === 'drogueria' ? V.proveedor : f.que_es) + '</div>'));
       tr.appendChild(el('td', f.vencido ? 'neg' : '', pesos(f.vencido)));
       tr.appendChild(el('td', null, pesos(f.por_vencer)));
       tr.appendChild(el('td', null, '<b>' + pesos(f.total) + '</b>'));
       t.appendChild(tr);
     });
     var w = el('div', 'envuelve'); w.appendChild(t); cc.appendChild(w);
-    cc.appendChild(el('p', 'nota', 'Las obras sociales y PAMI son cuentas a cobrar ' +
-      'aunque esten cargadas en el bloque de ingresos: es plata vendida y no cobrada. ' +
-      'De esa fuente solo cuenta el futuro, porque ahi la planilla no limpia la celda ' +
-      'al cobrar y una fecha pasada ya entro.'));
+    cc.appendChild(el('p', 'nota', V.nota_a_cobrar));
     out.push(cc);
   }
 
@@ -1070,7 +1076,7 @@ function verProyeccion(){
   var entra = curva.reduce(function(a, x){ return a + x.entra; }, 0);
   cg.appendChild(el('p', 'nota',
     '<b>Que toma:</b> el comportamiento de los ultimos meses — cada tipo de movimiento ' +
-    'se repite con su propio ritmo. La deuda con droguerias NO se estima: ya tiene ' +
+    'se repite con su propio ritmo. La deuda con ' + V.proveedores + ' NO se estima: ya tiene ' +
     'fecha y monto en la planilla, por eso sus resumenes salen sin la marca de ' +
     '“estimado”. En ' + VENTANA + ' dias entran ' + pesos(entra) + ' y salen ' +
     pesos(sale) + '.'));
@@ -1088,12 +1094,14 @@ function verProyeccion(){
   var cp = el('div', 'card');
   cp.appendChild(el('div', null, '<b>Que puedo patear para llegar</b>'));
   cp.appendChild(el('p', 'nota', 'Tildar un grupo entero, o abrirlo y elegir de a uno. ' +
-    'Asi se decide de verdad: no se patea “las droguerias”, se patea el resumen de ' +
+    'Asi se decide de verdad: no se patea “' + V.proveedores + '”, se patea el resumen de ' +
     'una y se paga el de la otra.'));
   var lista = el('div');
   lista.style.marginTop = '12px';
 
   p.grupos.forEach(function(g){
+    // El grupo 'droguerias' del motor se rotula con la palabra del cliente.
+    if (g.id === 'droguerias') g.nombre = 'Pago a ' + V.proveedores;
     var items = (p.items || []).filter(function(it){
       return it.grupo === g.id && it.fecha <= hasta;
     });
@@ -1224,9 +1232,7 @@ function verHallazgos(){
 
   out.push(el('h2', null, 'Lo que este tablero NO sabe'));
   var d = actual(), c = el('div', 'card'), u = el('ul', 'limpia');
-  u.appendChild(el('li', null, '<b>Cuándo paga PAMI.</b> Se esperan dos pagos por ' +
-    'mes, a mitad y a fin, pero las fechas se corren. Es el ingreso grande e ' +
-    'impredecible del negocio.'));
+  if (V.no_sabe_cobranza) u.appendChild(el('li', null, V.no_sabe_cobranza));
   if (d.puente.cobranza_vencida) u.appendChild(el('li', null,
     '<b>Si entra la cobranza que ya venció</b> (' + pesos(d.puente.cobranza_vencida) +
     '). No está contada en ningún número de acá.'));

@@ -24,6 +24,8 @@ las próximas salidas, los escenarios y la tabla del retiro por ventana.
 """
 
 import os
+import io
+import json
 import sys
 import datetime
 import html
@@ -180,7 +182,7 @@ def salidas(contrato, unidad, hoy, dias=15, tope=12):
     return filas[:tope]
 
 
-def gastos_del_periodo(contrato, unidad, hoy, dias=45, tope=8):
+def gastos_del_periodo(contrato, unidad, hoy, dias=45, tope=8, cliente="maga"):
     """En que se va la plata, con las droguerias adentro.
 
     Thomas: "grafico de gastos: droguerias suizo dds y cofa, cual suma mas, un
@@ -216,7 +218,10 @@ def gastos_del_periodo(contrato, unidad, hoy, dias=45, tope=8):
     # Las droguerias, una barra por cada una y con su nombre.
     from simulador import proveedores as PROV
     try:
-        fichas = PROV.cargar_proveedores("maga")
+        # Los proveedores son del cliente que se esta mirando, no de MAGA.
+        # (Estaba fijo en "maga" y con el segundo cliente cargaba las
+        # droguerias de MAGA para clasificar una yerbatera.)
+        fichas = PROV.cargar_proveedores(cliente)
     except Exception:
         fichas = {}
     for x in contrato.get("deuda_droguerias", []):
@@ -585,6 +590,14 @@ def a_cobrar(contrato, unidad, hoy, dias=45):
 #
 # El orden es el del catalogo: primero lo que menos duele.
 PATEABLES = [
+    # LO YA VENCIDO ENTRA EL PRIMER DIA. Thomas (12/09/2026): "esta mal que el
+    # flujo de tan bien con una empresa con TANTA deuda". Tenia razon: la curva
+    # solo sumaba lo que vence DENTRO de la ventana, asi que la deuda atrasada
+    # (fecha anterior a hoy) no restaba nunca y la caja parecia mejor de lo que
+    # es. Ahora lo vencido se carga el dia 1 como su propio grupo: la curva dice
+    # la verdad por defecto, y destildando el grupo se ve "si lo sigo pateando".
+    ("vencido", "Deuda ya vencida (a regularizar)",
+     "Ya vencio. Se cuenta el primer dia: si no se paga, la caja parece mejor de lo que es."),
     ("droguerias", "Pago a droguerias",
      "Se puede correr, pero el atraso se acumula y a las 2-3 semanas te bloquean la compra."),
     ("refi", "Refinanciacion",
@@ -595,6 +608,8 @@ PATEABLES = [
      "NO se puede patear: un cheque no puede rebotar."),
     ("sueldos", "Sueldos y cargas",
      "NO se puede patear."),
+    ("bancos", "Cuotas de prestamos",
+     "NO se puede patear: un atraso mas con el banco cambia la situacion BCRA y cierra las lineas."),
     ("impuestos", "Impuestos y servicios",
      "Se puede correr unos dias, con recargo."),
     ("intercompany", "Pago a la otra empresa del grupo",
@@ -612,8 +627,19 @@ def _mismo(a, b):
     return bool(x) and bool(y) and (x in y or y in x)
 
 
-def _grupo_de(nombre):
-    """De que grupo es un egreso, mirando como se llama la fila."""
+# Cuando el egreso viene con TIPO del catalogo (lector/cash_limpio.py), el grupo
+# sale de ahi y no de adivinar por el nombre de la fila.
+GRUPO_POR_TIPO = {
+    "CHEQUE": "mercaderia", "SUELDO": "sueldos", "IMPUESTO": "impuestos", "ESTAMPILLAS": "impuestos",
+    "PRESTAMO": "bancos", "PROVEEDOR": "droguerias", "HOJA_VERDE": "droguerias", "INSUMOS": "droguerias",
+    "COSECHA": "droguerias", "HONORARIO_DIVIDENDO": "socios", "RETIRO_SOCIO": "socios",
+}
+
+
+def _grupo_de(nombre, tipo=None):
+    """De que grupo es un egreso: por su tipo si lo trae, si no por como se llama la fila."""
+    if tipo and str(tipo).upper() in GRUPO_POR_TIPO:
+        return GRUPO_POR_TIPO[str(tipo).upper()]
     n = " ".join(str(nombre or "").upper().split())
     if "RETIRO" in n or "SOCIO" in n:
         return "socios"
@@ -703,13 +729,22 @@ def proyeccion(contrato, unidad, hoy, dias=45, con_intercompany=False):
         if not _mia(x) or x.get("intercompany"):
             continue
         f = x.get("fecha") or ""
-        if not _dentro(f):
-            continue
         v = abs(float(x.get("importe") or 0))
         if not v:
             continue
         cp = (x.get("contraparte") or "?").strip()
-        g = _grupo_de(cp)
+        # Un egreso con fecha pasada que el lector marco como PENDIENTE (deuda
+        # impositiva en mora, cuota bancaria no pagada) es vencido: entra hoy.
+        # Los demas con fecha pasada ya se pagaron y no se tocan.
+        if f and f < hoy and x.get("vencido_pendiente"):
+            _sumar(hoy, "vencido", v)
+            items.append({"id": "vencido|" + f + "|" + cp, "grupo": "vencido", "fecha": hoy,
+                          "concepto": "Vencido el " + f[8:10] + "/" + f[5:7] + " · " + cp,
+                          "monto": v, "estimado": False})
+            continue
+        if not _dentro(f):
+            continue
+        g = _grupo_de(cp, x.get("tipo"))
         _sumar(f, g, v)
         items.append({"id": g + "|" + f + "|" + cp, "grupo": g, "fecha": f,
                       "concepto": cp, "monto": v, "estimado": False})
@@ -761,6 +796,13 @@ def proyeccion(contrato, unidad, hoy, dias=45, con_intercompany=False):
             continue          # se maneja aparte, con su direccion correcta
         f = x.get("fecha") or ""
         v = float(x.get("importe") or 0)
+        if f and f < hoy and v > 0 and not x.get("es_credito"):
+            # Vencido e impago: entra HOY, en su propio grupo.
+            _sumar(hoy, "vencido", v)
+            items.append({"id": "vencido|" + f + "|" + cp, "grupo": "vencido", "fecha": hoy,
+                          "concepto": "Vencido el " + f[8:10] + "/" + f[5:7] + " · " + cp,
+                          "monto": v, "estimado": False})
+            continue
         if not _dentro(f) or v <= 0:
             continue
         if x.get("intercompany"):
@@ -796,6 +838,7 @@ def proyeccion(contrato, unidad, hoy, dias=45, con_intercompany=False):
     return {"desde": hoy, "hasta": hasta, "caja_inicial": caja, "dias": out,
             "items": items,
             "grupos": [{"id": g, "nombre": n, "nota": t} for g, n, t in PATEABLES],
+            # (el nombre del grupo "droguerias" lo traduce el HTML con D.vocab)
             "total_entra": sum(x["entra"] for x in out),
             "total_sale": sum(sum(x["sale"].values()) for x in out),
             "sin_estimar": True}
@@ -877,8 +920,32 @@ def _memoria_tablero(cliente, paquete):
         return {"hay": False, "por_que": "no se pudo leer la memoria: %s" % e}
 
 
+# Con que palabras le habla el tablero al cliente. Vive en el catalogo
+# ("vocabulario"); esto es solo el default para un catalogo que no lo tenga.
+VOCAB_DEFAULT = {
+    "proveedor": "proveedor", "proveedores": "proveedores", "Proveedor": "Proveedor",
+    "nota_vencido": "con proveedores", "tiene_refi": False,
+    "nota_ritmo": "Un cobro grande un dia y treinta dias parejos no es lo mismo, aunque sumen igual.",
+    "nota_a_cobrar": "Lo facturado y no cobrado es cuenta a cobrar: es caja recien cuando entra.",
+    "no_sabe_cobranza": "",
+}
+
+
+def vocabulario(cliente):
+    v = dict(VOCAB_DEFAULT)
+    try:
+        ruta = os.path.join(BASE_REPO, "clientes", cliente, "catalogo.json")
+        with io.open(ruta, encoding="utf-8") as f:
+            cat = json.load(f)
+        v.update({k: x for k, x in (cat.get("vocabulario") or {}).items() if not k.startswith("_")})
+    except Exception:
+        pass
+    return v
+
+
 def armar(contrato, cliente="maga"):
     hoy = D.hoy_de(contrato)
+    vocab = vocabulario(cliente)
     us = POS.unidades(contrato)
     unidades = [GRUPO] + us if len(us) > 1 else us
 
@@ -900,7 +967,7 @@ def armar(contrato, cliente="maga"):
             "puente": puente(contrato, u, 45),
             "proveedores": proveedores(contrato, u, cliente, hoy),
             "salidas": salidas(contrato, u, hoy),
-            "gastos": gastos_del_periodo(contrato, u, hoy),
+            "gastos": gastos_del_periodo(contrato, u, hoy, cliente=cliente),
             "escenarios": esc_por_unidad[u],
             "retiro": retiro_por_ventana(contrato, u),
             "ingresos_dia": ingresos_por_dia(contrato, u, hoy),
@@ -931,6 +998,8 @@ def armar(contrato, cliente="maga"):
         # A quien se puede endosar un cheque: las droguerias del catalogo del
         # cliente, no una lista escrita a mano en el HTML.
         "droguerias": droguerias_del_cliente(cliente),
+        # Las palabras con las que el HTML le habla a este cliente.
+        "vocab": vocab,
     }
 
 

@@ -37,3 +37,18 @@ salidas/
 # Los informes generados llevan datos reales del cliente: se regeneran con
 # dashboard/generar.py y no se versionan.
 salidas/*.html
+
+# Planillas y diagnosticos con datos reales del cliente. Un repo cambia de
+# privado a publico con dos clicks; una planilla de un tercero no se despublica.
+clientes/*/privado/
+clientes/*/*.xlsx
+clientes/*/*.xls
+clientes/*/*.csv
+clientes/*/contrato_*.json
+datos/*.xlsx
+datos/*.xls
+
+# Carpeta de sincronizacion de Cowork y archivos que caen en la raiz al enviar/recibir
+Claude outputs/
+/*.xlsx
+/*.xls

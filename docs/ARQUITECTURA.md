@@ -9,7 +9,7 @@ python orquestador/correr.py --cliente maga --banco galicia --modo prueba
 orquestador/correr.py
   · lee clientes/maga/perfil.json ............... nucleo/config.py
   · arma el Contexto (rutas + settings) ......... nucleo/contexto.py
-  · desencripta credenciales .................... nucleo/credenciales.py (DPAPI)
+  · lee credenciales del llavero ................. nucleo/credenciales.py (keyring)
   · elige el adaptador del banco ................ REGISTRO_BANCOS → bots/galicia
         │
         ▼

@@ -17,7 +17,7 @@ y refactorizando el código del sistema productivo actual de MAGA+ (que vive en 
 ## Arquitectura (lo que está armado — Fase 1)
 - **`nucleo/`** = el MOTOR, compartido, sin nada específico de un banco. Puesto: recorrido
   (`loop.py`), regla de fechas (`fechas.py`), estado anti-duplicado (`estado.py`), credenciales
-  DPAPI (`credenciales.py`), log/capturas (`log.py`), salidas a Drive (`salidas.py`),
+  llavero del sistema (`credenciales.py`), log/capturas (`log.py`), salidas a Drive (`salidas.py`),
   navegador Playwright (`navegador.py`), config del cliente (`config.py`), `contexto.py`.
 - **`bots/base.py`** = el CONTRATO (`BotBanco`, clase abstracta). Un banco = una clase que lo
   implementa con SUS selectores. Galicia ✅ (portado 1:1 del bot que funciona), Comafi 🟡
@@ -41,12 +41,21 @@ ahora vive **una sola vez** en `nucleo/`. Se portó SIN cambiar la lógica.
 - **Nombre del archivo descargado**: Galicia deja el nombre ORIGINAL (trae el CUIT que usa el
   clasificador); Comafi RENOMBRA con el nombre de la empresa. Eso lo maneja `descargar_csv` de
   cada banco + `nombre_archivo` en el perfil.
-- **Credenciales**: DPAPI, por-usuario+por-máquina, en `clientes/<c>/.credenciales/<banco>.dat`
-  (gitignored). NO viajan a otra PC → regenerar con `setup_credenciales.py`.
+- **Credenciales**: llavero del sistema vía `keyring` (Keychain en macOS, Administrador de
+  credenciales en Windows), servicio `finauto:<cliente>:<banco>`. Por-usuario+por-máquina:
+  NO viajan a otra máquina → regenerar con `setup_credenciales.py`.
 - **Runtime** (perfil navegador, capturas, estado, log): `clientes/<c>/.run/<banco>/` (gitignored).
-- **Python en la PC de Thomas**: usar el real (`C:\Users\thoma\AppData\Local\Programs\Python\Python314\python.exe`);
-  `python` a secas puede resolver al stub de Microsoft Store.
+- **Python**: en la Mac, entorno virtual del repo (`.venv`, se activa con
+  `source .venv/bin/activate`). En Windows, usar el intérprete real
+  (`C:\Users\thoma\AppData\Local\Programs\Python\Python314\python.exe`); `python` a secas
+  puede resolver al stub de Microsoft Store.
 - **Playwright**: `python -m playwright install chromium` una vez.
+
+## Cliente real: NAVAR S.A. (desde 12/09/2026)
+Yerbatera en Corrientes. Vive en `clientes/navar/` (leer su `LEEME.md` primero). Fuente de
+datos: **Tango + cashflow semanal en Excel** (no Google Sheets → el Exportador.gs no aplica).
+Thomas está rearmando su cash de cero; el lector de cashflow se escribe para ese formato nuevo.
+Datos reales del cliente van a `clientes/navar/privado/` (gitignored). Bancos: fase 2, después.
 
 ## Estado / pendiente (ver docs/MANANA_THOMAS.md para el detalle)
 - ⚠️ El refactor de Galicia se portó 1:1 pero **NO se corrió aún desde esta estructura**.

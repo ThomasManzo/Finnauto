@@ -517,5 +517,16 @@
         "_nota": "USD 315.000 por trimestre. Compite con los retiros de accionistas y con el pago a droguerias: cuando cae en el mismo mes que la refi y un retiro, hay que elegir."
       }
     ]
+  },
+  "vocabulario": {
+    "_ayuda": "Como le habla el tablero a ESTE cliente. Lo lee dashboard/datos.py y lo usa el HTML. Cada cliente tiene su vocabulario: en una farmacia el proveedor es 'la drogueria', en una yerbatera es 'el proveedor de hoja'.",
+    "proveedor": "drogueria",
+    "proveedores": "droguerias",
+    "Proveedor": "Drogueria",
+    "nota_vencido": "con droguerias, sin la refi",
+    "tiene_refi": true,
+    "nota_ritmo": "Un pico de PAMI y treinta dias de mostrador no es lo mismo que un ingreso parejo, aunque sumen igual.",
+    "nota_a_cobrar": "Las obras sociales y PAMI son cuentas a cobrar aunque esten cargadas en el bloque de ingresos: es plata vendida y no cobrada. De esa fuente solo cuenta el futuro, porque ahi la planilla no limpia la celda al cobrar y una fecha pasada ya entro.",
+    "no_sabe_cobranza": "<b>Cuándo paga PAMI.</b> Se esperan dos pagos por mes, a mitad y a fin, pero las fechas se corren. Es el ingreso grande e impredecible del negocio."
   }
 }

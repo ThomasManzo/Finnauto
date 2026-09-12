@@ -3,9 +3,28 @@
 > Documento vivo. Se actualiza cada tanto para tener el orden mental: dónde
 > estamos, qué falta, qué quedó pendiente y qué ideas hay dando vueltas.
 
-**Última actualización:** 2026-09-04
+**Última actualización:** 2026-09-12
 **Repo:** github.com/ThomasManzo/Finnauto — *se queda con doble N (decidido)*
-**Cliente #1:** MAGA+ / Speedmed — **prospecto, ya no empleador**
+**Cliente #1:** **NAVAR S.A.** (yerbatera, Corrientes) — **cliente real desde el 12/09/2026**
+**MAGA+ / Speedmed:** prospecto, ya no empleador. El caso con el que se construyó todo.
+
+> **12/09/2026 — llegó el primer cliente, y no es una farmacia.** NAVAR S.A. es
+> una yerbatera en Corrientes. Llegó por una recruiter a la que Thomas le había
+> mandado el CV; lo contrataron para *ordenar toda la parte financiera*. Es
+> asesoría + finauto, no el piloto de 6 semanas del plan comercial.
+>
+> Lo que cambia:
+> - **El ICP del plan (farmacias, AMBA) quedó atrás en la práctica.** El patrón
+>   general de `NEGOCIO.md` §9 (empresa que se financia con proveedores) sí aplica.
+> - **La fuente de datos es Tango + un cashflow semanal en Excel**, no Google
+>   Sheets. El `Exportador.gs` no aplica a este cliente; el `lector/` sí (para
+>   los exports de Tango) y hace falta un lector nuevo para el cashflow semanal.
+> - **Los bots no se tocan hasta la fase 2.** Cinco bancos (Nación, Corrientes,
+>   Macro, BBVA, Galicia), todos en `activo=false`.
+>
+> Todo lo del cliente vive en `clientes/navar/` (ver su `LEEME.md`). El
+> diagnóstico de su planilla, con montos, está en `clientes/navar/privado/`
+> (no sube a git).
 
 > **06/09/2026 — cambió el encuadre.** Thomas ya no trabaja en MAGA+. Su
 > posición: *"no voy a trabajar sobre el cash original de MAGA y Speedmed sin
@@ -184,6 +203,32 @@ sigue existiendo la opción de un adaptador a mano. El genérico es el default,
 no una obligación.
 
 ---
+
+## 2.c NAVAR: qué se hizo y qué sigue (12/09/2026)
+
+| Paso | Estado |
+|---|---|
+| Descubrimiento (cash semanal, Tango con 2 empresas A/AA, 5 bancos, situación 2 en dos) | ✅ |
+| Radiografía de la planilla con `lector/planilla.py` | ✅ La ve, no la entiende: es un cashflow (semanas en columnas), no una tabla de movimientos |
+| Diagnóstico a mano de la planilla | ✅ **9 errores de fórmula** verificados y la proyección de ingresos con **±48% de error** medido con sus propias 6 pestañas |
+| `clientes/navar/perfil.json` + `catalogo.json` borrador | ✅ 11 tipos, 2 unidades, 5 bancos, 10 preguntas pendientes |
+| Cash nuevo: listas + consolidado calculado, en Google Sheets ("NAVAR - Cash Flow") | ✅ Diseño de Cowork, corregido por `clientes/navar/arreglar_cash_v2.py` (semanas lunes-domingo, ejemplos, proyectados a las listas, stocks de deuda). Recalculado y verificado al peso |
+| `lector/cash_limpio.py`: la Sheet → contrato v1.2 | ✅ Tercera puerta de entrada al motor (junto al Exportador y a `lector/extraer.py`) |
+| Tablero con los números de NAVAR | ✅ Con vocabulario por cliente (`catalogo.vocabulario`) y lo vencido entrando el día 1 |
+| PDF de propuesta para la dueña | ✅ `clientes/navar/propuesta.py`. Thomas valida los números antes de mandarlo |
+| Presentación del proyecto, exports de Tango, reunión con quien carga | ⬜ Desde el 14/09 |
+| Fase 2 (Tango automático) y 3 (bancos en una máquina del cliente) | ⬜ Recién si la fase 1 convence |
+
+**Bugs del motor que destapó NAVAR (arreglados el 12/09):** `finauto.py` imprimía
+la tupla de `memoria.guardar()`; `gastos_del_periodo` cargaba los proveedores de
+"maga" fijo; el gráfico de la curva explotaba con una curva plana (`Math.min.apply`
+con un tercer argumento que se ignora); la proyección no restaba lo ya vencido
+(la caja parecía $600M mejor de lo que es); el tablero hablaba de droguerías y
+PAMI a cualquier cliente.
+
+**Bug que destapó el cliente nuevo:** `orquestador/correr.py` sin `--cliente`
+corría todos los clientes, y uno sin bancos activos cortaba la corrida entera
+(`SystemExit` no cae en `except Exception`). Arreglado: se saltea y sigue.
 
 ## 3. Qué falta
 

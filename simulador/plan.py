@@ -51,13 +51,15 @@ COSTO = [
     ("refi", 1, "Se puede correr hasta el vencimiento del mes siguiente."),
     ("impuestos", 2, "Se corre unos días, con recargo."),
     ("droguerias", 3, "Acumula atraso, y pasada la tolerancia te bloquean la compra."),
+    ("vencido", 4, "Ya esta vencido: seguir sin pagarlo es lo que ya se viene haciendo, y el atraso crece."),
 ]
 
 # Lo que NO se toca. Está separado y explícito porque es una regla dura del
 # negocio, no una preferencia: "un cheque no puede rebotar, no es un escenario
 # que se permite".
 INTOCABLE = {"mercaderia": "Un cheque no puede rebotar.",
-             "sueldos": "Los sueldos no se corren."}
+             "sueldos": "Los sueldos no se corren.",
+             "bancos": "Una cuota bancaria atrasada cambia la situacion BCRA y cierra las lineas."}
 
 
 def _curva(caja_inicial, dias, sale_por_dia):
