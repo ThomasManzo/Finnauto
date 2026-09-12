@@ -1,55 +1,102 @@
 # -*- coding: utf-8 -*-
 """
-nucleo.credenciales — guarda/lee las credenciales del banco encriptadas con DPAPI.
+nucleo.credenciales — guarda/lee las credenciales del banco en el llavero del
+sistema operativo. Nunca en texto plano, nunca en un archivo del repo.
 
-DPAPI (win32crypt) encripta atado al USUARIO + la MÁQUINA de Windows: el archivo
-.dat NO sirve si se copia a otra PC u otro usuario -> hay que regenerarlo ahí.
-Nunca se guarda la clave en texto plano y el bot no la expone en logs.
+Multiplataforma vía `keyring`, que por debajo habla con el almacén nativo:
+  · macOS    -> Llavero (Keychain)
+  · Windows  -> Administrador de credenciales
+  · Linux    -> Secret Service (GNOME Keyring / KWallet)
 
-Multi-cliente/banco: cada uno tiene su archivo en
-  clientes/<cliente>/.credenciales/<banco>.dat
-(esa carpeta está en .gitignore; nunca sube al repo).
+Igual que el esquema anterior con DPAPI, las entradas quedan atadas al USUARIO
++ la MÁQUINA: no viajan a otra computadora. Al mudarse de equipo hay que volver
+a correr setup_credenciales.py allá.
+
+Una entrada por cliente/banco, bajo el servicio "finauto:<cliente>:<banco>".
+El bot nunca expone la clave en logs.
 """
 
-import os
 import sys
 import json
 
 from nucleo.log import log
 
+# Cuenta fija dentro de cada entrada del llavero. Usuario y clave van juntos
+# como JSON en un solo secreto: así funciona igual en todos los backends de
+# keyring, sin depender de get_credential() que no todos implementan.
+_CUENTA = "credenciales"
 
-def ruta_credenciales(base_repo, cliente, banco):
-    return os.path.join(base_repo, "clientes", cliente, ".credenciales", "%s.dat" % banco)
+
+def _servicio(cliente, banco):
+    return "finauto:%s:%s" % (cliente, banco)
+
+
+def ubicacion(cliente, banco):
+    """Texto legible de donde quedan guardadas, para mensajes al usuario."""
+    return "llavero del sistema, entrada '%s'" % _servicio(cliente, banco)
+
+
+def _keyring():
+    try:
+        import keyring
+        return keyring
+    except ImportError:
+        log("ERROR: falta la dependencia 'keyring'. Instalala con: pip install keyring")
+        sys.exit(1)
 
 
 def guardar(base_repo, cliente, banco, usuario, clave):
-    """Encripta usuario+clave con DPAPI y los deja en el .dat del cliente/banco."""
-    import win32crypt
-    datos = json.dumps({"usuario": usuario, "clave": clave}).encode("utf-8")
-    encriptado = win32crypt.CryptProtectData(datos, None, None, None, None, 0)
-    ruta = ruta_credenciales(base_repo, cliente, banco)
-    os.makedirs(os.path.dirname(ruta), exist_ok=True)
-    with open(ruta, "wb") as f:
-        f.write(encriptado)
-    return ruta
+    """Guarda usuario+clave en el llavero del sistema y devuelve donde quedaron.
+
+    base_repo se mantiene en la firma por compatibilidad con las llamadas
+    existentes; con el llavero ya no se escribe nada dentro del repo.
+    """
+    kr = _keyring()
+    datos = json.dumps({"usuario": usuario, "clave": clave})
+    try:
+        kr.set_password(_servicio(cliente, banco), _CUENTA, datos)
+    except Exception as e:
+        log("ERROR guardando en el llavero del sistema: %s" % e)
+        sys.exit(1)
+    return ubicacion(cliente, banco)
 
 
 def cargar(base_repo, cliente, banco):
-    """Lee y desencripta el .dat. Corta el programa con un mensaje claro si falta
-    o si fue copiado de otra PC (DPAPI no lo puede abrir)."""
-    ruta = ruta_credenciales(base_repo, cliente, banco)
-    if not os.path.exists(ruta):
-        log("ERROR: no existe %s. Corré primero: python setup_credenciales.py --cliente %s --banco %s"
-            % (ruta, cliente, banco))
-        sys.exit(1)
+    """Lee del llavero y devuelve (usuario, clave).
+
+    Corta el programa con un mensaje claro si no hay nada guardado en esta
+    maquina para ese cliente/banco.
+    """
+    kr = _keyring()
+    servicio = _servicio(cliente, banco)
     try:
-        import win32crypt
-        with open(ruta, "rb") as f:
-            encriptado = f.read()
-        datos = win32crypt.CryptUnprotectData(encriptado, None, None, None, 0)[1]
-        d = json.loads(datos.decode("utf-8"))
+        datos = kr.get_password(servicio, _CUENTA)
+    except Exception as e:
+        log("ERROR leyendo el llavero del sistema: %s" % e)
+        sys.exit(1)
+
+    if not datos:
+        log("ERROR: no hay credenciales guardadas para cliente=%s banco=%s en esta maquina."
+            % (cliente, banco))
+        log("Corre primero: python setup_credenciales.py --cliente %s --banco %s"
+            % (cliente, banco))
+        sys.exit(1)
+
+    try:
+        d = json.loads(datos)
         return d["usuario"], d["clave"]
     except Exception as e:
-        log("ERROR desencriptando credenciales: %s" % e)
-        log("Puede que el archivo se haya copiado de otra PC/usuario. Regeneralo con setup_credenciales.py acá.")
+        log("ERROR: la entrada '%s' del llavero esta corrupta (%s)." % (servicio, e))
+        log("Regenerala con: python setup_credenciales.py --cliente %s --banco %s"
+            % (cliente, banco))
         sys.exit(1)
+
+
+def borrar(cliente, banco):
+    """Elimina la entrada del llavero. True si habia algo para borrar."""
+    kr = _keyring()
+    try:
+        kr.delete_password(_servicio(cliente, banco), _CUENTA)
+        return True
+    except Exception:
+        return False

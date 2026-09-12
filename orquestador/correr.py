@@ -70,8 +70,11 @@ def _bancos_de(cliente, modo):
     sepa que este cliente no quedo completo.
     """
     perfil = _config.cargar_perfil(BASE_REPO, cliente)
+    # Las claves que empiezan con "_" son comentarios del perfil (misma
+    # convencion que el catalogo: "_ayuda", "_nota"), no bancos.
     activos = [b for b, c in (perfil.get("bancos", {})).items()
-               if (c or {}).get("activo", True)]
+               if not b.startswith("_") and isinstance(c, dict)
+               and c.get("activo", True)]
     if not activos:
         raise SystemExit("El perfil de %s no tiene bancos activos." % cliente)
     fallaron = []
@@ -121,6 +124,14 @@ def _todos_los_clientes(args):
         log("=" * 60)
         try:
             _bancos_de(c, args.modo)
+        except SystemExit as e:
+            # Un cliente sin bancos activos (recien sumado, o todavia en fase 1
+            # sin credenciales) no es un error: se saltea y se sigue con los
+            # demas. Sin esto, SystemExit no cae en el except de abajo y corta
+            # la corrida de TODOS los clientes por uno que no tenia nada que
+            # correr. Aparecio el dia que se sumo NAVAR con los 5 bancos en
+            # activo=false.
+            log("SALTEO el cliente %s: %s" % (c, e))
         except Exception as e:
             fallaron.append((c, str(e)))
             log("FALLO el cliente %s: %s" % (c, e))

@@ -137,8 +137,12 @@ def correr(contrato_path, cliente="maga", salidas="salidas", con_memoria=True):
         _titulo(5, "LA MEMORIA: la foto de hoy")
         try:
             from memoria import registro as MEM
+            # guardar() devuelve (ruta, foto). Antes se imprimia la tupla entera
+            # como si fuera la ruta y el paso 5 fallaba con un error de formato.
             ruta = MEM.guardar(cliente, contrato, dias=30,
                                etiqueta="automática %s" % datetime.date.today())
+            if isinstance(ruta, (tuple, list)):
+                ruta = ruta[0]
             _linea("   Guardada: %s" % ruta)
             _linea("   Esto es lo que dentro de un mes permite decir \"te lo dije\".")
             _linea("   La foto de hoy solo se puede sacar hoy.")

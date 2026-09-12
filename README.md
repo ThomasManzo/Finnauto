@@ -24,7 +24,7 @@ finauto/
 │   ├─ loop.py        el recorrido genérico (login → por empresa → descarga → Drive)
 │   ├─ contexto.py    junta rutas + settings de una corrida
 │   ├─ config.py      lee el perfil del cliente
-│   ├─ credenciales.py  DPAPI (encriptadas por cliente/banco)
+│   ├─ credenciales.py  llavero del sistema (por cliente/banco)
 │   ├─ estado.py      anti-duplicado (hasta qué día bajó cada empresa)
 │   ├─ fechas.py      la regla ayer+hoy / backfill
 │   ├─ navegador.py   abre Chromium (Playwright)
