@@ -44,6 +44,9 @@ MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto
          "Septiembre", "Octubre", "Noviembre", "Diciembre"]
 MES_CORTO = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
 
+# Como se muestra la plata: positivos normales, negativos con "-" y en rojo, ceros en blanco.
+FORMATO_PLATA = '$#,##0;[Red]-$#,##0;'
+
 # Filas del consolidado (despues del bloque "Vencido a la fecha", que empieza en la 4).
 F_LABEL, F_FECHA, F_VISTA = 11, 12, 13
 F_SALDO_INI, F_CONTROL = 15, 16
@@ -122,6 +125,10 @@ def regenerar_consolidado(wb):
         ws.column_dimensions[c].hidden = hid
         for r in range(F_LABEL, F_ULTIMA + 1):
             ws[c + str(r)]._style = copy.copy(estilos[tipo][r])
+            # Negativos con "-" y en rojo, ceros en blanco (Thomas, 14/09: los
+            # parentesis no se leen). Solo en las filas de plata, no en la de fechas.
+            if r >= F_SALDO_INI:
+                ws[c + str(r)].number_format = FORMATO_PLATA
         ws[c + str(F_LABEL)].value = etiqueta
         ws[c + str(F_VISTA)].value = {"dia": "Día", "semana": "Semana", "mes": "Mes", "anio": "Año"}[tipo]
 
