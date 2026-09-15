@@ -33,6 +33,13 @@ python clientes/navar/propuesta.py        # el PDF para la dueña, con capturas 
 el tablero marcaría como vencidas cobranzas que son proyecciones de semanas
 pasadas. Cuando carguen una semana nueva, se corre con la fecha de esa carga.
 
+## Contrato (15/09/2026)
+
+**NAVAR dio el OK el 15/09/2026.** Implementación $1.400.000 (pesos) + abono
+USD 400/mes desde el mes 2, revisable a los 3 meses contra el acierto medido.
+La presentación (PDF de propuesta + vista rápida del tablero + la Sheet) fue
+lo que cerró. Primer peso cobrado de finauto.
+
 ## Dónde estamos (12/09/2026)
 
 1. ✅ Descubrimiento y diagnóstico del cash viejo (`privado/diagnostico_2026-09-12.md`): 10 errores de fórmula, ±49% de error en la proyección de ingresos.

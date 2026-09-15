@@ -5,7 +5,7 @@
 
 **Última actualización:** 2026-09-12
 **Repo:** github.com/ThomasManzo/Finnauto — *se queda con doble N (decidido)*
-**Cliente #1:** **NAVAR S.A.** (yerbatera, Corrientes) — **cliente real desde el 12/09/2026**
+**Cliente #1:** **NAVAR S.A.** (yerbatera, Corrientes) — **contrato aceptado el 15/09/2026**: implementación $1,4M + USD 400/mes
 **MAGA+ / Speedmed:** prospecto, ya no empleador. El caso con el que se construyó todo.
 
 > **12/09/2026 — llegó el primer cliente, y no es una farmacia.** NAVAR S.A. es
