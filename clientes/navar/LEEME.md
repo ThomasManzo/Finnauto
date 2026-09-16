@@ -35,6 +35,10 @@ python clientes/navar/herramientas/propuesta.py        # el PDF para la dueña, 
 el tablero marcaría como vencidas cobranzas que son proyecciones de semanas
 pasadas. Cuando carguen una semana nueva, se corre con la fecha de esa carga.
 
+## El checklist vivo
+
+https://claude.ai/artifact/K8SzFarJZTEhNw4rP1hX7q — tildes y minutos guardados y compartidos. La versión en texto está en `documentos/CHECKLIST_IMPLEMENTACION.md`.
+
 ## Contrato (15/09/2026)
 
 **NAVAR dio el OK el 15/09/2026.** Implementación $1.400.000 (pesos) + abono
@@ -66,6 +70,7 @@ python finauto.py --contrato clientes/navar/contrato_<fecha>.json --cliente nava
 | `documentos/ARREGLOS_ESQUELETO.md` | Los 8 arreglos al esqueleto del cash nuevo, con celda y fórmula. Para pasarle a quien lo edite. |
 | `herramientas/migrar_cash_viejo.py` | Convierte el cash viejo (6 semanas reales + 8 proyectadas) en filas para pegar en el esqueleto nuevo. Deja `privado/datos_migrados_del_cash_viejo.xlsx`. Se corre con `python clientes/navar/herramientas/migrar_cash_viejo.py`. |
 | `herramientas/propuesta.py` | Genera el PDF para la dueña con los números del contrato y las capturas de `privado/capturas/`. |
+| `herramientas/tablero_web.gs` | El Apps Script que sirve el tablero en una URL privada de Google (lee `NAVAR - Datos/Tablero/finauto.html` de Drive, lista de mails permitidos, banda si tiene más de 48 hs). Se pega en la Sheet → Extensiones → Apps Script. |
 | `herramientas/arreglar_cash_v2.py` | Toma el cash que devolvió Cowork (`privado/NAVAR_-_Cash_Flow_Limpio.xlsx`), regenera el consolidado con semanas lunes-domingo, vacía los ejemplos y mueve los proyectados a las listas. Deja **`privado/NAVAR - Cash Flow Limpio v2.xlsx`, que es la versión buena**. |
 
 ## El cash nuevo (el entregable)
