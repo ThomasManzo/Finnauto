@@ -46,7 +46,24 @@ USD 400/mes desde el mes 2, revisable a los 3 meses contra el acierto medido.
 La presentación (PDF de propuesta + vista rápida del tablero + la Sheet) fue
 lo que cerró. Primer peso cobrado de finauto.
 
-## Dónde estamos (12/09/2026)
+## Dónde estamos (16/09/2026, noche)
+
+- ✅ Contrato aceptado (15/09). Thomas es monotributista; factura desde el 16/09.
+- ✅ Sheet "NAVAR - Cash Flow" en Drive de Thomas, negativos en rojo, verificada.
+- ✅ Tablero con datos de NAVAR (lo vencido entra el día 1; vocabulario por cliente).
+- ✅ PDF de propuesta y vista rápida del tablero, entregados y aprobados.
+- ✅ Checklist vivo (link arriba) con 34 ítems; la carpeta `NAVAR - Datos/{Tango,Tablero}` en Drive.
+- ✅ `herramientas/tablero_web.gs` listo para pegar en la Sheet (tablero como URL privada).
+- ⏳ **Mañana 17/09: primera conexión por AnyDesk a la notebook de NAVAR** (Tango, exports, Drive).
+  Después: `lector/tango.py` contra el formato real → listas → primera lectura.
+- ⏳ Pedir a NAVAR: usuario SQL de solo lectura a Tango; usuario de consulta por banco y si pide token.
+- ⬜ Reorganización grande de carpetas del motor: recién después de la primera lectura, con tests antes y después.
+
+**Decisiones que no hay que re-litigar:** no hay servidor pago; la notebook de NAVAR es el
+"servidor" (bots, Tango, finauto, Drive para escritorio) y Apps Script sirve el tablero.
+Las claves de banco las carga alguien de NAVAR en esa máquina; Thomas no las ve.
+
+## Dónde estábamos (12/09/2026)
 
 1. ✅ Descubrimiento y diagnóstico del cash viejo (`privado/diagnostico_2026-09-12.md`): 10 errores de fórmula, ±49% de error en la proyección de ingresos.
 2. ✅ Cash nuevo (Cowork + `arreglar_cash_v2.py`), en Google Sheets, con las 6 semanas reales, 8 proyectadas y los stocks de deuda al 31/08.
