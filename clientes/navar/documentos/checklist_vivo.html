@@ -1,0 +1,478 @@
+<title>Implementación NAVAR</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --ground: #F3F5F3;
+    --paper: #FFFFFF;
+    --ink: #16211C;
+    --muted: #5E6C66;
+    --faint: #8C9893;
+    --line: #DCE3DF;
+    --accent: #2E7D5B;
+    --accent-soft: #E3F0E9;
+    --done: #0F7A4F;
+    --warn: #96690A;
+    --warn-soft: #FBF3E0;
+    --T: #2E7D5B; --C: #3A5FA8; --N: #96690A;
+    --shadow: 0 1px 2px rgba(22,33,28,.06), 0 8px 24px rgba(22,33,28,.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #131917; --paper: #1B2320; --ink: #EAF0EC; --muted: #A9B5AF; --faint: #7B877F;
+      --line: #2C3733; --accent: #5FBF93; --accent-soft: #1F3A2E; --done: #5FBF93;
+      --warn: #E0B25A; --warn-soft: #3A2E12; --T: #5FBF93; --C: #8FB0F0; --N: #E0B25A;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #131917; --paper: #1B2320; --ink: #EAF0EC; --muted: #A9B5AF; --faint: #7B877F;
+    --line: #2C3733; --accent: #5FBF93; --accent-soft: #1F3A2E; --done: #5FBF93;
+    --warn: #E0B25A; --warn-soft: #3A2E12; --T: #5FBF93; --C: #8FB0F0; --N: #E0B25A;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--ground); color: var(--ink);
+    font: 15px/1.5 "IBM Plex Sans", -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+  .wrap { max-width: 780px; margin: 0 auto; padding: 0 16px 80px; }
+
+  header.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--ground);
+    padding: 14px 0 10px; border-bottom: 1px solid var(--line); }
+  .top h1 { font-size: 20px; font-weight: 700; margin: 0; letter-spacing: -.01em; }
+  .top .sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .progress { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+  .bar { flex: 1; height: 8px; background: var(--line); border-radius: 99px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s ease; }
+  .count { font: 500 13px "IBM Plex Mono", ui-monospace, Menlo, monospace; color: var(--muted); white-space: nowrap; }
+  .tools { display: flex; gap: 10px; align-items: center; margin-top: 10px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+  .tools label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+  .legend { display: inline-flex; gap: 8px; margin-left: auto; }
+  .who { display: inline-block; font: 600 11px/1 "IBM Plex Mono", ui-monospace, monospace; padding: 4px 6px; border-radius: 4px;
+    color: #fff; letter-spacing: .04em; }
+  .who.T { background: var(--T); } .who.C { background: var(--C); } .who.N { background: var(--N); }
+  .sync { font-size: 12px; color: var(--faint); }
+
+  section.bloque { margin-top: 28px; }
+  .bloque > h2 { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+    margin: 0 0 4px; display: flex; align-items: baseline; gap: 10px; }
+  .bloque > h2 .n { font: 500 12px "IBM Plex Mono", ui-monospace, monospace; color: var(--faint); }
+  .bloque > p.intro { margin: 0 0 12px; color: var(--muted); font-size: 14px; max-width: 62ch; }
+  .lista { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); overflow: hidden; }
+
+  .item { border-top: 1px solid var(--line); }
+  .item:first-child { border-top: 0; }
+  .fila { display: grid; grid-template-columns: 28px 1fr auto; gap: 12px; align-items: start; padding: 12px 14px; }
+  .fila input[type=checkbox] { width: 20px; height: 20px; margin: 3px 0 0; accent-color: var(--done); cursor: pointer; }
+  .titulo { font-weight: 500; }
+  .titulo .meta { display: flex; gap: 8px; align-items: center; margin-top: 4px; flex-wrap: wrap; }
+  .listo { font-size: 13px; color: var(--muted); }
+  .listo b { color: var(--ink); font-weight: 600; }
+  .item.done .titulo { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--faint); }
+  .item.done .fila { background: color-mix(in srgb, var(--accent-soft) 45%, var(--paper)); }
+  .derecha { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+  .tiempo { display: inline-flex; align-items: center; gap: 4px; font: 400 12px "IBM Plex Mono", ui-monospace, monospace; color: var(--faint); }
+  .tiempo input { width: 52px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--ground); color: var(--ink);
+    font: inherit; text-align: right; }
+  .tiempo input:focus, .fila input[type=checkbox]:focus-visible, .mas:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .mas { background: none; border: 0; color: var(--accent); font: 500 13px "IBM Plex Sans", sans-serif; cursor: pointer; padding: 2px 0; }
+  .mas::before { content: "▸ "; font-size: 11px; }
+  .item.abierto .mas::before { content: "▾ "; }
+  .detalle { display: none; padding: 0 14px 14px 54px; }
+  .item.abierto .detalle { display: block; }
+  .detalle dl { display: grid; grid-template-columns: 82px 1fr; gap: 6px 12px; margin: 0; font-size: 14px; }
+  .detalle dt { font: 600 11px "IBM Plex Mono", ui-monospace, monospace; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); padding-top: 3px; }
+  .detalle dd { margin: 0; color: var(--ink); max-width: 62ch; }
+  .detalle dd ol, .detalle dd ul { margin: 4px 0 0; padding-left: 18px; }
+  .detalle dd li { margin: 2px 0; }
+  .detalle code { font: 13px "IBM Plex Mono", ui-monospace, monospace; background: var(--ground); padding: 1px 5px; border-radius: 4px; }
+  .aviso { background: var(--warn-soft); border-left: 3px solid var(--warn); padding: 8px 12px; border-radius: 6px; font-size: 13px; margin-top: 8px; }
+  @media (max-width: 520px) {
+    .fila { grid-template-columns: 28px 1fr; }
+    .derecha { grid-column: 2; flex-direction: row; align-items: center; justify-content: space-between; }
+    .detalle { padding-left: 14px; }
+    .detalle dl { grid-template-columns: 1fr; gap: 2px; }
+    .detalle dt { margin-top: 8px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .bar > i { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <h1>Implementación NAVAR</h1>
+    <div class="sub">Todo lo que hay que hacer para dejar el cash, el tablero y la automatización andando. Sin orden por días: lo que se pueda hacer, se hace.</div>
+    <div class="progress"><div class="bar"><i id="barra"></i></div><div class="count" id="conteo">0 / 0</div></div>
+    <div class="tools">
+      <label><input type="checkbox" id="ocultar"> ocultar lo hecho</label>
+      <span class="sync" id="sync">guardando en el navegador</span><span class="sync" id="log" hidden></span>
+      <span class="legend"><span class="who T">T · Thomas</span><span class="who C">C · Claude</span><span class="who N">N · NAVAR</span></span>
+    </div>
+  </header>
+  <main id="main"></main>
+</div>
+
+<script>
+// ---- Los ítems. Cada uno: id estable, bloque, quién, qué, y el desplegable (cómo / para qué / por qué / listo cuando).
+const BLOQUES = [
+  ["papeles", "Papeles y plata", "Antes de cargar un solo dato. Es lo que hace que sea un trabajo y no un favor."],
+  ["acceso", "Acceso y primera conexión", "La notebook de NAVAR es la puerta a Tango y, después, la máquina donde corre todo lo automático."],
+  ["datos", "Los datos reales adentro", "De los totales del cash viejo al detalle factura por factura."],
+  ["gente", "La gente de NAVAR", "Lo que ningún sistema sabe: cómo deciden, qué aguanta cada proveedor, cómo trabajan los lunes."],
+  ["lectura", "La primera lectura", "Ningún número sale sin que Thomas lo valide. Empresa muy endeudada: antes de mostrar un número dudoso, parar y consultar."],
+  ["sheet", "La planilla en manos de NAVAR", "Los datos son de ellos. Vos sos editor, no dueño."],
+  ["tablero", "El tablero como página web", "Que no se pierda y que ellos lo abran solos con un link. Es el diferencial."],
+  ["auto", "Automatización", "Lo que la dueña pidió: evitar la carga manual. Corre en la notebook de NAVAR, con las claves de ellos, todos los días."],
+  ["deuda", "El camino de la deuda (paso 0)", "El mapa: quién, cuánto, vencido, garantía, situación. Sin esto no hay negociación."],
+  ["rutina", "La rutina semanal", "Lo que se repite cada lunes durante 6 semanas. Es el producto."],
+];
+
+const ITEMS = [
+  // ---------------- papeles
+  {id:"mail_confirmacion", b:"papeles", who:"T", t:"Mail de confirmación del alcance",
+   listo:"llega el «de acuerdo» de Priscilla",
+   como:"Un mail con: alcance (planilla nueva + tablero + lectura semanal 6 semanas), precio ($1.400.000 implementación + USD 400/mes desde el mes 2, revisable a los 3 meses), forma de pago (50% ahora, 50% a la cuarta lectura), criterio de éxito a las 6 semanas, y la línea «acceso de consulta a Tango: no registro ni modifico nada». Pedir que respondan «de acuerdo».",
+   paraque:"Que no haya dos versiones de lo acordado. Un mail aceptado vale como firma.",
+   porque:"Sin alcance escrito, cada pedido nuevo es una discusión sobre si estaba incluido."},
+  {id:"factura_50", b:"papeles", who:"T", t:"Factura del 50% ($700.000)",
+   listo:"factura enviada junto con el mail de confirmación",
+   como:"ARCA → Comprobantes en línea → Factura C a NAVAR S.A. (pedir CUIT y condición de IVA). Concepto: «Implementación sistema de flujo de fondos — 50%».",
+   paraque:"Cobrar antes de empezar a cargar.",
+   porque:"El pago adelantado es el filtro de compromiso: quien no adelanta, tampoco manda los datos a tiempo. Y le pagan tarde a todo el mundo."},
+  {id:"pedido_contador", b:"papeles", who:"T", t:"Pedido al contador: los 3 reportes de ARCA",
+   listo:"llegan (PDF o captura) deuda por período, planes vigentes, intimaciones",
+   como:"WhatsApp al contador (texto ya escrito el 15/09): deuda por impuesto y período (Sistema de Cuentas Tributarias), planes de facilidades con cuotas, intimaciones o ejecuciones; Ingresos Brutos Corrientes. De A y de AA.",
+   paraque:"Cargar Deuda Impositiva con detalle real y armar el mapa de la deuda.",
+   porque:"Hoy la deuda con ARCA es un solo número ($399M) y el objetivo declarado del cliente es «adelantarse a los vencimientos»."},
+  {id:"pedido_priscilla", b:"papeles", who:"T", t:"Pedido a Priscilla: CUIT, stock y margen",
+   listo:"llegan los dos CUIT (lo otro puede tardar)",
+   como:"WhatsApp (texto del 15/09): (1) los CUIT de A y AA, (2) kilos de yerba en estacionamiento y molida, valuados, (3) margen bruto aproximado de la molida. Y preguntar si María Rosa está al tanto de los números o solo del avance.",
+   paraque:"Con los CUIT se consulta el BCRA hoy mismo. Stock y margen dicen si el plan de deuda es de reestructuración o de supervivencia.",
+   porque:"Una yerbatera vive endeudada por estructura (paga la hoja hoy, vende la molida en un año). Si hay stock detrás de la deuda, la foto cambia."},
+
+  // ---------------- acceso
+  {id:"anydesk_mac", b:"acceso", who:"T", t:"Instalar AnyDesk en la Mac",
+   listo:"AnyDesk abre y pide un ID",
+   como:"anydesk.com → Descargar para macOS → abrir el .dmg → arrastrar a Aplicaciones. La primera vez, en Ajustes → Privacidad y seguridad, dar permiso de «Grabación de pantalla» y «Accesibilidad» (si no, la pantalla remota se ve negra).",
+   paraque:"Es la ventana a la notebook de NAVAR.",
+   porque:"Dentro de la sesión el Windows espera Ctrl donde vos usás Cmd: Ctrl+C / Ctrl+V. Diez minutos de costumbre."},
+  {id:"acceso_notebook", b:"acceso", who:"N", t:"Recibir el acceso a la notebook",
+   listo:"entrás y ves el escritorio del Windows",
+   como:"Que te manden por WhatsApp (no al mail general): ID y clave de acceso desatendido de AnyDesk, un usuario de Windows propio, un usuario de Tango de solo consulta. Guardar la clave en el llavero de la Mac (app Contraseñas), no en una nota.",
+   paraque:"Entrar sin que nadie tenga que aceptar del otro lado.",
+   porque:"Usuario propio = todo lo que hacés queda a tu nombre. Es una protección para los dos."},
+  {id:"reconocimiento_tango", b:"acceso", who:"T", t:"Reconocer Tango: versión, empresas, módulos, Tango Live",
+   listo:"capturas subidas a Drive y C sabe contra qué escribir",
+   como:"Anotar: versión (Ayuda → Acerca de), cómo se llaman de verdad las empresas A y AA, qué módulos aparecen, si existe Tango Live, con qué usuario entraste. Capturas con Win+Shift+S al escritorio, después a Drive.",
+   paraque:"El script de carga se escribe contra la versión y los reportes reales, no contra un supuesto.",
+   porque:"Automatizar antes de haber visto una vez qué exporta Tango es scriptear a ciegas."},
+  {id:"exports_tango", b:"acceso", who:"T", t:"Exportar los 6 listados de Tango, por empresa",
+   listo:"12 archivos (o los que existan, con nota de los que faltan)",
+   como:"<ol><li><b>Clientes</b>: composición de saldos (Ventas → Cuentas corrientes): cliente, comprobante, emisión, <b>vencimiento</b>, importe, <b>saldo pendiente</b>.</li><li><b>Proveedores</b>: composición de saldos (Compras → Cuentas corrientes): ídem.</li><li><b>Cartera de cheques</b> de terceros (Tesorería → Cheques): número, banco, librador, <b>fecha de cobro</b>, importe, estado.</li><li><b>Cheques propios</b> emitidos pendientes: número, banco, beneficiario, <b>fecha de pago</b>, importe.</li><li><b>Movimientos de caja y bancos</b>, jun–ago (Tesorería → Movimientos).</li><li><b>Ventas por mes</b> (y por cliente, en kilos si se puede), 12 meses (Ventas → Informes).</li></ol>En cada consulta: Exportar → Excel. Nombrar <code>A_clientes_2026-09-17.xlsx</code>, etc. Si un campo no está, anotar y seguir. Si no exporta a Excel: CSV o Imprimir → PDF.",
+   paraque:"1 y 2 arman «A quién pagar» y «A cobrar» con nombre; 3 y 4 la cartera real; 5 el histórico de caja; 6 la estacionalidad y la base de kilos de la cobranza proyectada.",
+   porque:"Es lo que reemplaza las filas «agregado cash viejo» por datos de verdad."},
+  {id:"subir_drive", b:"acceso", who:"T", t:"Subir los exports a Drive y cerrar la sesión",
+   listo:"C confirma que los ve y que no falta ningún campo",
+   como:"En el navegador de la notebook: drive.google.com con tu cuenta → <code>NAVAR - Datos / Tango / 2026-09-17</code> → arrastrar archivos y capturas. Después: cerrar sesión de Google, cerrar Tango, cerrar AnyDesk.",
+   paraque:"Es el puente entre las dos máquinas; C los baja por el conector.",
+   porque:"No dejar tu sesión de Google abierta en una máquina que no es tuya."},
+
+  // ---------------- datos
+  {id:"lector_tango", b:"datos", who:"C", t:"Lector de exports de Tango → listas de la Sheet",
+   listo:"la Sheet tiene proveedores y clientes con nombre; «Posición de Deuda» sale de facturas, no de totales",
+   como:"<code>lector/tango.py</code>: cada export → filas de Cuentas a Cobrar, Cuentas a Pagar, Cartera de Cheques y Movimientos. Se cargan en la Sheet y se borran las filas «agregado cash viejo».",
+   paraque:"Datos reales en el tablero esta misma semana.",
+   porque:"Se escribe después de ver el formato real (por eso no está hecho todavía)."},
+  {id:"bcra", b:"datos", who:"C", t:"Central de Deudores del BCRA (con los CUIT)",
+   listo:"situación por banco, montos y cheques rechazados, 24 meses, en una tabla",
+   como:"bcra.gob.ar → Central de Deudores → CUIT de A y de AA. Es público y gratis.",
+   paraque:"El paso 0 del camino de la deuda sin pedirle nada a los bancos.",
+   porque:"Ya sabemos que hay situación 2 en dos bancos; falta el resto y la evolución."},
+  {id:"catalogo", b:"datos", who:"C", t:"Cerrar el catálogo del cliente",
+   listo:"nada queda en <code>null</code>: tolerancias, A/AA, cobranza por kg, cosecha, estampillas, honorarios",
+   como:"Con las notas de la reunión con quien carga y lo que muestren los exports.",
+   paraque:"Que el tablero aconseje con las reglas de NAVAR, no con supuestos.",
+   porque:"«A quién pagar» depende de cuánto aguanta cada proveedor; eso no está en ningún sistema."},
+
+  // ---------------- gente
+  {id:"reunion_carga", b:"gente", who:"T", t:"Reunión con quien carga los números (1 hora, video)",
+   listo:"C tiene las notas: dato, quién lo dijo, regla o excepción",
+   como:"<b>Bloque 1 — la rutina de los lunes:</b> quién pasa qué, cuánto tarda (<b>anotar las horas</b>), qué es lo que más cuesta conseguir. <b>Bloque 2 — lo que Tango no sabe:</b> tolerancia por proveedor (¿cuántos días antes de que corten? ¿alguno cortó?), cómo se calcula la cobranza por kg, cosecha (¿mano de obra o compra? ¿hasta cuándo?), estampillas (¿INYM? ¿por lo despachado?), honorarios/dividendos (¿fecha fija?), «otros gastos» (¿qué se repite?). <b>Bloque 3 — cheques y bancos:</b> ¿cheque o transferencia? ¿qué se hace con los de terceros? ¿qué banco para qué? La regla: factura pagada con cheque propio se marca pagada al <i>emitir</i>. <b>Bloque 4 — la planilla nueva:</b> compartir pantalla, solapa por solapa; cerrar con «¿qué de esto te resulta más incómodo de cargar?».",
+   paraque:"Completar el catálogo de una sentada y tener el «antes» (horas por semana) del criterio de éxito.",
+   porque:"Tango contesta los nombres y las facturas; no contesta cómo deciden."},
+  {id:"chica_tableros", b:"gente", who:"T", t:"Contacto con quien arma los tableros de margen y rentabilidad",
+   listo:"sabés de qué reportes de Tango salen y si hay margen bruto por producto",
+   como:"Vía Priscilla. Presentarse como complemento (ella resultado, vos caja). Pedir la fuente, no el tablero.",
+   paraque:"Su margen es el «paso 1: capacidad de pago» del camino de la deuda.",
+   porque:"Es la única fuente de rentabilidad que existe hoy en la empresa."},
+  {id:"maria_rosa", b:"gente", who:"T", t:"Definir qué se le cuenta a María Rosa",
+   listo:"Priscilla dijo si números o solo avance",
+   como:"Una pregunta a Priscilla. Mientras tanto: avance sí («arrancamos, ya tengo acceso a Tango, esta semana primera lectura»), números no.",
+   paraque:"Cumplir lo que promete «Cómo trabajamos»: nada se comparte con terceros sin autorización.",
+   porque:"Ella te trajo el cliente y puede traer el segundo; cuidarla es cuidar la confidencialidad también."},
+
+  // ---------------- lectura
+  {id:"corrida", b:"lectura", who:"C", t:"Corrida completa con datos reales",
+   listo:"tablero, hoja de lectura y primera foto de la bitácora generados",
+   como:"Sheet → <code>lector/cash_limpio.py</code> → contrato → <code>finauto.py</code>.",
+   paraque:"La primera lectura que ya no dice «agregado cash viejo».",
+   porque:"Es el momento en que el tablero pasa de demo a herramienta."},
+  {id:"validar_numeros", b:"lectura", who:"T", t:"Revisar los números juntos antes de mandar",
+   listo:"T dice «cierra»",
+   como:"Caja, vencido, día crítico, a quién pagar. Comparar contra lo que la persona de oficina tiene en la cabeza. Tres cosas a mirar siempre: la vista por empresa (A/AA), los cheques en cartera (no son caja), y lo vencido (entra el día 1).",
+   paraque:"Que ningún número salga sin validación.",
+   porque:"Empresa muy endeudada: un número optimista destruye la credibilidad del proyecto entero."},
+  {id:"mandar_lectura1", b:"lectura", who:"T", t:"Mandar la lectura 1",
+   listo:"Priscilla y quien carga la recibieron",
+   como:"Link del tablero web (o el HTML) + hoja de lectura en PDF. A María Rosa, el avance.",
+   paraque:"Arranca la cuenta de 6 semanas.",
+   porque:"La sexta lectura es la conciliación: qué se dijo y qué pasó."},
+
+  // ---------------- sheet
+  {id:"mail_empresa", b:"sheet", who:"N", t:"Una cuenta de Google de la empresa, dedicada",
+   listo:"existe (ej. finanzas@navar… o navar.finanzas@gmail.com), con la clave en custodia de la dueña",
+   como:"Si tienen Workspace, la crea sistemas. Si usan Gmail, se crea una nueva con teléfono de recuperación de la empresa. De esa cuenta cuelgan tres cosas: la propiedad de la Sheet y de <code>NAVAR - Datos</code>, el Drive para escritorio de la notebook, y el Apps Script que publica el tablero (el link corre «como» esa cuenta: si se cierra, el link muere).",
+   paraque:"Que nada dependa de una persona: ni de Priscilla ni de Thomas.",
+   porque:"Una cuenta personal cambia la clave, activa un segundo factor o se va de vacaciones, y la cadena se corta sin que nadie se entere."},
+  {id:"transferir_carpetas", b:"sheet", who:"T", t:"Transferir la propiedad de las carpetas de Drive (vos quedás Editor)",
+   listo:"NAVAR es dueño de <code>NAVAR - Datos</code> y de la Sheet; vos seguís viendo y editando todo",
+   como:"Drive → Compartir con la cuenta de la empresa como Editor → menú de ese usuario → «Transferir la propiedad» (en Gmail común es archivo por archivo; en Workspace, un Drive compartido lo resuelve de una). Después, Drive para escritorio en la notebook se loguea con esa cuenta.",
+   paraque:"Seguir viendo si algo subió o falló, sin ser dueño de los datos del cliente.",
+   porque:"Ser Editor te deja todo lo que necesitás; ser dueño te deja lo único que no tenés que poder hacer: borrar o cerrar el acceso."},
+  {id:"transferir_sheet", b:"sheet", who:"T", t:"Transferir la propiedad y poner los permisos",
+   listo:"NAVAR dueño; oficina editor; Priscilla lector; vos editor; solapas calculadas protegidas",
+   como:"Drive → Compartir → agregar el mail de NAVAR como Editor → en el menú de ese usuario «Transferir la propiedad». Después: oficina Editor, Priscilla Lector. Sacar el bloqueo de descarga (engranaje ⚙ de Compartir). Proteger <code>Cash Flow Consolidado</code> y <code>Posicion de Deuda</code> (click derecho en la solapa → Proteger hoja → «Mostrar advertencia al editar»).",
+   paraque:"Que carguen los que cargan y nadie pise las fórmulas sin querer.",
+   porque:"El link no cambia al transferir: lo que ya se compartió sigue valiendo."},
+
+  // ---------------- tablero
+  {id:"carpeta_tablero", b:"tablero", who:"C", t:"Carpeta de Drive para el tablero publicado",
+   listo:"existe <code>NAVAR - Datos / Tablero</code> con el <code>finauto.html</code> de la semana",
+   como:"Cada corrida deja el HTML ahí (C lo sube por el conector; después lo sube solo la notebook).",
+   paraque:"Un solo lugar donde vive el tablero vigente. Ya no se pierde.",
+   porque:"Los HTML sueltos se pierden; una carpeta con nombre, no."},
+  {id:"appscript_tablero", b:"tablero", who:"T", t:"Publicar el tablero como página web privada (Apps Script)",
+   listo:"un link de script.google.com que abre el tablero, y que rechaza a quien no está en la lista",
+   como:"Abrir la Sheet → Extensiones → Apps Script → pegar el código que deja C en <code>clientes/navar/herramientas/tablero_web.gs</code> (lee el último <code>finauto.html</code> de la carpeta de Drive y lo sirve; adentro hay una lista de mails permitidos) → Implementar → Nueva implementación → Aplicación web → Ejecutar como «Yo» → Acceso «Cualquier usuario con cuenta de Google» → copiar la URL. Autorizar los permisos que pide (Drive, lectura).",
+   paraque:"Ellos abren un link, con su cuenta de Google, y ven el tablero del día. Sin servidor, sin instalar nada, y el acceso lo controla la lista.",
+   porque:"Es lo que se hizo en MAGA (el cliente abre una URL) y es tu diferencial: un tablero que está siempre, no un archivo que se manda."},
+  {id:"banda_viejo", b:"tablero", who:"C", t:"Banda de «tablero desactualizado» en la página",
+   listo:"si el HTML tiene más de 48 hs, la página lo dice arriba",
+   como:"Va en el mismo Apps Script: compara la fecha del archivo con hoy.",
+   paraque:"Que nadie decida con un tablero viejo sin saberlo.",
+   porque:"Servir un tablero viejo sin decirlo es el modo de falla de siempre, y peor cuando lo mira un tercero."},
+
+  // ---------------- auto
+  {id:"sql_tango", b:"auto", who:"N", t:"Pedir usuario de solo lectura a la base de Tango (SQL Server)",
+   listo:"tenés servidor, base, usuario y clave de consulta",
+   como:"A quien administre Tango / sistemas: un login de SQL Server con permiso de SELECT solamente, sobre las bases de A y AA. Anotar también dónde está el servidor (misma notebook, otra PC, la nube).",
+   paraque:"Que los listados salgan solos todos los días, sin que nadie exporte a mano.",
+   porque:"Es la única forma de automatizar Tango de verdad; Tango Live es para personas."},
+  {id:"usuario_windows", b:"auto", who:"N", t:"Un usuario de Windows dedicado en la notebook (ej. «finauto»)",
+   listo:"existe, con clave que no vence, y nadie lo usa para otra cosa",
+   como:"Lo crea sistemas. Las tareas programadas y las claves de banco guardadas quedan atadas a ese usuario. Que quede escrito en un papel de ellos: usuario, clave, y «no se toca sin avisar».",
+   paraque:"Que lo automático no dependa del usuario de una persona.",
+   porque:"Si borran el usuario o le cambian la clave, las tareas dejan de correr y las claves de banco hay que recargarlas. Un lunes a las 7 no hay nadie para darse cuenta."},
+  {id:"alerta_llegada", b:"auto", who:"C", t:"La alerta diaria: qué llegó, qué no, y por qué",
+   listo:"todas las mañanas a las 8:15 llega un mail con un renglón por banco, por listado de Tango y por el tablero: verde / amarillo / rojo con el motivo",
+   como:"Cada paso de la cadena escribe su resultado (ok, falló, vacío, motivo, captura) en <code>control_&lt;fecha&gt;.json</code> en la carpeta de Drive. Un Apps Script en la Sheet lo lee a las 8:15 y manda el mail con MailApp desde la cuenta de la empresa, a Thomas, Priscilla y quien carga. Si el archivo no está: «la notebook no corrió hoy».",
+   paraque:"Saber sin entrar por AnyDesk. En el 80% de los casos el motivo es «clave vencida», «servidor apagado» o «notebook suspendida».",
+   porque:"Es lo que MAGA ya tenía (aviso por mail si a las 8 faltaba un banco). Servir un tablero incompleto sin decirlo es el modo de falla de siempre."},
+  {id:"python_notebook", b:"auto", who:"T", t:"Instalar Python y finauto en la notebook de NAVAR",
+   listo:"<code>python finauto.py --version</code> anda en esa máquina",
+   como:"Por AnyDesk: instalar Python 3.13 desde python.org (marcar «Add to PATH»), bajar el repo (o copiarlo por Drive), <code>pip install -r requirements.txt</code>, <code>python -m playwright install chromium</code>. Guía paso a paso la escribe C cuando llegue el momento.",
+   paraque:"Que todo lo automático corra allá, con las claves de ellos, no en tu Mac.",
+   porque:"Legal y de sentido común: las claves de banco no salen de la empresa. Y tu Mac no puede estar prendida a las 7 de la mañana todos los días."},
+  {id:"drive_desktop", b:"auto", who:"T", t:"Google Drive para escritorio en la notebook",
+   listo:"la carpeta <code>NAVAR - Datos</code> aparece como carpeta en el Windows",
+   como:"Instalar Drive para escritorio con la cuenta de NAVAR (o la tuya hasta la transferencia) y marcar <code>NAVAR - Datos</code> para que esté disponible sin conexión.",
+   paraque:"Lo que la notebook genera (exports, extractos, el tablero) sube solo; lo que Apps Script exporta (la Sheet en Excel) baja solo. Sin credenciales nuevas de Google en Python.",
+   porque:"Es el mismo camino que usa MAGA: un archivo en una carpeta sincronizada, y Drive hace el resto."},
+  {id:"ingesta_tango", b:"auto", who:"C", t:"Ingesta automática de Tango → Sheet",
+   listo:"todas las mañanas las listas de la Sheet tienen lo de ayer, sin que nadie toque nada",
+   como:"En la notebook: <code>ingestas/tango_sql.py</code> consulta la base (solo lectura) y deja CSV en la carpeta de Drive. En la Sheet: un Apps Script con disparador horario lee esos CSV y actualiza las listas.",
+   paraque:"Desaparece el 80% de la carga de los lunes.",
+   porque:"Depende del usuario SQL (ítem de arriba). Sin él, se hace con Tango Live a mano hasta que llegue."},
+  {id:"bots_bancos", b:"auto", who:"T", t:"Bots de los 5 bancos (Nación, Corrientes, Macro, BBVA, Galicia)",
+   listo:"los extractos y saldos de cada banco caen solos en la carpeta de Drive todos los días",
+   como:"Por banco: (1) NAVAR crea un usuario de consulta en el home banking; (2) <b>alguien de NAVAR</b> carga usuario y clave en la notebook con <code>setup_credenciales.py</code> (vos no las ves); (3) C arma la ficha de selectores del banco (Galicia ya tiene adaptador) probándola en modo visible por AnyDesk; (4) se programa en el Programador de tareas de Windows a las 7:00. Un banco por vez, empezando por el que más usan.",
+   paraque:"Saldos reales por banco todas las mañanas, cheques debitados, e-cheqs. La rama «Banco» del cash.",
+   porque:"Corre en su equipo, con sus claves: pasás de «un tercero entra a tu banco» a «una herramienta que corre en tu máquina». Es la mitigación legal que ya está escrita en el plan comercial."},
+  {id:"cadena_diaria", b:"auto", who:"C", t:"La cadena diaria completa en la notebook",
+   listo:"a las 8:00 el tablero del día está publicado sin que nadie haya hecho nada",
+   como:"Programador de tareas: 7:00 bots de bancos → 7:30 ingesta de Tango → Apps Script exporta la Sheet a Excel en la carpeta → 8:00 <code>finauto.py</code> corre y deja <code>finauto.html</code> en la carpeta → Drive lo sube → el link web lo muestra. Si algo falla, un mail avisa qué.",
+   paraque:"El cash hecho antes de que llegue nadie.",
+   porque:"Es exactamente la cadena de MAGA (bot a las 8:00 + clasificador + tablero), con la notebook de NAVAR como servidor."},
+
+  // ---------------- deuda
+  {id:"mapa_deuda", b:"deuda", who:"C", t:"El mapa de la deuda en una tabla",
+   listo:"por acreedor: cuánto, vencido, garantía, situación BCRA, tolerancia",
+   como:"Con BCRA + los reportes del contador + Cuentas a Pagar de Tango + la reunión.",
+   paraque:"Es lo que hoy nadie tiene junto, y el paso 0 de cualquier negociación.",
+   porque:"No se negocia con un banco sin saber qué garantía tiene y en qué situación estás en los otros cuatro."},
+  {id:"capacidad_pago", b:"deuda", who:"C", t:"Capacidad de pago mensual",
+   listo:"un monto defendible: lo que sobra después de la operación",
+   como:"Del cash real: cobranzas − sueldos − hoja − cosecha − estampillas − insumos. Cruzado con el margen de la chica de los tableros.",
+   paraque:"Es lo único que se le puede ofrecer a un banco o a ARCA sin mentir.",
+   porque:"Un plan que promete lo que la operación no genera se rompe en el segundo mes."},
+
+  // ---------------- rutina
+  {id:"rutina_lunes", b:"rutina", who:"N", t:"Los lunes: cargar la semana",
+   listo:"movimientos reales, saldos por banco, cheques nuevos, exports de Tango (hasta que sea automático)",
+   como:"La persona de oficina, en la Sheet. 15 minutos con Tango Live hasta que corra solo.",
+   paraque:"Que el tablero del lunes sea el de esta semana.",
+   porque:"Sin carga no hay lectura; sin lectura no hay bitácora."},
+  {id:"lectura_semanal", b:"rutina", who:"T", t:"Los lunes: correr, leer y mandar (45 min)",
+   listo:"la hoja de lectura salió y la foto de la bitácora quedó guardada",
+   como:"C corre; T lee: caja, vencido, día crítico, a quién pagar; manda. Se guarda qué se proyectó.",
+   paraque:"A la sexta semana: «el 14 te dije que quedabas corto; quedaste el 16».",
+   porque:"Es lo que sostiene el abono: la lectura, no el software."},
+  {id:"tiempos", b:"rutina", who:"T", t:"Anotar cuánto tardó cada cosa (la columna «min» de esta página)",
+   listo:"cada ítem hecho tiene sus minutos",
+   como:"Antes de tildar, escribir los minutos en la casilla de la derecha.",
+   paraque:"Con el cliente 2 esto es el presupuesto de tiempo del onboarding.",
+   porque:"Es el número que dice cuántos clientes entran en tu semana. Es el techo del negocio mientras estés solo."},
+];
+
+// ---- Estado: {items: {id: {done, min, cuando}}}. Se guarda en la base del artefacto (compartida) y, si no hay, en el navegador.
+let estado = {items: {}};
+let guardar = null;          // función que persiste (db o localStorage)
+const $ = (s, el=document) => el.querySelector(s);
+
+function limpiar(items){
+  // Sin nulos ni vacíos: algunos almacenes los rechazan, y no aportan nada.
+  const out = {};
+  for (const [k, v] of Object.entries(items || {})){
+    const o = {};
+    if (v && v.done) { o.done = true; if (v.cuando) o.cuando = String(v.cuando); }
+    if (v && v.min !== undefined && v.min !== "" && v.min !== null) o.min = String(v.min);
+    if (Object.keys(o).length) out[k] = o;
+  }
+  return out;
+}
+
+function render(){
+  const main = $("#main");
+  const ocultar = $("#ocultar").checked;
+  const abiertos = new Set([...document.querySelectorAll(".item.abierto")].map(e => e.dataset.id));
+  main.innerHTML = "";
+  let hechos = 0;
+  for (const [bid, titulo, intro] of BLOQUES){
+    const items = ITEMS.filter(i => i.b === bid);
+    const sec = document.createElement("section"); sec.className = "bloque";
+    const nHechos = items.filter(i => (estado.items[i.id]||{}).done).length;
+    hechos += nHechos;
+    sec.innerHTML = `<h2>${titulo} <span class="n">${nHechos}/${items.length}</span></h2><p class="intro">${intro}</p><div class="lista"></div>`;
+    const lista = $(".lista", sec);
+    for (const it of items){
+      const st = estado.items[it.id] || {};
+      if (ocultar && st.done) continue;
+      const d = document.createElement("div");
+      d.className = "item" + (st.done ? " done" : "") + (abiertos.has(it.id) ? " abierto" : "");
+      d.dataset.id = it.id;
+      d.innerHTML = `
+        <div class="fila">
+          <input type="checkbox" id="chk_${it.id}" ${st.done ? "checked" : ""} aria-label="hecho: ${it.t}">
+          <div class="titulo"><label for="chk_${it.id}">${it.t}</label>
+            <div class="meta"><span class="who ${it.who}">${it.who}</span><span class="listo">listo cuando: <b>${it.listo}</b></span></div>
+            <button class="mas" type="button" aria-expanded="${abiertos.has(it.id)}">cómo · para qué · por qué</button>
+          </div>
+          <div class="derecha"><span class="tiempo"><input type="text" inputmode="numeric" id="min_${it.id}" value="${st.min ?? ""}" placeholder="min" aria-label="minutos que tardó"> min</span></div>
+        </div>
+        <div class="detalle"><dl>
+          <dt>Cómo</dt><dd>${it.como}</dd>
+          <dt>Para qué</dt><dd>${it.paraque}</dd>
+          <dt>Por qué</dt><dd>${it.porque}</dd>
+        </dl></div>`;
+      $("input[type=checkbox]", d).addEventListener("change", e => {
+        const cur = {...(estado.items[it.id]||{})};
+        cur.done = e.target.checked;
+        if (cur.done) cur.cuando = new Date().toISOString().slice(0,10); else delete cur.cuando;
+        estado.items[it.id] = cur;
+        log("click " + it.id + "=" + cur.done + " frozen=" + Object.isFrozen(estado.items));
+        // Se actualiza la fila en el lugar, sin reconstruir la lista: así el click nunca se pierde.
+        d.classList.toggle("done", cur.done);
+        actualizarCabecera();
+        persistir();
+        if (ocultar && cur.done) d.remove();
+      });
+      let tmr;
+      $(`#min_${it.id}`, d).addEventListener("input", e => {
+        estado.items[it.id] = {...(estado.items[it.id]||{}), min: e.target.value.replace(/[^\d]/g,"")};
+        actualizarCabecera();
+        clearTimeout(tmr); tmr = setTimeout(persistir, 800);
+      });
+      $(".mas", d).addEventListener("click", () => {
+        d.classList.toggle("abierto"); $(".mas", d).setAttribute("aria-expanded", d.classList.contains("abierto"));
+      });
+      lista.appendChild(d);
+    }
+    if (!lista.children.length){ lista.innerHTML = `<div class="fila" style="color:var(--faint)">todo hecho</div>`; }
+    main.appendChild(sec);
+  }
+  actualizarCabecera();
+}
+
+function actualizarCabecera(){
+  const total = ITEMS.length;
+  const hechos = ITEMS.filter(i => (estado.items[i.id]||{}).done).length;
+  $("#conteo").textContent = `${hechos} / ${total}`;
+  $("#barra").style.width = (100*hechos/total) + "%";
+  const minutos = ITEMS.reduce((a,i) => a + (parseInt((estado.items[i.id]||{}).min) || 0), 0);
+  if (minutos) $("#conteo").textContent += `  ·  ${Math.round(minutos/60*10)/10} h`;
+  for (const [bid] of BLOQUES){
+    const items = ITEMS.filter(i => i.b === bid);
+    const n = items.filter(i => (estado.items[i.id]||{}).done).length;
+    const h2 = [...document.querySelectorAll(".bloque")].find(s => s.querySelector(".item, .fila") && ITEMS.filter(i => i.b===bid).some(i => s.querySelector(`[data-id="${i.id}"]`)));
+    if (h2) h2.querySelector("h2 .n").textContent = `${n}/${items.length}`;
+  }
+}
+
+const LOG = [];
+function log(m){ LOG.push(m); if (LOG.length > 4) LOG.shift(); const el = $("#log"); if (el) el.textContent = " · " + LOG.join(" · "); }
+function persistir(){ log("persistir " + Object.keys(limpiar(estado.items)).length + " items"); if (guardar) guardar(); }
+
+// Aplica un estado que viene de afuera (otro dispositivo, otra pestaña) solo si cambió algo,
+// y nunca mientras se está escribiendo en una casilla.
+function aplicar(items){
+  const nuevo = limpiar(items);
+  if (JSON.stringify(nuevo) === JSON.stringify(limpiar(estado.items))) return;
+  if (document.activeElement && document.activeElement.tagName === "INPUT" && document.activeElement.type === "text") return;
+  estado = {items: nuevo};
+  render();
+}
+
+// ---- Persistencia: base compartida del artefacto si está; si no, el navegador.
+function usarLocal(motivo){
+  try { const s = localStorage.getItem("checklist_navar"); if (s) aplicar(JSON.parse(s).items); } catch(e){}
+  guardar = () => { try { localStorage.setItem("checklist_navar", JSON.stringify({items: limpiar(estado.items)})); } catch(e){} };
+  $("#sync").textContent = "guardado en este navegador" + (motivo ? " (" + motivo + ")" : "");
+}
+
+(async () => {
+  render();                                   // primero se ve; después se enchufa
+  $("#ocultar").addEventListener("change", render);
+  let db = null;
+  try { db = await (window.claude && window.claude.use ? window.claude.use("db") : Promise.resolve(null)); } catch(e){ db = null; }
+  if (!db){ usarLocal(); return; }
+  const ref = db.doc("checklist/navar");
+  let escribiendo = false, pendiente = false;
+  guardar = async () => {
+    if (escribiendo){ pendiente = true; return; }
+    escribiendo = true; $("#sync").textContent = "guardando…";
+    try {
+      const cuerpo = {items: limpiar(estado.items), actualizado: new Date().toISOString()};
+      log("set " + Object.keys(cuerpo.items).length);
+      await ref.set(cuerpo);
+      $("#sync").textContent = "guardado, compartido";
+    } catch(e){
+      $("#sync").textContent = "no se pudo guardar (" + ((e && e.code) || "error") + ") — queda en este navegador";
+      try { localStorage.setItem("checklist_navar", JSON.stringify({items: limpiar(estado.items)})); } catch(_){}
+    }
+    escribiendo = false;
+    if (pendiente){ pendiente = false; guardar(); }
+  };
+  ref.onSnapshot(snap => {
+    if (snap.metadata.hasPendingWrites){ log("snap pendiente"); return; }      // lo nuestro, todavía en viaje
+    if (snap.exists){ const d = snap.data() || {}; log("snap " + Object.keys(d.items || {}).length + " items"); aplicar(d.items); }
+    if (!$("#sync").textContent.startsWith("no se pudo")) $("#sync").textContent = "guardado, compartido";
+  }, err => { usarLocal((err && err.code) || "sin conexión"); });
+})();
+</script>
