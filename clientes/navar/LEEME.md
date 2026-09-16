@@ -10,7 +10,9 @@ financiera, y finauto es la herramienta con la que se hace.
 |---|---|---|
 | `perfil.json` | Lo operativo: bancos, de dónde sale cada dato, dónde caen los extractos. | Sí |
 | `catalogo.json` | El vocabulario del cliente: tipos de pago, tolerancias, proveedores, ingresos. **Es un BORRADOR**: lo que está en `null` o en `_pendiente` se pregunta, no se adivina. | Sí |
-| `privado/` | La planilla original que mandaron y el diagnóstico con montos reales. | **No** (está en `.gitignore`) |
+| `documentos/` | El checklist de implementación y los arreglos del esqueleto. | Sí |
+| `herramientas/` | Los scripts de este cliente (migración, arreglo del cash, PDFs). | Sí |
+| `privado/` | Planillas, PDFs generados, capturas y el diagnóstico con montos reales. | **No** (está en `.gitignore`) |
 | `memoria/` | Las fotos de cada proyección, para conciliar después. Se crea sola al correr `finauto.py`. | No |
 
 ## La Sheet (la fuente de verdad)
@@ -26,7 +28,7 @@ Archivo → Descargar) a `privado/NAVAR - Cash Flow (export Sheets <fecha>).xlsx
 source .venv/bin/activate
 python lector/cash_limpio.py --archivo "clientes/navar/privado/NAVAR - Cash Flow (export Sheets 2026-09-12).xlsx" --cliente navar --hoy 2026-08-31
 python finauto.py --contrato clientes/navar/contrato_2026-08-31.json --cliente navar --salidas clientes/navar/privado/salidas
-python clientes/navar/propuesta.py        # el PDF para la dueña, con capturas del tablero
+python clientes/navar/herramientas/propuesta.py        # el PDF para la dueña, con capturas del tablero
 ```
 
 `--hoy 2026-08-31` porque los datos cargados son de ese lunes: con la fecha real
@@ -60,11 +62,11 @@ python finauto.py --contrato clientes/navar/contrato_<fecha>.json --cliente nava
 
 | Archivo | Qué es |
 |---|---|
-| `CHECKLIST_IMPLEMENTACION.md` | El paso a paso de la semana de implementación (16–22/09), con qué/cómo/para qué y columna de tiempos. Se convierte en el checklist de onboarding del cliente 2. |
-| `ARREGLOS_ESQUELETO.md` | Los 8 arreglos al esqueleto del cash nuevo, con celda y fórmula. Para pasarle a quien lo edite. |
-| `migrar_cash_viejo.py` | Convierte el cash viejo (6 semanas reales + 8 proyectadas) en filas para pegar en el esqueleto nuevo. Deja `privado/datos_migrados_del_cash_viejo.xlsx`. Se corre con `python clientes/navar/migrar_cash_viejo.py`. |
-| `propuesta.py` | Genera el PDF para la dueña con los números del contrato y las capturas de `privado/capturas/`. |
-| `arreglar_cash_v2.py` | Toma el cash que devolvió Cowork (`privado/NAVAR_-_Cash_Flow_Limpio.xlsx`), regenera el consolidado con semanas lunes-domingo, vacía los ejemplos y mueve los proyectados a las listas. Deja **`privado/NAVAR - Cash Flow Limpio v2.xlsx`, que es la versión buena**. |
+| `documentos/CHECKLIST_IMPLEMENTACION.md` | El paso a paso de la semana de implementación (16–22/09), con qué/cómo/para qué y columna de tiempos. Se convierte en el checklist de onboarding del cliente 2. |
+| `documentos/ARREGLOS_ESQUELETO.md` | Los 8 arreglos al esqueleto del cash nuevo, con celda y fórmula. Para pasarle a quien lo edite. |
+| `herramientas/migrar_cash_viejo.py` | Convierte el cash viejo (6 semanas reales + 8 proyectadas) en filas para pegar en el esqueleto nuevo. Deja `privado/datos_migrados_del_cash_viejo.xlsx`. Se corre con `python clientes/navar/herramientas/migrar_cash_viejo.py`. |
+| `herramientas/propuesta.py` | Genera el PDF para la dueña con los números del contrato y las capturas de `privado/capturas/`. |
+| `herramientas/arreglar_cash_v2.py` | Toma el cash que devolvió Cowork (`privado/NAVAR_-_Cash_Flow_Limpio.xlsx`), regenera el consolidado con semanas lunes-domingo, vacía los ejemplos y mueve los proyectados a las listas. Deja **`privado/NAVAR - Cash Flow Limpio v2.xlsx`, que es la versión buena**. |
 
 ## El cash nuevo (el entregable)
 

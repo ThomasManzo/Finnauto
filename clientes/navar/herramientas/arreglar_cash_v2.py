@@ -22,7 +22,7 @@ QUE ARREGLA (revisado el 12/09/2026, ver ARREGLOS_ESQUELETO.md)
 4. (La regla "factura pagada con cheque" ya estaba en Instrucciones; no se toca.)
 
 Uso:
-    python clientes/navar/arreglar_cash_v2.py
+    python clientes/navar/herramientas/arreglar_cash_v2.py
     (lee privado/NAVAR_-_Cash_Flow_Limpio.xlsx, escribe privado/NAVAR - Cash Flow Limpio v2.xlsx)
 """
 
@@ -32,7 +32,7 @@ import sys
 import copy
 import datetime
 
-BASE = os.path.dirname(os.path.abspath(__file__))
+BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # clientes/navar/
 PRIVADO = os.path.join(BASE, "privado")
 ORIGEN = os.path.join(PRIVADO, "NAVAR_-_Cash_Flow_Limpio.xlsx")
 DESTINO = os.path.join(PRIVADO, "NAVAR - Cash Flow Limpio v2.xlsx")
