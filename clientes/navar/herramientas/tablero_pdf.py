@@ -12,7 +12,7 @@ Usa las capturas de privado/capturas/ (las saca finauto + playwright, ver
 LEEME.md) y el mismo estilo que propuesta.py.
 
 Uso:
-    python clientes/navar/tablero_pdf.py
+    python clientes/navar/herramientas/tablero_pdf.py
     (deja privado/salidas/NAVAR - Tablero vista rapida <fecha>.pdf)
 """
 

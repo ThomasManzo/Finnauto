@@ -1,52 +1,36 @@
 # finauto
 
-**Sistema de automatización financiera para farmacias y comercios PYME.**
-De la descarga automática de extractos bancarios a la decisión de dirección, en
-un solo producto. Nombre de trabajo: `finauto` (comercial a definir).
+**Sistema de automatización financiera para PyMEs**: de la descarga de extractos
+y listados a la decisión de a quién pagar, en un solo producto. Nombre de
+trabajo `finauto`. Primer cliente pago: NAVAR S.A. (15/09/2026).
 
-> Este es el **producto nuevo y unificado**. El sistema productivo actual de MAGA+
-> vive aparte, en el repo `MAGA` (respaldo del código que hoy corre).
+## Mapa de la carpeta (leer esto primero)
 
-## Qué hace (visión — 6 piezas)
+Todo lo que hay en `Finnauto/` cae en una de estas cinco cosas:
 
-1. **Descarga de extractos** — bots que entran al banco y bajan los extractos. ← *lo que está armado acá hoy*
-2. **Clasificación al Cash** — ordena y carga cada movimiento.
-3. **Cobranzas** — concilia las cobranzas.
-4. **Disponibilidad** — cuánto se puede retirar (con simulador).
-5. **Dashboard en vivo** — la foto financiera.
-6. **Análisis EERR** — lectura de gestión.
+| Carpeta | Qué es | ¿La abrís vos? |
+|---|---|---|
+| **`clientes/`** | **Un cliente, una carpeta.** `navar/` y `maga/`. Adentro: `LEEME.md` (empezar por ahí), el perfil y el catálogo (lo que el motor sabe del cliente), `documentos/` (checklist, propuestas), `herramientas/` (los scripts de ese cliente) y `privado/` (planillas, PDFs y datos reales; no sube a git). | **Sí, es la que usás.** |
+| **`docs/`** | Lo escrito para pensar: estado del proyecto, el negocio, el plan comercial, cómo trabajamos con los datos, ideas. | Cuando querés el panorama. |
+| **El motor** (`nucleo/`, `bots/`, `lector/`, `simulador/`, `dashboard/`, `auditoria/`, `memoria/`, `informe/`, `ingestas/`, `exportador/`, `orquestador/`) | El código que hace el trabajo. Es compartido: no sabe de ningún cliente, lee `clientes/<c>/`. | No hace falta. |
+| **`tests/`** y **`scripts/`** | Las pruebas automáticas (300 chequeos) y utilidades sueltas (el banco de prueba, el explorador de selectores). | No. |
+| **Comandos** (`finauto.py`, `setup_credenciales.py`) | Los dos que se corren desde la terminal. | `finauto.py`, cada semana. |
 
-## Lo que ya está en este repo (Fase 1 — el núcleo + los bots)
+### El motor, pieza por pieza (por si hace falta buscar algo)
 
-```
-finauto/
-├─ nucleo/            EL MOTOR compartido (no depende de ningún banco)
-│   ├─ loop.py        el recorrido genérico (login → por empresa → descarga → Drive)
-│   ├─ contexto.py    junta rutas + settings de una corrida
-│   ├─ config.py      lee el perfil del cliente
-│   ├─ credenciales.py  llavero del sistema (por cliente/banco)
-│   ├─ estado.py      anti-duplicado (hasta qué día bajó cada empresa)
-│   ├─ fechas.py      la regla ayer+hoy / backfill
-│   ├─ navegador.py   abre Chromium (Playwright)
-│   ├─ salidas.py     _ESTADO_/_SALDOS_ a Drive
-│   ├─ log.py         log + capturas
-│   └─ utilidades.py  helpers (_norm, _parse_monto, ...)
-├─ bots/             ADAPTADORES por banco (solo login + selectores)
-│   ├─ base.py        el contrato (BotBanco)
-│   ├─ galicia/       ✅ portado 1:1 del bot que funciona
-│   ├─ comafi/        🟡 andamiaje (TODO COMAFI en los selectores)
-│   └─ santander/     ⬜ esqueleto (no empezado)
-├─ clientes/
-│   └─ maga/perfil.json   todo lo específico de MAGA (Drive, filtros, prefijos)
-├─ orquestador/correr.py  punto de entrada (CLI)
-├─ setup_credenciales.py  carga credenciales encriptadas
-└─ docs/            arquitectura + dudas + notas
-```
-
-**La idea central:** el motor de los bots, que hoy estaba **copiado** en cada bot,
-ahora vive **una sola vez** en `nucleo/`. Cada banco es un adaptador chico que solo
-implementa login + selectores. Y todo lo de MAGA (carpetas, empresas, prefijos) salió
-a `clientes/maga/perfil.json` → sumar otra farmacia es agregar otro perfil, no tocar código.
+| Carpeta | Hace |
+|---|---|
+| `nucleo/` | El recorrido de los bots de banco, fechas, estado, credenciales, log. |
+| `bots/` | Un adaptador por banco (Galicia listo; genérico por ficha para los demás). |
+| `lector/` | Lee planillas: la radiografía de una desconocida, y `cash_limpio.py` (el Cash Flow nuevo → contrato). |
+| `simulador/` | Escenarios, proyección, día crítico, a quién pagar, plan mínimo. |
+| `dashboard/` | El tablero (HTML que se abre con doble click) y el informe. |
+| `auditoria/` | Controles: que el dato esté completo, que cierre contra el cliente, que cada peso esté en un solo lugar. |
+| `memoria/` | Qué se proyectó vs. qué pasó (la bitácora). |
+| `informe/` | Los PDF: visita, dossier, manual. |
+| `ingestas/` | Parsers de listados del banco (cheques). |
+| `exportador/` | El Apps Script de Google Sheets (el de MAGA). |
+| `orquestador/` | El comando que corre los bots por cliente y banco. |
 
 ## Cómo se corre
 

@@ -15,7 +15,7 @@ Frases cortas, números con nombre, y en cada sección un "qué significa para
 vos". Los montos salen del contrato y del diagnóstico, no se tipean.
 
 Uso:
-    python clientes/navar/propuesta.py
+    python clientes/navar/herramientas/propuesta.py
     (deja privado/salidas/NAVAR - Propuesta finauto <fecha>.pdf)
 """
 
@@ -25,7 +25,7 @@ import sys
 import json
 import datetime
 
-BASE = os.path.dirname(os.path.abspath(__file__))
+BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # clientes/navar/
 REPO = os.path.dirname(os.path.dirname(BASE))
 PRIVADO = os.path.join(BASE, "privado")
 CAPTURAS = os.path.join(PRIVADO, "capturas")

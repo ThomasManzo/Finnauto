@@ -28,7 +28,7 @@ QUE HACE Y QUE NO
 No inventa nada: si una celda esta vacia o en cero, no genera fila.
 
 Uso:
-    python clientes/navar/migrar_cash_viejo.py
+    python clientes/navar/herramientas/migrar_cash_viejo.py
     (lee y escribe en clientes/navar/privado/, que no sube a git)
 """
 
@@ -37,7 +37,7 @@ import os
 import sys
 import datetime
 
-BASE = os.path.dirname(os.path.abspath(__file__))
+BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # clientes/navar/
 PRIVADO = os.path.join(BASE, "privado")
 ORIGEN = os.path.join(PRIVADO, "20260828 - NAVAR S.A. - CASH FLOW 31-08.xlsx")
 DESTINO = os.path.join(PRIVADO, "datos_migrados_del_cash_viejo.xlsx")
