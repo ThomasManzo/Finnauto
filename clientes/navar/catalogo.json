@@ -318,7 +318,8 @@
       "Honorarios y Dividendos": "HONORARIO_DIVIDENDO",
       "Estampillas": "ESTAMPILLAS",
       "Otros": "OTROS_GASTOS",
-      "Prestamo": "PRESTAMO"
+      "Prestamo": "PRESTAMO",
+      "Transferencia Interna": "TRANSFERENCIA"
     },
     "ingresos": {
       "_ayuda": "categoria -> (id de fuente, naturaleza). FIJO entra si o si; VARIABLE es estimacion.",
@@ -345,8 +346,13 @@
       "Otros": [
         "OTROS_INGRESOS",
         "VARIABLE"
+      ],
+      "Transferencia Interna": [
+        "TRANSFERENCIA_INTERNA",
+        "FIJO"
       ]
-    }
+    },
+    "_nota_extractos": "'Transferencia Interna' la usan los lectores de extractos (lector/extracto_bbva.py) para plata que se mueve entre cuentas propias: barrido recaudacion -> principal, transferencias al CUIT propio, depositos de caja. No es ingreso ni gasto."
   },
   "vocabulario": {
     "_ayuda": "Como le habla el tablero a ESTE cliente. Lo lee dashboard/datos.py y lo usa el HTML. Cada cliente tiene su vocabulario: en una farmacia el proveedor es 'la drogueria', en una yerbatera es 'el proveedor de hoja'.",

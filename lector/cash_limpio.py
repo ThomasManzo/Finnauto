@@ -254,8 +254,12 @@ def leer(archivo, cliente, hoy=None):
             fuente, nat = mapa_ing.get(categoria, ("SIN_MAPEAR", "VARIABLE"))
             if fuente == "SIN_MAPEAR":
                 sin_mapear[categoria] += abs(importe)
+            # Una transferencia entre cuentas propias entra a un banco pero no es un
+            # cobro: la plata ya era de la empresa. Va marcada interna y el tablero
+            # la saltea (proyeccion e ingresos por dia).
             cobros.append(dict(base, fuente=fuente, categoria_planilla=categoria,
-                               importe=abs(importe), naturaleza=nat, interno=False,
+                               importe=abs(importe), naturaleza=nat,
+                               interno=(fuente == "TRANSFERENCIA_INTERNA"),
                                efecto="caja"))
     for c, v in sin_mapear.items():
         avisos.append("Categoria sin mapear en catalogo.mapa_categorias: \"%s\" (%s)"
@@ -416,28 +420,35 @@ def leer(archivo, cliente, hoy=None):
                                    "situacion_bcra": _num(_col(d, "situacion")) or None,
                                    "vence": _iso(_col(d, "vto"))})
 
-    # ---- Saldos Bancarios: la foto mas reciente, por banco y por empresa
+    # ---- Saldos Bancarios: EL ULTIMO SALDO DE CADA CUENTA.
+    #
+    # Antes se tomaba la fecha mas nueva y solo las filas de ese dia. Con los
+    # extractos (17/09/2026) eso rompe: BBVA tiene saldo al 16/09 y los otros
+    # bancos siguen con la carga manual del 31/08 -- tomar "solo el 16/09"
+    # dejaba la caja con un solo banco. Ahora cada cuenta aporta su saldo mas
+    # reciente, y se avisa cuales estan viejas.
     saldos, caja_por_unidad, caja_hoy, fecha_saldos = [], defaultdict(float), 0.0, None
-    todos = []
+    ultimo = {}
     for d in _tabla(hojas["saldos"]) if "saldos" in hojas else []:
         fecha = _iso(_col(d, "fecha"))
         if not fecha:
             continue
-        todos.append((fecha, d))
-    if todos:
-        fecha_saldos = max(f for f, _ in todos)
-        for f, d in todos:
-            if f != fecha_saldos:
-                continue
+        clave = (_u(_col(d, "banco")), _u(_col(d, "empresa")), _txt(_col(d, "cuenta")))
+        if clave not in ultimo or fecha > ultimo[clave][0]:
+            ultimo[clave] = (fecha, d)
+    if ultimo:
+        viejas = []
+        for (banco, u, cuenta), (f, d) in sorted(ultimo.items()):
             v = _num(_col(d, "saldo"))
-            u = _u(_col(d, "empresa"))
-            saldos.append({"fecha": f, "banco": _u(_col(d, "banco")), "unidad": u,
-                           "cuenta": _txt(_col(d, "cuenta")), "saldo": v})
+            saldos.append({"fecha": f, "banco": banco, "unidad": u, "cuenta": cuenta, "saldo": v})
             caja_por_unidad[u] += v
             caja_hoy += v
-        if fecha_saldos < hoy:
-            avisos.append("El ultimo saldo bancario cargado es del %s (hoy %s): la caja de hoy "
-                          "es la de ese dia." % (fecha_saldos, hoy))
+            if f < hoy:
+                viejas.append("%s %s (%s)" % (banco, cuenta, f[8:10] + "/" + f[5:7]))
+        fecha_saldos = min(f for f, _ in ultimo.values())
+        if viejas:
+            avisos.append("Saldos bancarios con fecha anterior a hoy (%s): %s. La caja de esas cuentas es la de ese dia."
+                          % (hoy, "; ".join(viejas)))
     else:
         avisos.append("Saldos Bancarios esta vacio: caja_hoy = 0.")
 
