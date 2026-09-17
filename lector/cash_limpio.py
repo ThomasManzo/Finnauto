@@ -81,6 +81,20 @@ SOLAPAS = {
     "deuda impositiva": "impositiva",
 }
 MARCA_AGREGADO = "AGREGADO"
+# Una fila cuyas Observaciones EMPIEZAN con "REVISAR:" no se suma al tablero: se
+# muestra como hallazgo con su motivo. La pone lector/tango.py (deuda vieja,
+# cheques con fecha pasada que Tango sigue mostrando pendientes) o una persona.
+MARCA_REVISAR = "REVISAR:"
+
+
+def _revisar(d):
+    """El motivo de la marca REVISAR (texto hasta el primer ' · '), o None."""
+    obs = _txt(_col(d, "observ"))
+    if not obs.upper().startswith(MARCA_REVISAR):
+        return None
+    motivo = obs[len(MARCA_REVISAR):].split(" · ")[0].strip()
+    # "deuda vieja (venció 12/03/2019)" -> "deuda vieja": agrupa por motivo, no por fecha.
+    return motivo.split(" (")[0].strip() or "sin motivo"
 
 
 # ------------------------------------------------------------------ helpers
@@ -159,12 +173,28 @@ def leer(archivo, cliente, hoy=None):
     mapa_egr = {k: v for k, v in mapa.get("egresos", {}).items() if not k.startswith("_")}
     mapa_ing = {k: v for k, v in mapa.get("ingresos", {}).items() if not k.startswith("_")}
     # El nombre "lindo" del cliente vive en perfil.json (el catalogo es vocabulario).
+    # Y tambien la decision sobre los AGREGADOS del cash viejo (ver abajo).
     nombre_cliente = cliente
+    ignorar_agregados = False
     try:
         from nucleo import config as _config
-        nombre_cliente = _config.cargar_perfil(BASE_REPO, cliente).get("cliente", cliente)
+        perfil = _config.cargar_perfil(BASE_REPO, cliente)
+        nombre_cliente = perfil.get("cliente", cliente)
+        # "ignorar": los bultos "(agregado cash viejo)" de las listas NO entran al
+        # contrato; el tablero dice que falta ese dato. Thomas, 17/09/2026: "empecemos
+        # a borrar esto de agregado cash viejo, de ultima dejemos claro que falta la
+        # deuda con ARCA y los bancos". Los Movimientos proyectados no se tocan: son
+        # la unica proyeccion de salidas (sueldos, cosecha, estampillas) que hay.
+        ignorar_agregados = (perfil.get("agregados_del_cash_viejo") or "usar") == "ignorar"
     except Exception:
         pass
+    ignorados = defaultdict(lambda: [0, 0.0])
+
+    def _agregado(d):
+        """True si la fila es un agregado del cash viejo Y hay que ignorarla."""
+        if not ignorar_agregados:
+            return False
+        return MARCA_AGREGADO in _txt(_col(d, "observ")).upper()
 
     wb = openpyxl.load_workbook(archivo, data_only=True, read_only=True)
     hojas = {}
@@ -231,6 +261,9 @@ def leer(archivo, cliente, hoy=None):
         avisos.append("Categoria sin mapear en catalogo.mapa_categorias: \"%s\" (%s)"
                       % (c, _m(v)))
 
+    # Lo marcado REVISAR se junta aca: {(lista, motivo): [n, monto]}.
+    revisar = defaultdict(lambda: [0, 0.0])
+
     # ---- Cuentas a Cobrar: lo pendiente, por vencimiento
     cobrar = []
     for d in _tabla(hojas["cobrar"]) if "cobrar" in hojas else []:
@@ -239,6 +272,15 @@ def leer(archivo, cliente, hoy=None):
         pend = _col(d, "saldo pendiente")
         pend = _num(pend) if pend not in (None, "") else total - cobrado
         if not venc or pend <= 0:
+            continue
+        if _agregado(d):
+            ignorados["Cuentas a Cobrar"][0] += 1
+            ignorados["Cuentas a Cobrar"][1] += pend
+            continue
+        motivo = _revisar(d)
+        if motivo:
+            revisar[("Cuentas a Cobrar", motivo)][0] += 1
+            revisar[("Cuentas a Cobrar", motivo)][1] += pend
             continue
         cobrar.append({"fecha": venc, "contraparte": _txt(_col(d, "cliente")), "importe": pend,
                        "unidad": _u(_col(d, "empresa")), "factura": _txt(_col(d, "factura")),
@@ -255,6 +297,15 @@ def leer(archivo, cliente, hoy=None):
         pend = _col(d, "saldo pendiente")
         pend = _num(pend) if pend not in (None, "") else total - pagado
         if not venc or pend <= 0:
+            continue
+        if _agregado(d):
+            ignorados["Cuentas a Pagar"][0] += 1
+            ignorados["Cuentas a Pagar"][1] += pend
+            continue
+        motivo = _revisar(d)
+        if motivo:
+            revisar[("Cuentas a Pagar", motivo)][0] += 1
+            revisar[("Cuentas a Pagar", motivo)][1] += pend
             continue
         categoria = _txt(_col(d, "categoria"))
         deuda.append({"fecha": venc, "contraparte": _txt(_col(d, "proveedor")), "importe": pend,
@@ -274,6 +325,16 @@ def leer(archivo, cliente, hoy=None):
             continue
         tipo = _txt(_col(d, "tipo"))
         est = _txt(_col(d, "estado"))
+        if _agregado(d):
+            ignorados["Cartera de Cheques"][0] += 1
+            ignorados["Cartera de Cheques"][1] += abs(importe)
+            continue
+        motivo = _revisar(d)
+        if motivo:
+            lista = "Cheques propios" if _norm(tipo).startswith("propio") else "Cheques de terceros"
+            revisar[(lista, motivo)][0] += 1
+            revisar[(lista, motivo)][1] += abs(importe)
+            continue
         item = {"fecha": fecha, "importe": abs(importe), "estado": est.upper(),
                 "librador": _txt(_col(d, "beneficiario", "librador")),
                 "numero": _txt(_col(d, "nro")), "banco": _u(_col(d, "banco")),
@@ -298,6 +359,10 @@ def leer(archivo, cliente, hoy=None):
         importe = _num(_col(d, "importe"))
         est = _norm(_col(d, "estado"))
         if not venc or not importe or est == "pagado":
+            continue
+        if _agregado(d):
+            ignorados["Deuda Impositiva"][0] += 1
+            ignorados["Deuda Impositiva"][1] += abs(importe)
             continue
         x = {"fecha": venc, "unidad": _u(_col(d, "empresa")), "tipo": "IMPUESTO",
              "contraparte": "%s %s" % (_txt(_col(d, "impuesto")), _txt(_col(d, "periodo"))),
@@ -330,6 +395,10 @@ def leer(archivo, cliente, hoy=None):
                     tot = _col(d, "importe total")
                     tot = _num(tot) if tot not in (None, "") else _num(_col(d, "capital")) + _num(_col(d, "interes"))
                     if not venc or not tot or _norm(_col(d, "estado")) == "pagado":
+                        continue
+                    if _agregado(d):
+                        ignorados["Deuda Bancaria (cronograma)"][0] += 1
+                        ignorados["Deuda Bancaria (cronograma)"][1] += abs(tot)
                         continue
                     x = {"fecha": venc, "unidad": _u(_col(d, "empresa")), "tipo": "PRESTAMO",
                          "contraparte": "%s - %s cuota %s" % (_txt(_col(d, "banco")), _txt(_col(d, "linea")),
@@ -377,6 +446,22 @@ def leer(archivo, cliente, hoy=None):
         avisos.append("%d filas son AGREGADOS del cash viejo (proyeccion semanal), no detalle real. "
                       "Se reemplazan con los exports de Tango." % agregados)
 
+    for lista, (n, monto) in sorted(ignorados.items()):
+        avisos.append("%s: %d filas AGREGADO del cash viejo por %s se IGNORARON (perfil: "
+                      "agregados_del_cash_viejo = ignorar). El tablero dice que falta ese dato."
+                      % (lista, n, _m(monto)))
+
+    hallazgos_lector = []
+    for (lista, motivo), (n, monto) in sorted(revisar.items()):
+        avisos.append("%s: %d filas por %s marcadas REVISAR (%s). No se suman al tablero."
+                      % (lista, n, _m(monto), motivo))
+        hallazgos_lector.append({
+            "titulo": "%s: %s" % (lista, motivo),
+            "cuerpo": ("%d registros por %s quedaron afuera de todos los números de este tablero "
+                       "hasta que alguien de la empresa diga qué son. Están en la planilla, "
+                       "marcados “REVISAR”." % (n, _m(monto))),
+            "monto": monto})
+
     contrato = OrderedDict([
         ("contrato_version", "1.2"),
         ("cliente", nombre_cliente),
@@ -397,6 +482,7 @@ def leer(archivo, cliente, hoy=None):
         ("deuda_impositiva", impositiva),
         ("deuda_bancaria", {"lineas": lineas, "cuotas": cuotas}),
         ("referencias_del_cliente", {}),
+        ("hallazgos_del_lector", hallazgos_lector),
         ("avisos", avisos),
     ])
     wb.close()

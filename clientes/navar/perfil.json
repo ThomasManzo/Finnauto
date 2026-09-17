@@ -1,19 +1,21 @@
 {
   "_comentario": "Perfil del cliente NAVAR S.A. (yerbatera, Corrientes). Primer cliente real de finauto (12/09/2026). Todo lo especifico de este cliente vive aca y en catalogo.json; el codigo (nucleo/bots/simulador) no cambia entre clientes.",
   "_estado": "BORRADOR - armado con lo relevado en el descubrimiento del 12/09/2026. Lo marcado con _pendiente se confirma con el cliente.",
-
   "cliente": "NAVAR S.A.",
   "rubro": "yerbatera",
   "ubicacion": "Corrientes",
-
   "carpeta_drive_destino": "",
   "_ayuda_carpeta": "Carpeta LOCAL donde van a caer los extractos que bajen los bots. Vacia a proposito: los bots son la fase 2 (recien despues de que el cash y el tablero convenzan), y ademas van a correr en una maquina DEL CLIENTE, no en la de Thomas. Se completa ahi.",
-
   "timeout_segundos": 45,
   "modo_visible": false,
   "incluir_hoy": true,
   "backfill_dias_primera_vez": 0,
-
+  "vencido": {
+    "_ayuda": "Como trata el tablero lo que YA vencio. 'dia_1' (MAGA): entra a la curva hoy, porque las droguerias cortan manana. 'stock' (NAVAR, 17/09/2026): lo vencido es un stock que se muestra aparte; la curva lleva solo lo comprometido con fecha, y de la caja libre sale 'cuanto podes pagar y a quien'.",
+    "modo": "stock"
+  },
+  "agregados_del_cash_viejo": "ignorar",
+  "_ayuda_agregados": "'usar' o 'ignorar'. Con 'ignorar', las filas '(agregado cash viejo)' de Deuda Impositiva, Deuda Bancaria y las listas NO entran al tablero, y el tablero dice que falta ese dato (ARCA, cuotas). Los Movimientos proyectados de la planilla si se usan.",
   "bancos": {
     "_ayuda": "Los cinco bancos con los que opera NAVAR. TODOS en activo=false: no hay credenciales, no hay fichas de selectores, y no se toca ningun banco hasta que el cliente apruebe la fase 2. Galicia es el unico con adaptador ya escrito (bots/galicia), pero es el banco que MENOS usan.",
     "galicia": {
@@ -62,7 +64,6 @@
       "_nota": "Es el 'Frances'. Sin ficha todavia."
     }
   },
-
   "fuentes_de_datos": {
     "_ayuda": "De donde sale cada dato hoy. Es lo que define que herramienta lee que cosa. NO es configuracion del motor: es el mapa para no perderse.",
     "cashflow_semanal": {
@@ -83,6 +84,5 @@
       "lo_lee": "bots/ (fase 2)"
     }
   },
-
   "_ayuda_modos_de_prueba": "Para probar un bot: en el banco que quieras, poner 'solo_empresa_activa': true o 'solo_estas_empresas': ['Nombre Tal Cual']. Vacio + solo_empresa_activa false = PRODUCCION (todas)."
 }
