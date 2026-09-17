@@ -34,7 +34,7 @@
 - **Ojo:** dentro de la sesión remota, el Windows espera Ctrl donde vos usás Cmd (Ctrl+C / Ctrl+V).
 
 ### [ ] 1.5 Carpeta de Drive — C ✅ hecha
-- `NAVAR - Datos / Tango`. Crear adentro una subcarpeta por fecha (`2026-09-17`) cada vez que se suban archivos.
+- `NAVAR - Datos / Tango`. Crear adentro una subcarpeta por fecha (`2026-09-16`) cada vez que se suban archivos.
 
 ### [ ] 1.6 Pedidos por WhatsApp — T — ⏱ ___
 - **Al contador:** deuda ARCA por impuesto y período, planes vigentes, intimaciones; Ingresos Brutos Corrientes. (Texto ya escrito en la charla del 15/09.)
@@ -68,7 +68,7 @@ Desde Tango Live (o el informe equivalente del módulo). En cada consulta: botó
 - **Listo cuando:** 12 archivos (6 × 2 empresas), o los que existan, con nota de los que faltan.
 
 ### [ ] 2.3 Subir a Drive — T — ⏱ ___
-- **Cómo:** en el navegador de la notebook, drive.google.com con tu cuenta → `NAVAR - Datos / Tango / 2026-09-17` → arrastrar los archivos y las capturas. Cerrar sesión de Google en esa notebook al terminar (es una máquina de ellos).
+- **Cómo:** en el navegador de la notebook, drive.google.com con tu cuenta → `NAVAR - Datos / Tango / 2026-09-16` → arrastrar los archivos y las capturas. Cerrar sesión de Google en esa notebook al terminar (es una máquina de ellos).
 - **Para qué:** es el puente entre las dos máquinas; C los baja por el conector.
 - **Listo cuando:** C confirma que los ve y que no falta ningún campo. Si falta algo, se vuelve a exportar en la misma sesión.
 

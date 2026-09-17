@@ -26,8 +26,9 @@ Archivo → Descargar) a `privado/NAVAR - Cash Flow (export Sheets <fecha>).xlsx
 
 ```bash
 source .venv/bin/activate
-python lector/cash_limpio.py --archivo "clientes/navar/privado/NAVAR - Cash Flow (export Sheets 2026-09-12).xlsx" --cliente navar --hoy 2026-08-31
-python finauto.py --contrato clientes/navar/contrato_2026-08-31.json --cliente navar --salidas clientes/navar/privado/salidas
+python lector/tango.py --carpeta "clientes/navar/privado/tango/2026-09-16" --cliente navar --hoy 2026-09-16 --sheet "clientes/navar/privado/NAVAR - Cash Flow (export Sheets 2026-09-12).xlsx"
+python lector/cash_limpio.py --archivo "clientes/navar/privado/NAVAR - Cash Flow (con Tango 2026-09-16).xlsx" --cliente navar --hoy 2026-09-16
+python finauto.py --contrato clientes/navar/contrato_2026-09-16.json --cliente navar --salidas clientes/navar/privado/salidas
 python clientes/navar/herramientas/propuesta.py        # el PDF para la dueña, con capturas del tablero
 ```
 
@@ -46,18 +47,17 @@ USD 400/mes desde el mes 2, revisable a los 3 meses contra el acierto medido.
 La presentación (PDF de propuesta + vista rápida del tablero + la Sheet) fue
 lo que cerró. Primer peso cobrado de finauto.
 
-## Dónde estamos (16/09/2026, noche)
+## Dónde estamos (17/09/2026, mañana)
 
-- ✅ Contrato aceptado (15/09). Thomas es monotributista; factura desde el 16/09.
-- ✅ Sheet "NAVAR - Cash Flow" en Drive de Thomas, negativos en rojo, verificada.
-- ✅ Tablero con datos de NAVAR (lo vencido entra el día 1; vocabulario por cliente).
-- ✅ PDF de propuesta y vista rápida del tablero, entregados y aprobados.
-- ✅ Checklist vivo (link arriba) con 34 ítems; la carpeta `NAVAR - Datos/{Tango,Tablero}` en Drive.
-- ✅ `herramientas/tablero_web.gs` listo para pegar en la Sheet (tablero como URL privada).
-- ⏳ **Mañana 17/09: primera conexión por AnyDesk a la notebook de NAVAR** (Tango, exports, Drive).
-  Después: `lector/tango.py` contra el formato real → listas → primera lectura.
-- ⏳ Pedir a NAVAR: usuario SQL de solo lectura a Tango; usuario de consulta por banco y si pide token.
-- ⬜ Reorganización grande de carpetas del motor: recién después de la primera lectura, con tests antes y después.
+- ✅ **Primera conexión a la notebook de NAVAR hecha (16/09 a la noche).** Tango es **Delta 5 (25.01.000.4297)**, corre en el navegador contra `servidor:17000` (hay un servidor aparte en la red; la notebook es un cliente). Dos empresas: **NAVAR SA** (id 13, la asumimos "A") y **NAVAR SA Otros** ("AA"). Se entró con la cuenta nexo de Priscilla (autorizado por WhatsApp); el usuario propio de consulta sigue pendiente.
+- ✅ **Exports de Tango Live bajados** (15 archivos + SQL de cada consulta): cobranzas, pagos, cheques de terceros, cheques propios (solo A), saldos, movimientos, ventas. En `privado/tango/2026-09-16/` y en Drive `NAVAR - Datos/Tango`. Cuenta de Google de la empresa: `finanzasnavar@gmail.com` (creada por Thomas; falta pasar la clave a Priscilla).
+- ✅ **`lector/tango.py` escrito y corrido**: arma Cuentas a Cobrar / a Pagar / Cartera de Cheques con nombre. Deja `para_pegar_en_la_sheet_<fecha>.xlsx`, `resumen_tango_<fecha>.md` y una copia de la Sheet con las filas. Reglas: residuos ≤ $1 afuera; vencido antes de 2026 y cheques con fecha pasada → marcados **`REVISAR:`** (no suman al tablero, salen en Hallazgos).
+- ✅ **Tablero corrido con datos de Tango** (`privado/salidas/finauto.html`, capturas `tango_*.png`). ⚠️ **Números sin validar**: vencido con proveedores pasa de $206 M a **$432 M**. Ningún número sale a NAVAR sin que Karina lo confirme.
+- ✅ `herramientas/importar_tango.gs`: Apps Script que carga el `para_pegar` en la Sheet real pisando lo de Tango anterior y los "agregado cash viejo" (respeta las fórmulas). **Falta instalarlo** (T).
+- ⏳ Hallazgos grandes para la reunión con Karina: Tango **no se concilia** (CAJA CONTADO -$497 M; cheques propios "Al Cobro" desde 1995; $5.700 M de cheques históricos sin marcar); deuda vieja a cobrar $55 M / a pagar $187 M desde 2007; 88 proveedores con saldo. Ver `privado/tango/2026-09-16/resumen_tango_2026-09-16.md`.
+- ⏳ Automatización de Tango: Live expone una **API** (`GET Api/GetApiLiveQueryData/{process}/...`, headers `ApiAuthorization` + `Company: 13`; cobranzas = proceso 17952) y "Mis suscripciones" por mail. Con un token de un usuario propio, la ingesta diaria sale sin usuario SQL ni scraping.
+- ⬜ Pendiente de Thomas: factura del 50 %, WhatsApp a Priscilla (CUIT, stock, margen) y al contador (ARCA), pegar/importar Tango en la Sheet, validar con Karina, rediseño visual del tablero (dirección elegida: barra lateral oscura + números serif, ver `scratchpad/estilos/D_final`).
+- ⬜ Lo que todavía es "(agregado cash viejo)" en el tablero: Deuda Impositiva y cuotas bancarias. Eso sale del contador y de los bancos, no de Tango. La caja de hoy sigue siendo la del 31/08 (manual) hasta que haya extractos.
 
 **Decisiones que no hay que re-litigar:** no hay servidor pago; la notebook de NAVAR es el
 "servidor" (bots, Tango, finauto, Drive para escritorio) y Apps Script sirve el tablero.
@@ -87,6 +87,7 @@ python finauto.py --contrato clientes/navar/contrato_<fecha>.json --cliente nava
 | `documentos/ARREGLOS_ESQUELETO.md` | Los 8 arreglos al esqueleto del cash nuevo, con celda y fórmula. Para pasarle a quien lo edite. |
 | `herramientas/migrar_cash_viejo.py` | Convierte el cash viejo (6 semanas reales + 8 proyectadas) en filas para pegar en el esqueleto nuevo. Deja `privado/datos_migrados_del_cash_viejo.xlsx`. Se corre con `python clientes/navar/herramientas/migrar_cash_viejo.py`. |
 | `herramientas/propuesta.py` | Genera el PDF para la dueña con los números del contrato y las capturas de `privado/capturas/`. |
+| `herramientas/importar_tango.gs` | Apps Script para la Sheet: menú "finauto → Importar Tango". Busca en Drive el último `para_pegar_en_la_sheet_*.xlsx`, borra las filas de Tango anteriores y las "agregado", pega las nuevas sin tocar las fórmulas. |
 | `herramientas/tablero_web.gs` | El Apps Script que sirve el tablero en una URL privada de Google (lee `NAVAR - Datos/Tablero/finauto.html` de Drive, lista de mails permitidos, banda si tiene más de 48 hs). Se pega en la Sheet → Extensiones → Apps Script. |
 | `herramientas/arreglar_cash_v2.py` | Toma el cash que devolvió Cowork (`privado/NAVAR_-_Cash_Flow_Limpio.xlsx`), regenera el consolidado con semanas lunes-domingo, vacía los ejemplos y mueve los proyectados a las listas. Deja **`privado/NAVAR - Cash Flow Limpio v2.xlsx`, que es la versión buena**. |
 
