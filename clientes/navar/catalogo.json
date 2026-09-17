@@ -4,17 +4,21 @@
   "_como_leer_dias_tolerancia": "0 = no se mueve (rebota, te embargan, te cortan). N = se puede correr N dias sin consecuencia. null = todavia no se pregunto.",
   "unidades": {
     "_ayuda": "Valor de la columna EMPRESA. En la planilla aparecen como 'A' y 'AA' (Cobranza A / Cobranza AA, Caja AA, Proveedores AA). Son las dos empresas que tienen en Tango.",
-    "_pendiente": "¿Que razon social es 'A' y cual es 'AA'? ¿Las dos son NAVAR S.A. o hay otra sociedad? ¿Se pasan plata entre ellas (movimientos internos)?",
+    "_pendiente": "Confirmado 16/09: las dos son la MISMA razon social con dos juegos de libros en Tango ('NAVAR SA' y 'NAVAR SA Otros'). Falta que Karina diga cual es A y cual AA en la planilla (supuesto: A = NAVAR SA). ¿Se pasan plata entre ellas?",
     "valores": [
       {
         "id": "A",
-        "nombre": "Empresa A (a confirmar)",
-        "rubro": "yerbatera"
+        "nombre": "NAVAR SA (empresa 13 en Tango)",
+        "rubro": "yerbatera",
+        "tango": "NAVAR SA",
+        "_supuesto": "A = 'NAVAR SA' (la principal). Confirmar con Karina."
       },
       {
         "id": "AA",
-        "nombre": "Empresa AA (a confirmar)",
-        "rubro": "yerbatera"
+        "nombre": "NAVAR SA Otros (en Tango)",
+        "rubro": "yerbatera",
+        "tango": "NAVAR SA Otros",
+        "_supuesto": "AA = 'NAVAR SA Otros'. Confirmar con Karina."
       }
     ]
   },
@@ -353,6 +357,19 @@
     "tiene_refi": false,
     "nota_ritmo": "Una cobranza grande de un cliente y treinta dias de despachos parejos no es lo mismo, aunque sumen igual.",
     "nota_a_cobrar": "Las facturas a clientes son cuentas a cobrar: plata ya vendida y no cobrada. Recien es caja el dia que se acredita (o el dia de cobro del cheque, si pagan con cheque).",
-    "no_sabe_cobranza": "<b>Cuánto y cuándo entra la cobranza proyectada por kg.</b> Es el 67% de los ingresos previstos y es una estimacion: hasta que no haya historial de cobros reales por cliente, es el numero menos firme del tablero."
+    "no_sabe_cobranza": "<b>Cuánto y cuándo entra la cobranza proyectada por kg.</b> Es el 67% de los ingresos previstos y es una estimacion: hasta que no haya historial de cobros reales por cliente, es el numero menos firme del tablero.",
+    "comprobante": "factura"
+  },
+  "tango": {
+    "_ayuda": "Lo que usa lector/tango.py para convertir los exports de Tango Live en filas de la Sheet. Tango no tiene la 'Categoria' de la planilla: se asigna aca.",
+    "categoria_pagos_por_empresa": {
+      "_ayuda": "Categoria (columna de 'Cuentas a Pagar' de la Sheet) que reciben las facturas de proveedores de cada empresa cuando el proveedor no esta en categoria_por_proveedor. Tiene que existir en mapa_categorias.egresos.",
+      "A": "Proveedores MP y Logist.",
+      "AA": "Proveedores AA"
+    },
+    "categoria_por_proveedor": {
+      "_ayuda": "Excepciones: codigo de proveedor de Tango (o razon social en MAYUSCULAS) -> categoria de la planilla. Ej: la cooperativa electrica no es materia prima. Vacio a proposito: se llena con Karina, mirando el export de pagos."
+    },
+    "version_tango": "Delta 5 (25.01.000.4297), web en servidor:17000. Live tiene API: GET Api/GetApiLiveQueryData/{process}/... con headers ApiAuthorization (token) y Company (13 = NAVAR SA). Proceso de 'Cobranzas a realizar' = 17952."
   }
 }
