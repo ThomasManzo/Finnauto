@@ -55,6 +55,32 @@ def _unidad_real(u):
     return None if u == GRUPO else u
 
 
+# ---------------------------------------------------------------- el modo del vencido
+# DOS FORMAS DE TRATAR LO QUE YA VENCIO.
+#
+# "dia_1" (MAGA): lo vencido entra a la curva HOY. Las droguerias cortan la
+# compra manana si no cobran, asi que la deuda vencida es una salida inmediata.
+#
+# "stock" (NAVAR, Thomas 17/09/2026): "esta gente tiene deuda hace mucho
+# tiempo, no tiene sentido que la paguen toda de una. Lo mas facil seria
+# calcular las salidas proyectadas y cuanto te queda de caja libre vs la deuda,
+# para ver cuanto y que podes pagar sin comprometer las obligaciones futuras".
+# La curva lleva solo lo comprometido con fecha; lo vencido es un STOCK que se
+# muestra aparte, y de la caja libre sale "cuanto podes pagar y a quien".
+#
+# Se elige en clientes/<cliente>/perfil.json -> "vencido": {"modo": "stock"}.
+DIA_1, STOCK = "dia_1", "stock"
+
+
+def modo_vencido(cliente):
+    try:
+        from nucleo import config as _config
+        perfil = _config.cargar_perfil(BASE_REPO, cliente)
+        return (perfil.get("vencido") or {}).get("modo") or DIA_1
+    except Exception:
+        return DIA_1
+
+
 def kpis(contrato, unidad, dias=7):
     u = _unidad_real(unidad)
     r = D.retiro(contrato, dias=dias, unidad=u)
@@ -71,9 +97,9 @@ def kpis(contrato, unidad, dias=7):
     }
 
 
-def puente(contrato, unidad, dias):
+def puente(contrato, unidad, dias, modo=DIA_1):
     p = D.puente(contrato, dias=dias, unidad=_unidad_real(unidad),
-                 con_droguerias=D.VENCIDO)
+                 con_droguerias=D.NADA if modo == STOCK else D.VENCIDO)
     return {
         "caja": p["caja"],
         "entra": [{"nombre": n, "monto": v, "seguro": s} for n, v, s in p["cobros"]],
@@ -363,6 +389,14 @@ def hallazgos(contrato):
                        "como segura en ningún número de este informe: si entra, "
                        "todo mejora; darla por hecha sería engañarse."),
             "monto": venc})
+
+    # 5. Lo que el lector dejó afuera a propósito (filas "REVISAR:" de la planilla:
+    #    deuda vieja, cheques que Tango sigue mostrando pendientes, etc.). Viene
+    #    armado desde el lector porque solo él sabe el motivo; acá solo se muestra.
+    for h in contrato.get("hallazgos_del_lector") or []:
+        if h.get("titulo"):
+            out.append({"titulo": esc(h["titulo"]), "cuerpo": esc(h.get("cuerpo") or ""),
+                        "monto": h.get("monto")})
     return out
 
 
@@ -656,7 +690,7 @@ def _grupo_de(nombre, tipo=None):
     return "otros"
 
 
-def proyeccion(contrato, unidad, hoy, dias=45, con_intercompany=False):
+def proyeccion(contrato, unidad, hoy, dias=45, con_intercompany=False, modo=DIA_1):
     """La caja dia por dia, CON LO QUE ESTA CARGADO — sin estimar nada.
 
     ERROR REAL (06/09/2026). Thomas: *"¿cómo puede ser que Speed en el cash dé
@@ -725,6 +759,18 @@ def proyeccion(contrato, unidad, hoy, dias=45, con_intercompany=False):
 
     # --- lo que sale, item por item para poder patearlo
     items = []
+    # En modo "stock" lo vencido no entra a la curva: se junta aca y se muestra aparte.
+    stock = []
+
+    def _vencido(f, cp, v, tipo):
+        if modo == STOCK:
+            stock.append({"fecha": f, "contraparte": cp, "monto": v, "tipo": tipo})
+            return
+        _sumar(hoy, "vencido", v)
+        items.append({"id": "vencido|" + f + "|" + cp, "grupo": "vencido", "fecha": hoy,
+                      "concepto": "Vencido el " + f[8:10] + "/" + f[5:7] + " · " + cp,
+                      "monto": v, "estimado": False})
+
     for x in contrato.get("egresos_cashflow", []):
         if not _mia(x) or x.get("intercompany"):
             continue
@@ -737,10 +783,7 @@ def proyeccion(contrato, unidad, hoy, dias=45, con_intercompany=False):
         # impositiva en mora, cuota bancaria no pagada) es vencido: entra hoy.
         # Los demas con fecha pasada ya se pagaron y no se tocan.
         if f and f < hoy and x.get("vencido_pendiente"):
-            _sumar(hoy, "vencido", v)
-            items.append({"id": "vencido|" + f + "|" + cp, "grupo": "vencido", "fecha": hoy,
-                          "concepto": "Vencido el " + f[8:10] + "/" + f[5:7] + " · " + cp,
-                          "monto": v, "estimado": False})
+            _vencido(f, cp, v, x.get("tipo") or "")
             continue
         if not _dentro(f):
             continue
@@ -797,11 +840,8 @@ def proyeccion(contrato, unidad, hoy, dias=45, con_intercompany=False):
         f = x.get("fecha") or ""
         v = float(x.get("importe") or 0)
         if f and f < hoy and v > 0 and not x.get("es_credito"):
-            # Vencido e impago: entra HOY, en su propio grupo.
-            _sumar(hoy, "vencido", v)
-            items.append({"id": "vencido|" + f + "|" + cp, "grupo": "vencido", "fecha": hoy,
-                          "concepto": "Vencido el " + f[8:10] + "/" + f[5:7] + " · " + cp,
-                          "monto": v, "estimado": False})
+            # Vencido e impago: entra HOY en su propio grupo (dia_1) o al stock (stock).
+            _vencido(f, cp, v, "PROVEEDOR")
             continue
         if not _dentro(f) or v <= 0:
             continue
@@ -835,13 +875,88 @@ def proyeccion(contrato, unidad, hoy, dias=45, con_intercompany=False):
         f += datetime.timedelta(days=1)
 
     items.sort(key=lambda i: (i["grupo"], i["fecha"], -i["monto"]))
+    por_tipo = defaultdict(float)
+    for x in stock:
+        por_tipo["proveedores" if x["tipo"] == "PROVEEDOR" else
+                 "impuestos" if x["tipo"] == "IMPUESTO" else
+                 "bancos" if x["tipo"] == "PRESTAMO" else "otros"] += x["monto"]
     return {"desde": hoy, "hasta": hasta, "caja_inicial": caja, "dias": out,
+            "modo": modo,
+            "vencido_stock": {"total": sum(x["monto"] for x in stock),
+                              "por_tipo": dict(por_tipo), "items": stock},
             "items": items,
             "grupos": [{"id": g, "nombre": n, "nota": t} for g, n, t in PATEABLES],
             # (el nombre del grupo "droguerias" lo traduce el HTML con D.vocab)
             "total_entra": sum(x["entra"] for x in out),
             "total_sale": sum(sum(x["sale"].values()) for x in out),
             "sin_estimar": True}
+
+
+def capacidad_de_pago(contrato, unidad, hoy, cliente, ventanas=VENTANAS):
+    """Modo "stock": cuanto del vencido se puede pagar sin comprometer lo que viene.
+
+    Para cada ventana: la curva de caja con SOLO lo comprometido (sin vencido);
+    el punto mas bajo de esa curva es la caja libre -- lo que se puede sacar hoy
+    sin que ningun dia de la ventana quede en rojo. Con eso se paga vencido en
+    orden de atraso (el que hace mas que espera, primero), hasta que se acaba.
+
+    Es la pregunta de Thomas (17/09/2026): "cuanto y que podes pagar sin
+    comprometer las obligaciones futuras". No es un consejo de a quien
+    postergar: es cuanto hay, y hasta donde llega.
+    """
+    p = proyeccion(contrato, unidad, hoy, dias=max(ventanas), modo=STOCK)
+    provs = proveedores(contrato, unidad, cliente, hoy)
+    # Vencido por proveedor, ordenado por atraso (mas viejo primero).
+    cola = sorted([x for x in provs if x["vencido"] > 0],
+                  key=lambda x: -(x["atraso"] or 0))
+    vencido_prov = sum(x["vencido"] for x in cola)
+    out = {}
+    for v in ventanas:
+        caja, minimo, dia_min = p["caja_inicial"], p["caja_inicial"], hoy
+        sale_total = entra_total = 0.0
+        for x in p["dias"][:v]:
+            sale = sum(x["sale"].values())
+            caja += x["entra"] - sale
+            entra_total += x["entra"]
+            sale_total += sale
+            if caja < minimo:
+                minimo, dia_min = caja, x["fecha"]
+        libre = max(0.0, minimo)
+        resto, paga = libre, []
+        for x in cola:
+            if resto <= 0:
+                break
+            m = min(resto, x["vencido"])
+            paga.append({"nombre": x["nombre"], "monto": m, "completo": m >= x["vencido"] - 0.5,
+                         "atraso": x["atraso"], "vencido": x["vencido"]})
+            resto -= m
+        out[str(v)] = {
+            "libre": libre, "minimo": minimo, "dia_minimo": dia_min,
+            "entra": entra_total, "sale": sale_total,
+            "paga": paga, "pagado": libre - resto,
+            "queda_vencido": vencido_prov - (libre - resto),
+            "vencido_proveedores": vencido_prov,
+            "vencido_total": p["vencido_stock"]["total"],
+            "vencido_por_tipo": p["vencido_stock"]["por_tipo"],
+        }
+    return out
+
+
+def faltantes(contrato):
+    """Lo que el tablero no tiene cargado y tendria que tener. Se dice, no se disimula."""
+    out = []
+    if not contrato.get("deuda_impositiva"):
+        out.append("<b>La deuda con ARCA e Ingresos Brutos.</b> No está cargada: ni los vencimientos "
+                   "del mes ni los planes de pago. Es el pedido al contador.")
+    if not (contrato.get("deuda_bancaria") or {}).get("cuotas"):
+        out.append("<b>Las cuotas de los préstamos bancarios.</b> No están cargadas: cuánto, cuándo "
+                   "y en qué banco. Sale de los contratos o de cada home banking.")
+    fs = (contrato.get("_origen") or {}).get("fecha_saldos")
+    hoy = D.hoy_de(contrato)
+    if fs and fs < hoy:
+        out.append("<b>La caja de hoy es la del %s.</b> Los saldos de banco se cargaron ese día; "
+                   "hasta que haya extractos, la caja es esa." % (fs[8:10] + "/" + fs[5:7]))
+    return out
 
 
 def memoria_del_cliente(cliente):
@@ -928,6 +1043,8 @@ VOCAB_DEFAULT = {
     "nota_ritmo": "Un cobro grande un dia y treinta dias parejos no es lo mismo, aunque sumen igual.",
     "nota_a_cobrar": "Lo facturado y no cobrado es cuenta a cobrar: es caja recien cuando entra.",
     "no_sabe_cobranza": "",
+    "no_sabe_extra": "",
+    "comprobante": "resumen",
 }
 
 
@@ -946,6 +1063,7 @@ def vocabulario(cliente):
 def armar(contrato, cliente="maga"):
     hoy = D.hoy_de(contrato)
     vocab = vocabulario(cliente)
+    modo = modo_vencido(cliente)
     us = POS.unidades(contrato)
     unidades = [GRUPO] + us if len(us) > 1 else us
 
@@ -964,7 +1082,7 @@ def armar(contrato, cliente="maga"):
     for u in unidades:
         datos[u] = {
             "kpis": kpis(contrato, u),
-            "puente": puente(contrato, u, 45),
+            "puente": puente(contrato, u, 45, modo),
             "proveedores": proveedores(contrato, u, cliente, hoy),
             "salidas": salidas(contrato, u, hoy),
             "gastos": gastos_del_periodo(contrato, u, hoy, cliente=cliente),
@@ -972,9 +1090,11 @@ def armar(contrato, cliente="maga"):
             "retiro": retiro_por_ventana(contrato, u),
             "ingresos_dia": ingresos_por_dia(contrato, u, hoy),
             "a_cobrar": a_cobrar(contrato, u, hoy),
-            "proyeccion": proyeccion(contrato, u, hoy),
+            "proyeccion": proyeccion(contrato, u, hoy, modo=modo),
             # El escenario "y ademas le pago a la otra empresa del grupo".
-            "proyeccion_ic": proyeccion(contrato, u, hoy, con_intercompany=True),
+            "proyeccion_ic": proyeccion(contrato, u, hoy, con_intercompany=True, modo=modo),
+            # Modo stock: cuanto del vencido se puede pagar en cada ventana.
+            "capacidad": capacidad_de_pago(contrato, u, hoy, cliente) if modo == STOCK else None,
             # El plan minimo para cada ventana que ofrece el timeline.
             # Se precalculan porque el HTML no calcula plata: mover el slider
             # cambia de plan, no lo recalcula.
@@ -991,6 +1111,8 @@ def armar(contrato, cliente="maga"):
         "ventanas": VENTANAS,
         "datos": datos,
         "hallazgos": hallazgos(contrato),
+        "faltantes": faltantes(contrato),
+        "modo_vencido": modo,
         "memoria": memoria_del_cliente(cliente),
         # LO QUE DIJIMOS LA VEZ PASADA, contra lo que pasa hoy.
         # Es lo que hace que la segunda visita valga mas que la primera.

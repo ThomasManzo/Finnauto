@@ -42,6 +42,7 @@ import os
 import sys
 import json
 import argparse
+import datetime
 
 BASE_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_REPO not in sys.path:
@@ -51,100 +52,151 @@ from dashboard import datos as DATOS
 
 
 CSS = """
-/* TEMA CLARO.
+/* EL ESTILO (17/09/2026).
  *
- * Thomas, 06/09/2026: "el color tiene que ser claro de fondo, algo mucho mas
- * limpio, no que parezca que vas a hackear la NASA".
+ * Thomas, 16/09: "me gustaria ver distintos estilos que se vea mas profesional,
+ * mas software y no tanto un tablero hecho con Power BI". Se probaron tres
+ * direcciones y eligio una mezcla: barra lateral oscura con la navegacion,
+ * papel calido de fondo, serif en titulos y en los numeros grandes, monoespaciada
+ * en las cifras, y LINEAS en vez de cajas con sombra. Los mockups quedaron en
+ * scratchpad/estilos (A_ledger, B_producto, C_relato, D_final = el elegido).
  *
- * Tenia razon y el error era de encuadre: yo lo habia hecho oscuro copiando su
- * tablero interno, que es una herramienta suya. Esto es otra cosa -- se le
- * muestra al dueno de una cadena, se proyecta, se imprime. Ahi lo oscuro se ve
- * a la defensiva y, en un proyector, directamente no se lee.
+ * Sigue valiendo lo del 06/09: fondo claro, "no que parezca que vas a hackear la
+ * NASA". La barra oscura es un ancla, no un tema oscuro.
+ *
+ * TIPOGRAFIAS. Se piden a Google Fonts; si no hay internet (una reunion, un
+ * proyector) caen a Georgia / Menlo / Helvetica, que se parecen bastante. El
+ * tablero se tiene que ver igual de bien sin red: por eso las medidas no
+ * dependen de la fuente.
  */
 :root{
-  --fondo:#F6F8F7; --panel:#FFFFFF; --panel2:#F1F4F3; --linea:#E2E8E5;
-  --tinta:#152119; --suave:#5C6B63; --tenue:#8B978F;
-  --azul:#1B6FD6; --verde:#0F8A57; --rojo:#C0392B; --naranja:#D97A1F;
-  --violeta:#7A5AF0; --amarillo:#B07D08;
-  --verde-piso:#E6F5EE; --rojo-piso:#FBECEA; --ambar-piso:#FCF3DF;
+  --fondo:#F7F5EF; --panel:#F7F5EF; --panel2:#EFEDE6; --linea:#E1DDD2;
+  --tinta:#1B1A17; --suave:#6B685F; --tenue:#9B978C;
+  --lado:#1C1B18; --lado-texto:#B8B4A8; --lado-tenue:#7E7B72; --lado-linea:#2E2C27; --lado-on:#2A2824;
+  --azul:#1B1A17; --verde:#2F6B45; --rojo:#B4321F; --naranja:#B97A2A;
+  --violeta:#5B5F8A; --amarillo:#8E6A12; --oro:#C9A64A;
+  --verde-piso:#E8EFE6; --rojo-piso:#F6E6E2; --ambar-piso:#F3ECD9;
+  --serif:"Newsreader",Georgia,"Times New Roman",serif;
+  --sans:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+  --mono:"IBM Plex Mono",Menlo,Consolas,monospace;
 }
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--fondo);color:var(--tinta)}
-body{font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-  -webkit-font-smoothing:antialiased}
-.wrap{max-width:1120px;margin:0 auto;padding:26px 20px 90px}
+body{font:14.5px/1.5 var(--sans);-webkit-font-smoothing:antialiased}
+
+/* ---- la barra lateral + el contenido */
+.app{display:grid;grid-template-columns:248px minmax(0,1fr);min-height:100vh;
+  background:linear-gradient(to right,var(--lado) 248px,var(--fondo) 248px)}
+.lado{background:var(--lado);color:var(--lado-texto);padding:30px 22px;display:flex;
+  flex-direction:column;gap:26px;position:sticky;top:0;height:100vh}
+.logo{display:flex;align-items:center;gap:9px;font:600 22px var(--serif);color:#F3F0E8;
+  letter-spacing:-.01em}
+.logo i{width:8px;height:8px;border-radius:99px;background:var(--rojo)}
+.lado hr{border:0;border-top:1px solid var(--lado-linea);margin:0}
+.cliente{font:500 11px var(--mono);letter-spacing:.12em;color:var(--lado-tenue)}
+.cliente b{display:block;font:600 19px var(--serif);color:#F3F0E8;letter-spacing:0;margin-top:6px}
+.pills{display:flex;font:500 11px var(--mono);letter-spacing:.08em}
+.pill{flex:1;padding:7px 0;border:1px solid var(--lado-linea);color:var(--lado-texto);
+  background:none;cursor:pointer;font-family:inherit;font-size:inherit;letter-spacing:inherit}
+.pill+.pill{border-left:0}
+.pill:hover{color:#F3F0E8}
+.pill[aria-pressed="true"]{background:#F3F0E8;color:var(--lado);border-color:#F3F0E8}
+.tabs{display:flex;flex-direction:column;gap:2px}
+.tab{display:flex;align-items:center;gap:12px;padding:10px 12px;border:0;border-radius:7px;
+  background:none;color:var(--lado-texto);font:500 14.5px var(--sans);text-align:left;
+  cursor:pointer;white-space:nowrap}
+.tab svg{width:17px;height:17px;flex:none;stroke:currentColor;fill:none;stroke-width:1.6;
+  stroke-linecap:round;stroke-linejoin:round}
+.tab:hover{color:#F3F0E8}
+.tab[aria-selected="true"]{background:var(--lado-on);color:#F3F0E8}
+.lado .pie{margin-top:auto;font:400 11.5px/1.9 var(--mono);color:var(--lado-tenue)}
+.lado .pie b{color:var(--lado-texto);font-weight:500}
+
+.wrap{padding:40px 48px 64px;max-width:1240px}
 .cab{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
-h1{font-size:25px;margin:0;letter-spacing:-.02em}
-.cab .meta{font-size:12.5px;color:var(--tenue);text-align:right;line-height:1.7}
-.sub{color:var(--suave);font-size:13.5px;margin:4px 0 0}
-.pills{display:flex;gap:8px;flex-wrap:wrap;margin:20px 0 4px}
-.pill{background:var(--panel);border:1px solid var(--linea);color:var(--suave);
-  padding:8px 16px;border-radius:9px;cursor:pointer;font-size:14px;font-weight:600;
-  font-family:inherit}
-.pill:hover{color:var(--tinta);border-color:#C8D3CD}
-.pill[aria-pressed="true"]{background:var(--azul);border-color:var(--azul);color:#fff}
-.tabs{display:flex;gap:2px;margin:22px 0 18px;border-bottom:1px solid var(--linea);
-  overflow-x:auto}
-.tab{background:none;border:0;border-bottom:2px solid transparent;color:var(--tenue);
-  padding:11px 16px;cursor:pointer;font-size:14px;font-weight:600;white-space:nowrap;
-  font-family:inherit}
-.tab:hover{color:var(--tinta)}
-.tab[aria-selected="true"]{color:var(--azul);border-bottom-color:var(--azul)}
-h2{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--tenue);
-  margin:30px 0 12px;font-weight:700}
-h2:first-child{margin-top:6px}
-.card{background:var(--panel);border:1px solid var(--linea);border-radius:12px;padding:20px;
-  box-shadow:0 1px 2px rgba(16,32,24,.04)}
-.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
-.kpi .et{font-size:12.5px;color:var(--suave)}
-.kpi .n{font-size:27px;font-weight:750;letter-spacing:-.02em;margin:7px 0 3px;
+h1{font:600 34px/1 var(--serif);margin:0;letter-spacing:-.01em}
+.sub{color:var(--suave);font-size:13.5px;margin:10px 0 0}
+.cab .meta{font:400 12px/1.9 var(--mono);color:var(--suave);text-align:right}
+.cab .meta b{color:var(--tinta);font-weight:500}
+.cab .meta i{display:inline-block;width:7px;height:7px;border-radius:99px;background:var(--verde);
+  margin-right:7px;vertical-align:1px}
+
+/* ---- secciones: titulos serif, bloques sin caja */
+h2{font:600 21px/1.2 var(--serif);color:var(--tinta);margin:44px 0 14px;letter-spacing:-.01em;
+  text-transform:none}
+h2:first-child{margin-top:34px}
+.card{background:none;border:0;border-radius:0;padding:0;box-shadow:none}
+.card+.card{margin-top:22px}
+.card[style*="border-left"]{padding-left:16px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:0;
+  margin-top:34px;border-top:1px solid var(--tinta);border-bottom:1px solid var(--linea)}
+.kpi{padding:24px 28px 26px 0}
+.kpis .card+.card{margin-top:0}
+.kpi+.kpi{border-left:1px solid var(--linea);padding-left:28px}
+.kpi .et{font-size:13px;color:var(--suave)}
+.kpi .n{font:600 46px/1 var(--serif);letter-spacing:-.02em;margin:12px 0 8px;
   font-variant-numeric:tabular-nums}
-.kpi .pie{font-size:11.5px;color:var(--tenue)}
-.kpi.malo{background:var(--rojo-piso);border-color:#EFC9C3}
+.kpi .pie{font-size:12.5px;color:var(--tenue)}
+.kpi.malo{background:none;border-color:var(--linea)}
 .kpi.malo .n{color:var(--rojo)}
-.kpi.bien .n{color:var(--verde)}
-table{width:100%;border-collapse:collapse;font-size:14px}
-th{text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.05em;
-  color:var(--tenue);font-weight:700;padding:0 0 10px}
-th:first-child,td:first-child{text-align:left}
-td{text-align:right;padding:11px 0;border-top:1px solid var(--linea);
+.kpi.bien .n{color:var(--tinta)}
+
+/* ---- tablas: encabezado mono, lineas finas, cifras mono */
+table{width:100%;border-collapse:collapse;font-size:14.5px}
+th{text-align:right;font:500 11px var(--mono);letter-spacing:.1em;text-transform:uppercase;
+  color:var(--tenue);padding:0 0 10px 18px;border-bottom:1px solid var(--tinta)}
+th:first-child,td:first-child{text-align:left;padding-left:0}
+table.texto td:nth-child(2),table.texto th:nth-child(2){text-align:left}
+td{text-align:right;padding:11px 0 11px 18px;border-top:0;border-bottom:1px solid var(--linea);
   font-variant-numeric:tabular-nums}
-tr.tot td{font-weight:700;border-top:2px solid var(--tinta)}
+td:last-child,th:last-child{font-family:var(--mono);font-size:14px}
+tr.tot td{font-weight:600;border-top:1px solid var(--tinta);border-bottom:2px solid var(--tinta)}
 .pos{color:var(--verde)} .neg{color:var(--rojo)}
-.chip{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:99px}
+.chip{display:inline-block;font:500 11px var(--mono);letter-spacing:.04em;padding:3px 8px;
+  border-radius:4px}
 .chip.ok{background:var(--verde-piso);color:var(--verde)}
 .chip.mal{background:var(--rojo-piso);color:var(--rojo)}
 .chip.medio{background:var(--ambar-piso);color:var(--amarillo)}
-.barra{height:10px;border-radius:99px;background:var(--azul);min-width:3px}
-.nota{font-size:12.5px;color:var(--tenue);margin:12px 0 0}
-.hall{border-left:3px solid var(--amarillo)}
-.hall .t{font-weight:700;font-size:16px;margin-bottom:6px}
-.hall .m{font-size:22px;font-weight:750;color:var(--amarillo);margin-top:10px;
+.barra{height:10px;border-radius:0;background:var(--tinta);min-width:3px}
+.nota{font-size:12.5px;color:var(--tenue);margin:14px 0 0;max-width:72ch}
+.hall{border-left:3px solid var(--oro);padding:4px 0 4px 16px}
+.hall .t{font:600 18px var(--serif);margin-bottom:6px}
+.hall .m{font:500 22px var(--mono);color:var(--amarillo);margin-top:10px;
   font-variant-numeric:tabular-nums}
-.hall + .hall{margin-top:12px}
+.hall + .hall{margin-top:22px}
 ul.limpia{margin:0;padding-left:19px;color:var(--suave);font-size:14px}
 ul.limpia li{margin-bottom:8px}
 .envuelve{overflow-x:auto}
 svg{display:block;width:100%;height:auto;overflow:visible}
-.leyenda{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--suave);margin-bottom:14px}
-.leyenda i{width:10px;height:10px;border-radius:3px;display:inline-block;margin-right:6px;
-  vertical-align:-1px}
-.ejeY{fill:var(--tenue);font-size:10px}
-.ejeX{fill:var(--tenue);font-size:9.5px}
+.leyenda{display:flex;gap:22px;flex-wrap:wrap;font-size:12.5px;color:var(--suave);margin-bottom:16px}
+.leyenda i{width:9px;height:9px;display:inline-block;margin-right:7px;vertical-align:-1px}
+.ejeY{fill:var(--tenue);font-size:10px;font-family:var(--mono)}
+.ejeX{fill:var(--tenue);font-size:10px;font-family:var(--mono)}
 .rejilla{stroke:var(--linea);stroke-width:1}
 .resumen{font-size:11.5px;color:var(--tenue);margin-top:3px}
 .resumen b{color:var(--rojo);font-weight:600}
-select{background:var(--panel);border:1px solid var(--linea);color:var(--tinta);
-  border-radius:7px;padding:5px 8px;font-family:inherit;font-size:12.5px}
-select:focus{outline:none;border-color:var(--azul)}
+select{background:#fff;border:1px solid var(--linea);color:var(--tinta);
+  border-radius:4px;padding:5px 8px;font-family:inherit;font-size:12.5px}
+select:focus{outline:none;border-color:var(--tinta)}
+input[type=text],input[type=number]{background:#fff;border:1px solid var(--linea);border-radius:4px;
+  font:14px var(--mono);color:var(--tinta)}
 .endosado{background:var(--verde-piso)}
-button.mini{background:var(--panel2);border:1px solid var(--linea);border-radius:7px;
-  padding:5px 10px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;
-  color:var(--suave)}
-button.mini:hover{color:var(--tinta)}
+input[type=range]{accent-color:var(--tinta)}
+input[type=checkbox]{accent-color:var(--tinta)}
+button.mini{background:#fff;border:1px solid var(--linea);border-radius:4px;
+  padding:5px 10px;font:500 11.5px var(--mono);cursor:pointer;color:var(--suave)}
+button.mini:hover{color:var(--tinta);border-color:var(--tinta)}
 [hidden]{display:none!important}
-@media (max-width:760px){.kpis{grid-template-columns:1fr}}
-@media print{body{background:#fff}.card{break-inside:avoid;box-shadow:none}}
+@media (max-width:900px){
+  .app{grid-template-columns:1fr;background:var(--fondo)}
+  .lado{position:static;height:auto;padding:18px 16px;gap:14px}
+  .tabs{flex-direction:row;flex-wrap:wrap}
+  .lado .pie{margin-top:0}
+  .wrap{padding:24px 16px 48px}
+  .kpis{grid-template-columns:1fr}
+  .kpi+.kpi{border-left:0;border-top:1px solid var(--linea);padding-left:0}
+}
+@media print{.lado{position:static;height:auto}.card{break-inside:avoid}}
 """
 
 JS = r"""
@@ -199,7 +251,9 @@ function cercana(claves, v){
 // No es purismo: el archivo tiene que abrirse en una reunion sin internet.
 // Cualquier <script src> de un CDN es una forma de que el tablero aparezca
 // vacio justo cuando importa. Un grafico de barras son cuatro rectangulos.
-var PALETA = ['#4C82F7', '#31C48D', '#F79552', '#9B7DF7', '#E8C14A', '#F26B6B'];
+// Tinta, gris, oro, y despues los tonos que hagan falta. Sin azules ni verdes
+// chillones: el unico color fuerte del tablero es el rojo de lo vencido.
+var PALETA = ['#1B1A17', '#8E8A7E', '#C9A64A', '#5B5F8A', '#B97A2A', '#B4321F'];
 
 function svgEl(t, attrs){
   var e = document.createElementNS('http://www.w3.org/2000/svg', t);
@@ -392,6 +446,7 @@ function desplegable(id, cabecera, contenido){
   var cab = el('div');
   cab.style.cssText = 'display:flex;align-items:center;gap:2px';
   cab.appendChild(flecha);
+  cabecera.style.flex = '1';
   cab.appendChild(cabecera);
   b.appendChild(cab);
   b.onclick = function(){
@@ -454,7 +509,7 @@ function bajaVencido(nombre, monto){
 var UNIDAD = D.unidades[0], SOLAPA = 'posicion', VENTANA = String(D.ventanas[0]);
 // Las palabras con las que el tablero le habla a ESTE cliente (catalogo.vocabulario).
 var V = D.vocab || {proveedor:'proveedor', proveedores:'proveedores', Proveedor:'Proveedor',
-                    nota_vencido:'con proveedores', tiene_refi:false, nota_ritmo:'', nota_a_cobrar:'', no_sabe_cobranza:''};
+                    nota_vencido:'con proveedores', tiene_refi:false, nota_ritmo:'', nota_a_cobrar:'', no_sabe_cobranza:'', no_sabe_extra:'', comprobante:'resumen'};
 function actual(){ return D.datos[UNIDAD]; }
 
 // ---------------------------------------------------------------- capas
@@ -516,15 +571,15 @@ function verPosicion(){
   var max = Math.max.apply(null, d.gastos.map(function(g){ return g.monto; })) || 1;
   d.gastos.forEach(function(g, gi){
     var f = el('div');
-    f.style.cssText = 'display:grid;grid-template-columns:210px 1fr 130px;gap:12px;' +
-                      'align-items:center';
+    f.style.cssText = 'display:grid;grid-template-columns:minmax(240px,2fr) 3fr 150px;gap:16px;' +
+                      'align-items:center;padding:6px 0';
     f.appendChild(el('div', null, '<span style="color:var(--suave);font-size:13.5px">' +
       g.nombre + '</span>'));
     var b = el('div'), bb = el('div', 'barra');
     bb.style.width = Math.max(2, 100 * g.monto / max) + '%';
     b.appendChild(bb); f.appendChild(b);
-    f.appendChild(el('div', null, '<span style="font-variant-numeric:tabular-nums">' +
-      pesos(g.monto) + '</span>'));
+    f.appendChild(el('div', null, '<span style="font-variant-numeric:tabular-nums;font-family:var(--mono);' +
+      'display:block;text-align:right">' + pesos(g.monto) + '</span>'));
 
     // Cada barra se abre y muestra de que esta hecha. Frente a una barra de
     // $5.028M la primera pregunta siempre es "de que", y hasta ahora habia que
@@ -545,7 +600,7 @@ function verPosicion(){
   out.push(cg);
 
   out.push(el('h2', null, 'Proximas salidas'));
-  var cs = el('div', 'card'), ts = el('table');
+  var cs = el('div', 'card'), ts = el('table', 'texto');
   ts.innerHTML = '<tr><th>Fecha</th><th>Detalle</th><th>Importe</th></tr>';
   d.salidas.forEach(function(x){
     var tr = el('tr');
@@ -574,12 +629,32 @@ function verPagar(){
   // atraso sin la fecha del resumen del que sale no se puede discutir -- fue
   // exactamente lo que dejo pasar el error de Cofaloza, donde un resto de
   // $1,3M del 31/07 hacia figurar 5,1 semanas en vez de 1,1.
-  var c = el('div', 'card'), t = el('table');
+  // LOS QUE PESAN ARRIBA; EL RESTO, PLEGADO.
+  //
+  // Con MAGA eran cinco droguerias y la lista entraba en una pantalla. Con
+  // NAVAR (17/09/2026) son 88 proveedores, y ordenar TODO por atraso ponia
+  // primero una deuda de $1.300 con 30 semanas y dejaba los $135M de COPETEGLA
+  // en la mitad de una lista de doce mil pixeles. La regla sigue siendo la de
+  // Thomas -- ordenar por atraso, no por nuestra tolerancia -- pero aplicada
+  // adentro de dos grupos: los que juntan el 90% de la plata (o los 15 mas
+  // grandes, lo que ocurra primero) y "el resto", que se abre si hace falta.
+  var c = el('div', 'card');
   var baja = resumenEndosos().por;
   var hayEndoso = Object.keys(baja).length > 0;
+  var porMonto = d.proveedores.slice().sort(function(a, b){ return b.total - a.total; });
+  var totalTodos = porMonto.reduce(function(a, p){ return a + p.total; }, 0);
+  var grandes = {}, acum = 0;
+  porMonto.forEach(function(p, i){
+    if (i < 15 && acum < totalTodos * 0.9){ grandes[p.nombre] = 1; acum += p.total; }
+  });
+  var pesan = d.proveedores.filter(function(p){ return grandes[p.nombre]; });
+  var resto = d.proveedores.filter(function(p){ return !grandes[p.nombre]; });
+
+  function tablaProveedores(lista){
+  var t = el('table');
   t.innerHTML = '<tr><th>' + V.Proveedor + '</th><th>Vencido</th><th>Vence pronto</th>' +
                 (hayEndoso ? '<th>Endoso</th>' : '') + '<th>Atraso</th></tr>';
-  d.proveedores.forEach(function(p){
+  lista.forEach(function(p){
     var tr = el('tr');
     var det = '<b>' + p.nombre + '</b>';
     if (p.vence_dia) det += '<div class="resumen">vence ' + p.vence_dia + '</div>';
@@ -589,7 +664,7 @@ function verPagar(){
     var venc = '<span class="' + (p.vencido ? 'neg' : '') + '">' + pesos(p.vencido) + '</span>';
     if (p.resumenes && p.resumenes.length){
       venc += '<div class="resumen">' + p.resumenes.map(function(r){
-        return 'resumen del <b>' + dia(r.fecha) + '</b> ' + pesos(r.monto);
+        return V.comprobante + ' del <b>' + dia(r.fecha) + '</b> ' + pesos(r.monto);
       }).join(' · ') + '</div>';
     }
     tr.appendChild(el('td', null, venc));
@@ -609,7 +684,20 @@ function verPagar(){
     tr.appendChild(el('td', null, at));
     t.appendChild(tr);
   });
-  var w = el('div', 'envuelve'); w.appendChild(t); c.appendChild(w);
+  return t;
+  }
+
+  var w = el('div', 'envuelve'); w.appendChild(tablaProveedores(pesan)); c.appendChild(w);
+  if (resto.length){
+    var vencResto = resto.reduce(function(a, p){ return a + p.vencido; }, 0);
+    var totResto = resto.reduce(function(a, p){ return a + p.total; }, 0);
+    var cab = el('div', null, '<b>Los otros ' + resto.length + ' ' + V.proveedores + '</b> ' +
+      '<span style="color:var(--suave)">— vencido ' + pesos(vencResto) + ' de ' + pesos(totResto) +
+      ' en total. Ninguno pesa solo; juntos, sí.</span>');
+    cab.style.padding = '14px 0';
+    var w2 = el('div', 'envuelve'); w2.appendChild(tablaProveedores(resto));
+    c.appendChild(desplegable('resto_proveedores', cab, w2));
+  }
   if (!d.proveedores.length){
     c.appendChild(el('p', 'nota', 'Sin deuda con ' + V.proveedores + ' en esta empresa.'));
   }
@@ -622,12 +710,15 @@ function verPagar(){
     });
   });
   if (restos.length){
-    c.appendChild(el('p', 'nota', 'Hay restos viejos que <b>se siguen debiendo</b> pero ' +
-      'no definen el atraso, porque son menos del 5% del vencido con ese proveedor y ' +
-      'suelen ser diferencias de imputacion: ' + restos.join(' · ') + '.'));
+    var muestra = restos.slice(0, 6).join(' · ') +
+      (restos.length > 6 ? ' · y ' + (restos.length - 6) + ' mas' : '');
+    c.appendChild(el('p', 'nota', 'Hay ' + restos.length + ' restos viejos que <b>se siguen ' +
+      'debiendo</b> pero no definen el atraso, porque son menos del 5% del vencido con ese ' +
+      V.proveedor + ' y suelen ser diferencias de imputacion: ' + muestra + '.'));
   }
-  c.appendChild(el('p', 'nota', 'Ordenado por <b>atraso</b>: primero el que hace mas ' +
-    'que espera. El atraso se mide desde el resumen mas viejo sin pagar.'));
+  c.appendChild(el('p', 'nota', 'Arriba, los que juntan el 90% de la deuda; ordenados por ' +
+    '<b>atraso</b>, primero el que hace mas que espera. El atraso se mide desde el ' +
+    'comprobante mas viejo sin pagar.'));
   out.push(c);
   return out;
 }
@@ -936,6 +1027,67 @@ function verProyeccion(){
   // el que quiera discutirla.
   var plan = (d.planes || {})[String(VENTANA)] ||
              (d.planes || {})[String(cercana(Object.keys(d.planes || {}), VENTANA))];
+
+  // MODO STOCK (NAVAR): lo vencido no esta en la curva, asi que "que pago
+  // pateo para llegar" no tiene sentido. La pregunta es la inversa: con la
+  // caja libre que deja lo comprometido, cuanto del vencido se puede pagar y
+  // a quien primero. Ver dashboard/datos.py capacidad_de_pago().
+  if (p.modo === 'stock' && d.capacidad){
+    var cap = d.capacidad[String(VENTANA)] ||
+              d.capacidad[String(cercana(Object.keys(d.capacidad), VENTANA))];
+    var cc0 = el('div', 'card');
+    cc0.style.borderLeft = '3px solid ' + (cap.libre > 0 ? 'var(--verde)' : 'var(--rojo)');
+    cc0.appendChild(el('div', null,
+      '<span style="font-size:11.5px;text-transform:uppercase;letter-spacing:.09em;' +
+      'font-weight:700;color:var(--tenue)">Cuanto podes pagar en ' + VENTANA + ' dias</span>'));
+    var frase;
+    if (cap.libre > 0){
+      frase = 'Cubriendo todo lo comprometido hasta el ' + dia(hasta) + ', te quedan libres <b>' +
+        pesos(cap.libre) + '</b>. Eso alcanza para pagar <b>' + pesos(cap.pagado) +
+        '</b> de lo vencido con ' + V.proveedores + '; quedan atrasados <b>' +
+        pesos(cap.queda_vencido) + '</b>.';
+    } else {
+      frase = 'Con lo comprometido hasta el ' + dia(hasta) + ' la caja queda en <b>' +
+        pesos(cap.minimo) + '</b> el ' + dia(cap.dia_minimo) + ': <b>no hay caja libre</b> para ' +
+        'pagar vencido sin postergar algo de lo que viene. El atraso con ' + V.proveedores +
+        ' (' + pesos(cap.vencido_proveedores) + ') sigue creciendo.';
+    }
+    cc0.appendChild(el('div', null, '<div style="font-size:16px;font-weight:650;margin:8px 0 4px">' +
+      frase + '</div>'));
+    if (cap.paga && cap.paga.length){
+      // Los primeros ocho con nombre; el resto en una linea. Pagar "por atraso"
+      // con 88 proveedores da una cola larga de deudas chicas y viejas: se ven
+      // las que abren la lista y cuanto suma el resto, no las 40 filas.
+      var tq = el('table');
+      tq.style.marginTop = '10px';
+      var TOPE = 8, resto = cap.paga.slice(TOPE), restoM = 0;
+      resto.forEach(function(x){ restoM += x.monto; });
+      cap.paga.slice(0, TOPE).forEach(function(x, n){
+        var tr = el('tr');
+        tr.appendChild(el('td', null, '<b>' + (n + 1) + '.</b> ' + x.nombre +
+          '<div class="resumen">' + sem(x.atraso) + ' de atraso · debe ' + pesos(x.vencido) +
+          (x.completo ? '' : ' · pago parcial') + '</div>'));
+        tr.appendChild(el('td', 'pos', pesos(x.monto)));
+        tq.appendChild(tr);
+      });
+      if (resto.length){
+        var trr = el('tr');
+        trr.appendChild(el('td', null, '<span style="color:var(--suave)">y ' + resto.length +
+          ' ' + V.proveedores + ' mas, siguiendo el orden de atraso</span>'));
+        trr.appendChild(el('td', 'pos', pesos(restoM)));
+        tq.appendChild(trr);
+      }
+      var wq = el('div', 'envuelve'); wq.appendChild(tq); cc0.appendChild(wq);
+    }
+    var vt = cap.vencido_por_tipo || {};
+    cc0.appendChild(el('p', 'nota', 'Lo vencido <b>no esta en la curva</b>: es un stock de ' +
+      pesos(cap.vencido_total) + ' (' + V.proveedores + ' ' + pesos(vt.proveedores || 0) +
+      (vt.impuestos ? ' · ARCA ' + pesos(vt.impuestos) : '') +
+      (vt.bancos ? ' · bancos ' + pesos(vt.bancos) : '') +
+      '). Se paga con la caja libre, en orden de atraso; lo que no se paga sigue atrasado.'));
+    out.push(cc0);
+    plan = null;
+  }
   if (plan && plan.frase){
     var col = plan.hace_falta ? (plan.alcanza ? 'var(--verde)' : 'var(--rojo)')
                               : 'var(--verde)';
@@ -1232,6 +1384,7 @@ function verHallazgos(){
 
   out.push(el('h2', null, 'Lo que este tablero NO sabe'));
   var d = actual(), c = el('div', 'card'), u = el('ul', 'limpia');
+  (D.faltantes || []).forEach(function(f){ u.appendChild(el('li', null, f)); });
   if (V.no_sabe_cobranza) u.appendChild(el('li', null, V.no_sabe_cobranza));
   if (d.puente.cobranza_vencida) u.appendChild(el('li', null,
     '<b>Si entra la cobranza que ya venció</b> (' + pesos(d.puente.cobranza_vencida) +
@@ -1239,9 +1392,9 @@ function verHallazgos(){
   if (d.puente.cheques) u.appendChild(el('li', null,
     '<b>Qué se hace con los cheques en cartera</b> (' + pesos(d.puente.cheques) +
     '): se decide uno por uno al llegar la fecha.'));
-  u.appendChild(el('li', null, '<b>Cuánto le debe MAGA a Speedmed.</b> No está ' +
-    'cargado en la planilla de MAGA, así que el escenario “Speed como proveedor ' +
-    'rígido” no se puede calcular.'));
+  // Lo que solo aplica a un cliente vive en su catalogo (vocabulario.no_sabe_extra),
+  // no aca: el 17/09/2026 el tablero de NAVAR decia "cuanto le debe MAGA a Speedmed".
+  if (V.no_sabe_extra) u.appendChild(el('li', null, V.no_sabe_extra));
   c.appendChild(u); out.push(c);
 
   // LA MEMORIA: que se prometio antes y si se cumplio.
@@ -1285,6 +1438,8 @@ function pintar(){
   document.querySelectorAll('[data-capa]').forEach(function(b){
     b.setAttribute('aria-selected', b.dataset.capa === SOLAPA);
   });
+  var t = document.querySelector('[data-capa="' + SOLAPA + '"]');
+  if (t) document.getElementById('titulo').textContent = t.textContent.trim();
   var cont = document.getElementById('capa');
   cont.innerHTML = '';
   CAPAS[SOLAPA]().forEach(function(n){ cont.appendChild(n); });
@@ -1309,6 +1464,27 @@ CAPAS = [("posicion", "Posición"), ("pagar", "A quién pagar"),
          ("hallazgos", "Hallazgos")]
 
 
+# Iconos de la navegacion, dibujados a mano (un trazo, misma grosura). Sin emojis.
+ICONOS = {
+    "posicion": '<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/>'
+                '<rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>',
+    "pagar": '<path d="M4 7h16M4 12h11M4 17h7"/>',
+    "cobrar": '<path d="M12 20V5M6 11l6-6 6 6"/>',
+    "proyeccion": '<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
+    "hallazgos": '<path d="M12 3l9.5 17h-19z"/><path d="M12 10v4M12 17h.01"/>',
+}
+
+
+def _cuando(paquete):
+    """'2026-09-16T06:21:57' -> '16/09/2026 06:21'. Es lo que dice la esquina del tablero."""
+    g = str(paquete.get("generado") or paquete.get("fecha") or "")
+    try:
+        d = datetime.datetime.fromisoformat(g[:19])
+        return d.strftime("%d/%m/%Y %H:%M") if "T" in g else d.strftime("%d/%m/%Y")
+    except ValueError:
+        return g
+
+
 def render(paquete):
     import html as _h
     e = lambda t: _h.escape(str(t if t is not None else ""))
@@ -1318,25 +1494,37 @@ def render(paquete):
     A('<meta charset="utf-8">')
     A('<meta name="viewport" content="width=device-width,initial-scale=1">')
     A('<title>%s — finauto</title>' % e(paquete["cliente"]))
+    A('<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,600'
+      '&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">')
     A('<style>%s</style>' % CSS)
-    A('<div class="wrap">')
-    A('<div class="cab"><div>')
-    A('<h1>%s</h1>' % e(paquete["cliente"]))
-    A('<p class="sub">Tablero de decisión · finauto</p>')
-    A('</div><div class="meta">datos del cash al <b>%s</b><br>'
-      'ventana de decisión: 7 días</div></div>' % e(paquete["fecha"]))
+    A('<div class="app">')
 
+    # ---- la barra lateral: marca, cliente, empresa, solapas, pie
+    A('<aside class="lado">')
+    A('<div class="logo"><i></i>finauto</div>')
+    A('<hr>')
+    A('<div class="cliente">CLIENTE<b>%s</b></div>' % e(paquete["cliente"]))
     A('<div class="pills">')
     for u in paquete["unidades"]:
         A('<button class="pill" data-unidad="%s">%s</button>'
-          % (e(u), e("Grupo" if u == "GRUPO" else u)))
+          % (e(u), e("GRUPO" if u == "GRUPO" else u)))
     A('</div>')
-
-    A('<div class="tabs" role="tablist">')
+    A('<nav class="tabs" role="tablist">')
     for cid, nom in CAPAS:
-        A('<button class="tab" role="tab" data-capa="%s">%s</button>' % (cid, e(nom)))
-    A('</div>')
+        A('<button class="tab" role="tab" data-capa="%s"><svg viewBox="0 0 24 24">%s</svg>%s</button>'
+          % (cid, ICONOS.get(cid, ""), e(nom)))
+    A('</nav>')
+    A('<div class="pie">datos del cash al <b>%s</b><br>ventana de decisión · <b>7 días</b></div>'
+      % e(paquete["fecha"]))
+    A('</aside>')
+
+    # ---- el contenido: titulo de la solapa (lo pone pintar()), estado, y la capa
+    A('<main class="wrap">')
+    A('<div class="cab"><div><h1 id="titulo">Posición</h1>'
+      '<p class="sub">Tablero de decisión · %s</p></div>' % e(paquete["cliente"]))
+    A('<div class="meta"><i></i>generado %s</div></div>' % e(_cuando(paquete)))
     A('<div id="capa"></div>')
+    A('</main>')
     A('</div>')
     A('<script>var D = %s;</script>'
       % json.dumps(paquete, ensure_ascii=False).replace("</", "<\\/"))
