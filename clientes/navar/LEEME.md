@@ -27,8 +27,9 @@ Archivo → Descargar) a `privado/NAVAR - Cash Flow (export Sheets <fecha>).xlsx
 ```bash
 source .venv/bin/activate
 python lector/tango.py --carpeta "clientes/navar/privado/tango/2026-09-16" --cliente navar --hoy 2026-09-16 --sheet "clientes/navar/privado/NAVAR - Cash Flow (export Sheets 2026-09-12).xlsx"
-python lector/cash_limpio.py --archivo "clientes/navar/privado/NAVAR - Cash Flow (con Tango 2026-09-16).xlsx" --cliente navar --hoy 2026-09-16
-python finauto.py --contrato clientes/navar/contrato_2026-09-16.json --cliente navar --salidas clientes/navar/privado/salidas
+python lector/extractos.py --carpeta clientes/navar/privado/bancos --cliente navar --hoy 2026-09-17 --sheet "clientes/navar/privado/NAVAR - Cash Flow (con Tango 2026-09-16).xlsx"
+python lector/cash_limpio.py --archivo "clientes/navar/privado/NAVAR - Cash Flow (con bancos 2026-09-17).xlsx" --cliente navar --hoy 2026-09-17
+python finauto.py --contrato clientes/navar/contrato_2026-09-17.json --cliente navar --salidas clientes/navar/privado/salidas
 python clientes/navar/herramientas/propuesta.py        # el PDF para la dueña, con capturas del tablero
 ```
 
@@ -57,7 +58,7 @@ lo que cerró. Primer peso cobrado de finauto.
 - ⏳ Hallazgos grandes para la reunión con Karina: Tango **no se concilia** (CAJA CONTADO -$497 M; cheques propios "Al Cobro" desde 1995; $5.700 M de cheques históricos sin marcar); deuda vieja a cobrar $55 M / a pagar $187 M desde 2007; 88 proveedores con saldo. Ver `privado/tango/2026-09-16/resumen_tango_2026-09-16.md`.
 - ⏳ Automatización de Tango: Live expone una **API** (`GET Api/GetApiLiveQueryData/{process}/...`, headers `ApiAuthorization` + `Company: 13`; cobranzas = proceso 17952) y "Mis suscripciones" por mail. Con un token de un usuario propio, la ingesta diaria sale sin usuario SQL ni scraping.
 - ⬜ Pendiente de Thomas: factura del 50 %, WhatsApp a Priscilla (CUIT, stock, margen) y al contador (ARCA), pegar/importar Tango en la Sheet, validar con Karina, rediseño visual del tablero (dirección elegida: barra lateral oscura + números serif, ver `scratchpad/estilos/D_final`).
-- ✅ **Extractos BBVA leídos** (`privado/bancos/bbva/`, `lector/extracto_bbva.py`): dos cuentas (principal 489-000765/9 y recaudación 489-000806/5), saldo real al 16/09 $6,4 M, cuota del préstamo BBVA $15,8 M el 30 de cada mes, CUIT de NAVAR **30-55852502-5**. Deja `para_pegar_bancos_bbva_<fecha>.xlsx` (Saldos Bancarios + Movimientos). Faltan los otros 4 bancos (pedidos a Priscilla).
+- ✅ **Extractos de 4 bancos leídos** (`privado/bancos/{bbva,galicia,macro,corrientes}/`, `lector/extractos.py`): 2.021 movimientos reales jun→sep clasificados, saldo real por cuenta y día. **Posición en cuentas corrientes al 16-17/09: -$189,5 M** (BBVA +$6,4 M · Galicia -$9,1 M · Macro -$39,7 M · Corrientes -$45,3 M · Nación -$101,7 M según pantalla, sin extracto). Viven de descubiertos y de descontar cheques (Galicia $356 M en 3 meses). Sueldos ~$100 M/mes por Macro. CUIT **30-55852502-5**. Falta el extracto del Nación (Priscilla: "tema de titularidad").
 - ✅ **BCRA consultado** (`privado/bcra/`): deuda bancaria total **$3.486 M** (jul-26), situación 2 en Nación (refinanciado, 18 días) y Corrientes; 1 en BBVA, Galicia, Macro. 24 meses de historia guardados.
 - ⬜ Lo que todavía es "(agregado cash viejo)" en el tablero: Deuda Impositiva y cuotas bancarias. Eso sale del contador y de los bancos, no de Tango. La caja de hoy sigue siendo la del 31/08 (manual) hasta que haya extractos.
 

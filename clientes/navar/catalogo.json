@@ -175,6 +175,14 @@
         "interno": true,
         "consecuencia": "ninguna",
         "_nota": "No es un gasto: la plata no sale del grupo. Se deja definido desde el dia uno para no repetir el error #1 de MAGA (internos contados como egreso)."
+      },
+      {
+        "id": "GASTO_BANCARIO",
+        "nombre": "Intereses y comisiones bancarias",
+        "categoria": "financiero",
+        "dias_tolerancia": 0,
+        "consecuencia": "financiera",
+        "_nota": "Lo que cobra el banco por el descubierto y las operaciones: intereses de sobregiro, comisiones, mantenimiento. Sale de los extractos (17/09/2026). No se elige pagarlo: se debita solo. En NAVAR son ~$33 M en 3,5 meses entre los cuatro bancos, casi todo intereses de descubierto."
       }
     ]
   },
@@ -319,7 +327,8 @@
       "Estampillas": "ESTAMPILLAS",
       "Otros": "OTROS_GASTOS",
       "Prestamo": "PRESTAMO",
-      "Transferencia Interna": "TRANSFERENCIA"
+      "Transferencia Interna": "TRANSFERENCIA",
+      "Gastos Bancarios": "GASTO_BANCARIO"
     },
     "ingresos": {
       "_ayuda": "categoria -> (id de fuente, naturaleza). FIJO entra si o si; VARIABLE es estimacion.",
