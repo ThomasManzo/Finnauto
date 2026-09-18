@@ -70,6 +70,13 @@ var IMPORTS = {
         colMarca: "Origen", marcas: ["Extracto", "Captura"], conId: true },
     ]
   },
+  impuestos: {
+    prefijo: "para_pegar_impuestos_",
+    solapas: [
+      { xlsx: "Deuda Impositiva", sheet: "Deuda Impositiva", formulas: [],
+        colMarca: "Observaciones", marcas: ["Mapa impuestos", "AGREGADO", "(agregado"], conId: false },
+    ]
+  },
   deuda: {
     prefijo: "para_pegar_deuda_",
     // Deuda Bancaria tiene dos bloques en la misma solapa, cada uno con su fila "Banco".
@@ -86,12 +93,16 @@ function onOpen() {
     .addItem("Importar Tango (cobrar / pagar / cheques)", "importarTango")
     .addItem("Importar Bancos (saldos / movimientos)", "importarBancos")
     .addItem("Importar Deuda (deuda bancaria)", "importarDeuda")
+    .addItem("Importar Impuestos (deuda impositiva)", "importarImpuestos")
+    .addSeparator()
+    .addItem("Armar solapa Cash", "armarCash")
     .addToUi();
 }
 
-function importarTango()  { _importar_("tango"); }
-function importarBancos() { _importar_("bancos"); }
-function importarDeuda()  { _importar_("deuda"); }
+function importarTango()     { _importar_("tango"); }
+function importarBancos()    { _importar_("bancos"); }
+function importarDeuda()     { _importar_("deuda"); }
+function importarImpuestos() { _importar_("impuestos"); }
 
 
 function _importar_(cual) {
