@@ -29,7 +29,7 @@ import json
 import sys
 import datetime
 import html
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 
 BASE_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_REPO not in sys.path:
@@ -947,20 +947,116 @@ def capacidad_de_pago(contrato, unidad, hoy, cliente, ventanas=VENTANAS):
     return out
 
 
+def deuda_bancaria(contrato, unidad, hoy):
+    """La deuda con los bancos como STOCK, por banco: lo que se debe, lo que ya
+    vencio (cuotas impagas), lo que vence en 30 dias y la peor situacion BCRA.
+
+    Los descubiertos van aparte: lo usado YA esta en la caja (es el saldo negativo
+    de la cuenta), asi que sumarlo seria contarlo dos veces. Lo que importa de un
+    descubierto es cuanto margen queda: acordado menos usado. Ese margen es, en la
+    practica, la unica "caja libre" que tiene NAVAR (18/09/2026).
+    """
+    db = contrato.get("deuda_bancaria") or {}
+    lineas = [l for l in db.get("lineas") or [] if unidad == GRUPO or _unidad_real(l.get("unidad")) == unidad]
+    cuotas = [c for c in db.get("cuotas") or [] if unidad == GRUPO or _unidad_real(c.get("unidad")) == unidad]
+    if not lineas and not cuotas:
+        return None
+    hoy_s = hoy.isoformat() if hasattr(hoy, "isoformat") else str(hoy)
+    d30 = (datetime.date.fromisoformat(hoy_s) + datetime.timedelta(days=30)).isoformat()
+    d90 = (datetime.date.fromisoformat(hoy_s) + datetime.timedelta(days=90)).isoformat()
+    por_banco = OrderedDict()
+    for l in lineas:
+        b = por_banco.setdefault(l["banco"], {"banco": l["banco"], "deuda": 0.0, "productos": 0, "situacion": None,
+                                               "vencido": 0.0, "en_30": 0.0, "en_90": 0.0, "descubierto_acordado": 0.0,
+                                               "descubierto_usado": 0.0, "faltan": [], "estimados": []})
+        if l.get("en_caja"):
+            b["descubierto_acordado"] += l.get("capital_original") or 0.0
+            b["descubierto_usado"] += l.get("capital_vigente") or 0.0
+        else:
+            b["deuda"] += l.get("capital_vigente") or 0.0
+            b["productos"] += 1
+        if l.get("situacion_bcra"):
+            b["situacion"] = max(b["situacion"] or 0, int(l["situacion_bcra"]))
+        if l.get("falta_importe"):
+            b["faltan"].append(l["linea"])
+        if l.get("estimado"):
+            b["estimados"].append(l["linea"])
+    for c in cuotas:
+        banco = (c.get("contraparte") or "").split(" - ")[0]
+        b = por_banco.setdefault(banco, {"banco": banco, "deuda": 0.0, "productos": 0, "situacion": None,
+                                          "vencido": 0.0, "en_30": 0.0, "en_90": 0.0, "descubierto_acordado": 0.0,
+                                          "descubierto_usado": 0.0, "faltan": [], "estimados": []})
+        f = c["fecha"]
+        if f < hoy_s:
+            b["vencido"] += c["importe"]
+        elif f < d30:
+            b["en_30"] += c["importe"]
+        if hoy_s <= f < d90:
+            b["en_90"] += c["importe"]
+    # Lo usado del descubierto es el saldo negativo REAL de la cuenta (extracto), no lo
+    # que decia el mapa el dia que se armo. Si el banco no informo acuerdo, el margen es 0.
+    usado_real = defaultdict(float)
+    for sal in contrato.get("saldos") or []:
+        if unidad == GRUPO or _unidad_real(sal.get("unidad")) == unidad:
+            usado_real[sal.get("banco")] += max(0.0, -(sal.get("saldo") or 0.0))
+    for b in por_banco.values():
+        if b["banco"] in usado_real:
+            b["descubierto_usado"] = usado_real[b["banco"]]
+        b["margen"] = max(0.0, b["descubierto_acordado"] - b["descubierto_usado"]) if b["descubierto_acordado"] else 0.0
+    filas = sorted(por_banco.values(), key=lambda b: -(b["deuda"] + b["vencido"]))
+    margen = sum(b["margen"] for b in filas)
+    return {
+        "por_banco": filas,
+        "total": sum(b["deuda"] for b in filas),
+        "vencido": sum(b["vencido"] for b in filas),
+        "en_30": sum(b["en_30"] for b in filas),
+        "en_90": sum(b["en_90"] for b in filas),
+        "descubierto_acordado": sum(b["descubierto_acordado"] for b in filas),
+        "descubierto_usado": sum(b["descubierto_usado"] for b in filas),
+        "margen_descubierto": margen,
+        "situacion_peor": max([b["situacion"] or 0 for b in filas] or [0]),
+        "faltan": [x for b in filas for x in b["faltan"]],
+        "estimados": [x for b in filas for x in b["estimados"]],
+    }
+
+
 def faltantes(contrato):
     """Lo que el tablero no tiene cargado y tendria que tener. Se dice, no se disimula."""
     out = []
     if not contrato.get("deuda_impositiva"):
         out.append("<b>La deuda con ARCA e Ingresos Brutos.</b> No está cargada: ni los vencimientos "
                    "del mes ni los planes de pago. Es el pedido al contador.")
-    if not (contrato.get("deuda_bancaria") or {}).get("cuotas"):
+    db = contrato.get("deuda_bancaria") or {}
+    if not db.get("cuotas"):
         out.append("<b>Las cuotas de los préstamos bancarios.</b> No están cargadas: cuánto, cuándo "
                    "y en qué banco. Sale de los contratos o de cada home banking.")
-    fs = (contrato.get("_origen") or {}).get("fecha_saldos")
+    else:
+        faltan = [l["linea"] for l in db.get("lineas") or [] if l.get("falta_importe")]
+        if faltan:
+            out.append("<b>Deuda bancaria sin importe:</b> %s. Están en el mapa de deuda pero sin saldo; "
+                       "pedir el detalle al banco." % ", ".join(faltan))
+        est = [l["linea"] for l in db.get("lineas") or [] if l.get("estimado")]
+        if est:
+            out.append("<b>Cuotas estimadas, no informadas por el banco:</b> %s. Se calcularon con el saldo y la "
+                       "tasa; pedir la tabla de amortización." % ", ".join(est))
+    # La caja: que cuentas estan al dia y cuales siguen con la carga manual.
     hoy = D.hoy_de(contrato)
-    if fs and fs < hoy:
-        out.append("<b>La caja de hoy es la del %s.</b> Los saldos de banco se cargaron ese día; "
-                   "hasta que haya extractos, la caja es esa." % (fs[8:10] + "/" + fs[5:7]))
+    viejos = OrderedDict()
+    for s in contrato.get("saldos") or []:
+        f = s.get("fecha")
+        if f and f < hoy:
+            u = s.get("unidad") or "?"
+            viejos[u] = max(viejos.get(u, ""), f)
+    fs = (contrato.get("_origen") or {}).get("fecha_saldos")
+    if not viejos and fs and fs < hoy:
+        viejos["?"] = fs
+    for u, f in viejos.items():
+        dd = f[8:10] + "/" + f[5:7]
+        if u == "?":
+            out.append("<b>La caja de hoy es la del %s.</b> Los saldos de banco se cargaron ese día." % dd)
+        elif f < (datetime.date.fromisoformat(hoy) - datetime.timedelta(days=5)).isoformat():
+            out.append("<b>La caja de %s es la del %s.</b> Sigue con la carga manual de la planilla vieja, "
+                       "sin extracto de banco." % (_unidad_real(u), dd))
     return out
 
 
@@ -1100,6 +1196,8 @@ def armar(contrato, cliente="maga"):
             "proyeccion_ic": proyeccion(contrato, u, hoy, con_intercompany=True, modo=modo),
             # Modo stock: cuanto del vencido se puede pagar en cada ventana.
             "capacidad": capacidad_de_pago(contrato, u, hoy, cliente) if modo == STOCK else None,
+            # La deuda con los bancos como stock: por banco, vencido, proximos 30 dias, margen.
+            "deuda_bancaria": deuda_bancaria(contrato, u, hoy),
             # El plan minimo para cada ventana que ofrece el timeline.
             # Se precalculan porque el HTML no calcula plata: mover el slider
             # cambia de plan, no lo recalcula.

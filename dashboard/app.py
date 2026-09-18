@@ -1051,6 +1051,12 @@ function verProyeccion(){
         pesos(cap.minimo) + '</b> el ' + dia(cap.dia_minimo) + ': <b>no hay caja libre</b> para ' +
         'pagar vencido sin postergar algo de lo que viene. El atraso con ' + V.proveedores +
         ' (' + pesos(cap.vencido_proveedores) + ') sigue creciendo.';
+      // La caja es negativa: lo unico "libre" es lo que queda de los acuerdos de
+      // descubierto. Se dice con nombre, para que no parezca plata que no existe.
+      if (d.deuda_bancaria && d.deuda_bancaria.descubierto_acordado > 0){
+        frase += ' Lo que queda sin usar de los acuerdos de descubierto es <b>' +
+          pesos(d.deuda_bancaria.margen_descubierto) + '</b>: ese es el margen real.';
+      }
     }
     cc0.appendChild(el('div', null, '<div style="font-size:16px;font-weight:650;margin:8px 0 4px">' +
       frase + '</div>'));
@@ -1086,6 +1092,52 @@ function verProyeccion(){
       (vt.bancos ? ' · bancos ' + pesos(vt.bancos) : '') +
       '). Se paga con la caja libre, en orden de atraso; lo que no se paga sigue atrasado.'));
     out.push(cc0);
+
+    // LA DEUDA CON LOS BANCOS, como stock. Es lo que pidio Thomas (17/09): para
+    // atras, un numero por concepto que NO toca la caja de hoy; lo que si entra
+    // en la curva son las cuotas con fecha. Aca se ve cuanto se debe, a quien,
+    // que ya vencio, que vence en 30 dias y como esta la situacion BCRA.
+    if (d.deuda_bancaria){
+      var db = d.deuda_bancaria;
+      var cdb = el('div', 'card');
+      cdb.style.borderLeft = '3px solid ' + (db.vencido > 0 ? 'var(--rojo)' : 'var(--tenue)');
+      cdb.appendChild(el('div', null,
+        '<span style="font-size:11.5px;text-transform:uppercase;letter-spacing:.09em;' +
+        'font-weight:700;color:var(--tenue)">Lo que se debe a los bancos</span>'));
+      cdb.appendChild(el('div', null, '<div style="font-size:16px;font-weight:650;margin:8px 0 4px">' +
+        'Prestamos, tarjetas y descuento de cheques: <b>' + pesos(db.total) + '</b>. ' +
+        (db.vencido > 0 ? 'Cuotas ya vencidas e impagas: <b>' + pesos(db.vencido) + '</b>. ' : '') +
+        'Vencen en los proximos 30 dias: <b>' + pesos(db.en_30) + '</b>' +
+        (db.en_90 ? ' (en 90 dias, ' + pesos(db.en_90) + ')' : '') + '.' +
+        (db.situacion_peor >= 2 ? ' Situacion BCRA mas alta informada: <b>' + db.situacion_peor + '</b>.' : '') +
+        '</div>'));
+      var tdb = el('table');
+      tdb.style.marginTop = '10px';
+      var hdb = el('tr');
+      ['Banco', 'Deuda', 'Vencido', 'En 30 dias', 'Descubierto usado / acordado', 'Sit. BCRA'].forEach(function(h, i){
+        hdb.appendChild(el('th', i > 0 ? 'num' : null, h));
+      });
+      tdb.appendChild(hdb);
+      db.por_banco.forEach(function(b){
+        var tr = el('tr');
+        tr.appendChild(el('td', null, '<b>' + b.banco + '</b>' +
+          (b.faltan && b.faltan.length ? '<div class="resumen">sin importe: ' + b.faltan.join(', ') + '</div>' : '') +
+          (b.estimados && b.estimados.length ? '<div class="resumen">cuota estimada: ' + b.estimados.join(', ') + '</div>' : '')));
+        tr.appendChild(el('td', 'num', pesos(b.deuda)));
+        tr.appendChild(el('td', 'num' + (b.vencido > 0 ? ' neg' : ''), b.vencido > 0 ? pesos(b.vencido) : '—'));
+        tr.appendChild(el('td', 'num', b.en_30 > 0 ? pesos(b.en_30) : '—'));
+        tr.appendChild(el('td', 'num', (b.descubierto_usado > 0 ? pesos(b.descubierto_usado) : '—') +
+          (b.descubierto_acordado > 0 ? ' / ' + pesos(b.descubierto_acordado) : (b.descubierto_usado > 0 ? ' / sin acuerdo informado' : ''))));
+        tr.appendChild(el('td', 'num' + (b.situacion >= 3 ? ' neg' : ''), b.situacion ? String(b.situacion) : '—'));
+        tdb.appendChild(tr);
+      });
+      var wdb = el('div', 'envuelve'); wdb.appendChild(tdb); cdb.appendChild(wdb);
+      cdb.appendChild(el('p', 'nota', 'La deuda es un <b>stock</b>: no esta en la curva de caja. Lo que si esta ' +
+        'son las cuotas con fecha (cada una el dia que vence). Los descubiertos no se suman: lo usado ya es ' +
+        'el saldo negativo de cada cuenta, que esta en la caja de hoy. Fuente: mapa de deuda del ' +
+        'cliente cruzado con los extractos.'));
+      out.push(cdb);
+    }
     plan = null;
   }
   if (plan && plan.frase){

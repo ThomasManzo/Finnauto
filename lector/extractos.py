@@ -47,9 +47,15 @@ CORRIENTES  Cta Cte Empresa 130559 (suc. 10 Virasoro), un solo PDF 01/06 →
          y devuelve el saldo al límite ("Pago Automatico Prestamo"). Importes
          en formato inglés (1,566,916.00) y a veces el saldo viene pegado a un
          número de referencia.
-NACIÓN   No hay extracto: solo la pantalla de "Posición del cliente" (3270)
-         del 17/09: cuentas corrientes -$101,7 M, préstamos $550,9 M. Se carga
-         como un saldo manual con esa fecha, marcado como captura.
+NACIÓN   CC 19477890007728 (casa 1947 Gdor. Virasoro). Llega ESCANEADO: el PDF
+         es una imagen, sin texto. Se lee con el OCR de macOS (Vision, ver
+         `herramientas/ocr_mac.swift`) y cada renglón se controla con la cadena
+         de saldos; lo que el OCR leyó mal se corrige y se anota. También lee la
+         impresión de la pantalla 3270 "CONSULTA DE MOVIMIENTOS". Por acá pasan
+         los pagos grandes: cuotas de préstamo, la tarjeta corporativa ($82,8 M
+         el 14/09) y un cheque de $25 M por semana ("48HS. CANJE ZONAL") que se
+         cubre el mismo día con una transferencia desde otra cuenta propia.
+         Préstamos según "Posición del cliente" (17/09): $550,9 M.
 
 DEDUPLICACIÓN
 -------------
@@ -87,12 +93,13 @@ ENC_MOV = ["ID", "Fecha", "Empresa", "Tipo", "Categoria", "Concepto / Detalle", 
            "Banco / Cuenta", "Origen", "Estado", "Referencia", "Semana (lunes)", "Observaciones"]
 COLS_CON_FORMULA = {"Semana (lunes)"}
 
-# Lo que no vino en archivo pero se vio: la pantalla de posición del Nación (17/09/2026).
-SALDOS_MANUALES = [
-    {"banco": "NACION", "cuenta": "CTAS.CTES. (posición del cliente)", "fecha": datetime.date(2026, 9, 17),
-     "saldo": -101709806.61, "origen": "Captura pantalla 3270 Nación 17/09/2026",
-     "obs": "Posición del cliente: ctas. ctes. -$101.709.806,61 (pasivo) · préstamos $550.850.851,37 · posición total -$652.485.082,98. Pedir el extracto."},
-]
+# Saldos que no vienen en ningún archivo pero se vieron en una pantalla. (El Nación
+# estuvo acá hasta el 18/09/2026, cuando llegó el extracto escaneado.)
+SALDOS_MANUALES = []
+
+# Lo que se vio en la pantalla "Posición del cliente" del Nación (3270, 17/09/2026) y
+# no está en el extracto: préstamos $550.850.851,37 → va a Deuda Bancaria cuando
+# manden el detalle de cuotas. Posición total -$652.485.082,98.
 
 
 # ------------------------------------------------------------------ helpers
@@ -300,12 +307,291 @@ def leer_pdf_corrientes(ruta):
     return {"cuenta": cuenta, "movimientos": movs, "archivo": os.path.basename(ruta)}
 
 
+# ================================================================== NACIÓN (escaneo → OCR)
+# El Nación no manda archivo con texto: lo que llega es un PDF ESCANEADO del
+# extracto (imagen) o la impresión de la pantalla 3270 "CONSULTA DE MOVIMIENTOS".
+# Se lee con el OCR del propio macOS (Vision), vía `lector/herramientas/ocr_mac.swift`,
+# que devuelve cada pedazo de texto con su posición en la página. Con la posición
+# se arman las columnas. Como el OCR se equivoca en algún dígito, cada fila se
+# controla con la CADENA DE SALDOS (saldo anterior − débito + crédito = saldo):
+# si no cierra, se corrige el número que no encaja y se anota. Tarda ~40 s por
+# página, por eso el resultado del OCR se guarda al lado del PDF (`.ocr/`) y no
+# se vuelve a correr si el PDF no cambió.
+OCR_SWIFT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "herramientas", "ocr_mac.swift")
+
+
+def _ocr_pdf(ruta):
+    """-> [ [ (x, y, w, h, texto), ... ] por página ]. Posiciones en fracción 0-1,
+    origen abajo-izquierda (como las da Vision). Cachea en <carpeta>/.ocr/."""
+    import subprocess
+    cache_dir = os.path.join(os.path.dirname(ruta), ".ocr")
+    os.makedirs(cache_dir, exist_ok=True)
+    base = os.path.splitext(os.path.basename(ruta))[0]
+    tsv = os.path.join(cache_dir, base + ".tsv")
+    if not os.path.exists(tsv) or os.path.getmtime(tsv) < os.path.getmtime(ruta):
+        import pymupdf
+        pngs = []
+        doc = pymupdf.open(ruta)
+        for i, pag in enumerate(doc):
+            png = os.path.join(cache_dir, "%s_%02d.png" % (base, i + 1))
+            pag.get_pixmap(dpi=200).save(png)
+            pngs.append(png)
+        if sys.platform != "darwin":
+            raise RuntimeError("el OCR de extractos escaneados usa Vision de macOS; en otra máquina hay que instalar tesseract")
+        salida = subprocess.run(["swift", OCR_SWIFT] + pngs, capture_output=True, text=True, timeout=600)
+        if salida.returncode != 0:
+            raise RuntimeError("falló el OCR de %s: %s" % (ruta, salida.stderr[-500:]))
+        with open(tsv, "w", encoding="utf-8") as f:
+            f.write(salida.stdout)
+    paginas = OrderedDict()
+    with open(tsv, encoding="utf-8") as f:
+        for linea in f:
+            partes = linea.rstrip("\n").split("\t")
+            if len(partes) < 7:
+                continue
+            nombre, x, y, w, h, _conf, texto = partes[:7]
+            paginas.setdefault(nombre, []).append((float(x), float(y), float(w), float(h), texto.strip()))
+    return list(paginas.values())
+
+
+def _filas_ocr(obs, tol=0.0045):
+    """Agrupa los pedazos de texto por renglón (misma altura), de arriba a abajo,
+    y dentro del renglón de izquierda a derecha."""
+    obs = sorted(obs, key=lambda o: -(o[1] + o[3] / 2))
+    filas = []
+    for o in obs:
+        cy = o[1] + o[3] / 2
+        if filas and abs(filas[-1][0] - cy) < tol:
+            filas[-1][1].append(o)
+            filas[-1][0] = (filas[-1][0] + cy) / 2
+        else:
+            filas.append([cy, [o]])
+    return [sorted(g, key=lambda o: o[0]) for _, g in filas]
+
+
+def _num_ocr(t):
+    """Número con formato 1,234,567.89 leído por OCR, tolerando puntos por comas,
+    ';' o ':' por '.', y un guion final. None si no parece un número."""
+    s = t.strip().replace(" ", "")
+    if not re.fullmatch(r'-?[\d.,;:\-]{3,}', s) or not re.search(r'\d', s):
+        return None
+    neg = s.startswith("-")
+    digitos = re.sub(r'\D', '', s)
+    if len(digitos) < 3:
+        return None
+    v = int(digitos) / 100.0
+    return -v if neg else v
+
+
+def _limpio(t):
+    """La lectura tiene la ESTRUCTURA de un importe (grupos de tres y dos decimales),
+    aunque el OCR haya confundido comas con puntos. Una lectura así es confiable en
+    su magnitud; una sin estructura ('913.8', '4.759997.63') no."""
+    t = t.strip().replace(" ", "").replace(";", ".").replace(":", ".")
+    return bool(re.fullmatch(r'-?\d{1,3}(?:[.,]\d{3})*[.,]\d{2}', t))
+
+
+# Letras que el OCR confunde en los conceptos del Nación (F/E, I/L, T/I...).
+ARREGLOS_OCR = [("TRANSE", "TRANSF"), ("L.V.A.", "I.V.A."), ("IITULAR", "TITULAR"), ("SICRED", "S/CRED"),
+                ("SIDEB", "S/DEB"), ("TGRAVAMEN", "GRAVAMEN"), ("IBTO", "IBTC"), ("INTERBMISMO", "INTERB MISMO")]
+
+
+def _texto_ocr(t):
+    for malo, bueno in ARREGLOS_OCR:
+        t = t.replace(malo, bueno)
+    return t
+
+
+def leer_pdf_nacion(ruta):
+    paginas = _ocr_pdf(ruta)
+    todo = " ".join(o[4] for p in paginas for o in p).upper()
+    if "CONSULTA DE MOVIMIENTOS" in todo:
+        return _leer_pantalla_nacion(ruta, paginas)
+    return _leer_extracto_nacion(ruta, paginas)
+
+
+def _leer_extracto_nacion(ruta, paginas):
+    """Extracto escaneado: tabla FECHA · DESCRIPCION · COMPROBANTE · DEBITO · CREDITO · SALDO.
+
+    Dos pasadas. La primera junta lo que el OCR leyó de cada renglón. La segunda
+    recorre la cadena de saldos: si un renglón no cierra, se prueban los saldos
+    posibles (el leído, el que sale del importe leído, o el que se deduce de los
+    renglones siguientes) y se queda con el que hace cerrar los que vienen después.
+    """
+    cuenta = "?"
+    m = re.search(r'CUENTA CORRIENTE\s+(\d{10,})', " ".join(o[4] for o in paginas[0]))
+    if m:
+        cuenta = m.group(1)
+
+    # ---- pasada 1: renglones crudos
+    crudas, saldo_anterior, ultima_fecha = [], None, None
+    for obs in paginas:
+        for fila in _filas_ocr(obs):
+            fecha, desc, comp, nums = None, [], None, {}
+            for x, y, w, h, t in fila:
+                xr = x + w
+                mf = re.search(r'\d\d/\d\d/\d{4}', t)
+                if mf and x < 0.2:
+                    fecha = mf.group(0)
+                    continue
+                if xr > 0.6 and _num_ocr(t) is not None:
+                    nums["deb" if xr < 0.73 else ("cred" if xr < 0.83 else "saldo")] = t
+                    continue
+                if re.fullmatch(r'\d{12,16}', t) and 0.4 < x + w / 2 < 0.6:
+                    comp = t
+                    continue
+                if 0.15 < x < 0.45:
+                    desc.append(t)
+            texto = _texto_ocr(" ".join(desc).strip("| "))
+            if "SALDO ANTERIOR" in texto.upper():
+                saldo_anterior = _num_ocr(nums.get("saldo", "")) if "saldo" in nums else None
+                continue
+            if not texto or (not fecha and not nums):
+                continue
+            if not fecha:
+                # el OCR no leyó la fecha; se hereda la del renglón anterior y se avisa
+                fecha, sin_fecha = ultima_fecha, True
+            else:
+                sin_fecha = False
+            if not fecha:
+                continue
+            ultima_fecha = fecha
+            deb, cred, saldo = (_num_ocr(nums[c]) if c in nums else None for c in ("deb", "cred", "saldo"))
+            importe = None if deb is None and cred is None else (cred or 0) - (deb or 0)
+            crudas.append({"fecha": fecha, "texto": texto, "comp": comp, "importe": importe, "saldo": saldo,
+                           "limpio_importe": any(_limpio(nums[c]) for c in ("deb", "cred") if c in nums),
+                           "limpio_saldo": _limpio(nums.get("saldo", "")), "sin_fecha": sin_fecha})
+
+    # ---- pasada 2: cadena de saldos, eligiendo la lectura que menos hay que corregir.
+    # Cada renglón tiene dos lecturas (importe y saldo) que pueden estar mal. Se
+    # recorren los renglones llevando los saldos posibles y cuánto costó llegar a
+    # cada uno (cuántas lecturas hubo que pisar: 1 una limpia, 0,5 una con formato
+    # raro, 3 si además cambia el signo, que sale de la columna y es confiable).
+    # Al final gana el camino más barato. Es lo que haría una persona con el
+    # extracto en la mano: fiarse de lo que se lee bien y deducir el resto.
+    def costo_pisar(r, cual, nuevo=None):
+        if r[cual] is None:
+            return 0.0
+        c = 0.5 if not r["limpio_" + cual] else 1.0
+        if cual == "importe" and nuevo is not None and (nuevo > 0) != (r["importe"] > 0):
+            c += 3.0
+        return c
+
+    estados = {round(saldo_anterior, 2) if saldo_anterior is not None else None: (0.0, None)}
+    historia = []       # por renglón: {saldo: (costo, saldo_previo, importe)}
+    for i, r in enumerate(crudas):
+        nuevos = {}
+        def proponer(s_prev, s_new, imp, costo):
+            k = round(s_new, 2)
+            if k not in nuevos or nuevos[k][0] > costo:
+                nuevos[k] = (costo, s_prev, round(imp, 2))
+        for s_prev, (costo, _) in estados.items():
+            if s_prev is None:
+                # sin saldo anterior: arranca del saldo leído (o no se puede)
+                if r["saldo"] is not None:
+                    proponer(None, r["saldo"], r["importe"], costo)
+                continue
+            if r["importe"] is not None:
+                s = s_prev + r["importe"]
+                proponer(s_prev, s, r["importe"], costo + (0.0 if r["saldo"] is None or abs(s - r["saldo"]) < 0.01 else costo_pisar(r, "saldo")))
+            if r["saldo"] is not None:
+                imp = r["saldo"] - s_prev
+                proponer(s_prev, r["saldo"], imp, costo + (0.0 if r["importe"] is not None and abs(imp - r["importe"]) < 0.01 else costo_pisar(r, "importe", imp)))
+            # el importe se deduce de un saldo de más abajo (para cuando ni el importe ni el saldo se leyeron bien)
+            acum = 0.0
+            for j in range(i + 1, min(i + 4, len(crudas))):
+                if crudas[j]["importe"] is None:
+                    break
+                acum += crudas[j]["importe"]
+                if crudas[j]["saldo"] is not None:
+                    s = crudas[j]["saldo"] - acum
+                    imp = s - s_prev
+                    proponer(s_prev, s, imp, costo + costo_pisar(r, "importe", imp) + costo_pisar(r, "saldo"))
+        if not nuevos:
+            nuevos = {k: (c + 2.0, k, 0.0) for k, (c, _) in estados.items()}     # renglón ilegible: se saltea
+        # poda: los 30 más baratos
+        nuevos = dict(sorted(nuevos.items(), key=lambda kv: kv[1][0])[:30])
+        historia.append(nuevos)
+        estados = {k: (v[0], None) for k, v in nuevos.items()}
+
+    # ---- pasada 3: reconstruir el camino más barato y anotar lo corregido
+    movs, notas = [], []
+    if historia:
+        k = min(historia[-1], key=lambda k: historia[-1][k][0])
+        camino = []
+        for i in range(len(crudas) - 1, -1, -1):
+            costo, s_prev, imp = historia[i][k]
+            camino.append((imp, k))
+            k = s_prev
+        camino.reverse()
+        for r, (imp, saldo) in zip(crudas, camino):
+            cambios = []
+            if r["sin_fecha"]:
+                cambios.append("fecha no legible, se usa la del renglón anterior")
+            if r["importe"] is None:
+                cambios.append("importe no legible → %s" % _m(imp))
+            elif abs(imp - r["importe"]) > 0.01:
+                cambios.append("importe %s → %s" % (_m(r["importe"]), _m(imp)))
+            if r["saldo"] is None:
+                cambios.append("saldo no legible → %s" % _m(saldo))
+            elif abs(saldo - r["saldo"]) > 0.01:
+                cambios.append("saldo %s → %s" % (_m(r["saldo"]), _m(saldo)))
+            if cambios:
+                notas.append("%s %s: %s" % (r["fecha"], r["texto"], "; ".join(cambios)))
+            if abs(imp) < 0.005:
+                notas.append("%s %s: quedó con importe cero, se saltea" % (r["fecha"], r["texto"]))
+                continue
+            f = datetime.date(int(r["fecha"][6:]), int(r["fecha"][3:5]), int(r["fecha"][:2]))
+            movs.append(_mov(f, r["texto"], imp, saldo, cuenta, "pdf", ref=r["comp"].lstrip("0") if r["comp"] else None))
+    final = movs[-1]["saldo"] if movs else None
+    nota = "%d movimientos; saldo final %s" % (len(movs), _m(final) if final is not None else "?")
+    if notas:
+        nota += " · OCR corregido por la cadena de saldos: " + " | ".join(notas)
+    return {"cuenta": cuenta, "movimientos": movs, "archivo": os.path.basename(ruta), "nota": nota}
+
+
+def _leer_pantalla_nacion(ruta, paginas):
+    """Impresión de la pantalla 3270 'CONSULTA DE MOVIMIENTOS': cada movimiento son
+    dos renglones (fecha · código · mnemo · descripción · importe / hora · comprobante)
+    y hay renglones 'SALDO' por día. Importes en formato 244365,29 (sin miles)."""
+    texto0 = " ".join(o[4] for o in paginas[0])
+    m = re.search(r'CUENTA:\s*(\d+)', texto0)
+    casa = re.search(r'CASA:\s*(\d+)', texto0)
+    # el extracto nombra la cuenta como casa + número (19477890007728); la pantalla los separa
+    cuenta = ((casa.group(1) if casa else "") + m.group(1)) if m else "?"
+    movs, saldos_por_dia = [], {}
+    for obs in paginas:
+        filas = _filas_ocr(obs, tol=0.006)
+        for i, fila in enumerate(filas):
+            fecha = next((t for x, y, w, h, t in fila if re.fullmatch(r'\d\d/\d\d/\d{4}', t)), None)
+            if not fecha:
+                continue
+            f = datetime.date(int(fecha[6:]), int(fecha[3:5]), int(fecha[:2]))
+            desc = [t for x, y, w, h, t in fila if 0.35 < x < 0.65 and not re.fullmatch(r'[\d,.\- ]+', t)]
+            nums = [(x, t) for x, y, w, h, t in fila if x > 0.6 and re.search(r'\d+,\d\d', t.replace(" ", ""))]
+            if not nums:
+                continue
+            imp_txt = re.search(r'-?\s?\d+,\d\d', nums[0][1].replace(" ", "")).group(0)
+            importe = float(imp_txt.replace(",", "."))
+            if desc and desc[0].upper() == "SALDO":
+                saldos_por_dia[f] = importe
+                continue
+            comp = None
+            if i + 1 < len(filas):
+                comp = next((t for x, y, w, h, t in filas[i + 1] if re.fullmatch(r'\d{4,}', t) and 0.38 < x < 0.5), None)
+            movs.append(_mov(f, _texto_ocr(" ".join(desc)), importe, None, cuenta, "pantalla", ref=comp))
+    return {"cuenta": cuenta, "movimientos": movs, "archivo": os.path.basename(ruta),
+            "saldos_por_dia": saldos_por_dia, "nota": "pantalla 3270, %d movimientos, saldos %s" % (
+                len(movs), ", ".join("%s %s" % (f.strftime("%d/%m"), _m(s)) for f, s in sorted(saldos_por_dia.items())))}
+
+
 # ================================================================== registro de bancos
 BANCOS = OrderedDict([
     ("bbva", {"nombre": "BBVA", "pdf": leer_pdf_bbva, "planilla": leer_planilla_bbva}),
     ("galicia", {"nombre": "GALICIA", "pdf": leer_pdf_galicia, "planilla": leer_planilla_galicia}),
     ("macro", {"nombre": "MACRO", "pdf": leer_pdf_macro, "planilla": leer_planilla_macro}),
     ("corrientes", {"nombre": "CORRIENTES", "pdf": leer_pdf_corrientes, "planilla": None}),
+    ("nacion", {"nombre": "NACION", "pdf": leer_pdf_nacion, "planilla": None}),
 ])
 
 
@@ -314,6 +600,20 @@ BANCOS = OrderedDict([
 # Se prueban en orden; la primera que matchea gana. Las categorías tienen que
 # existir en catalogo.mapa_categorias.
 REGLAS_EGRESO = [
+    # --- Nación
+    ("MISMO TIT", "Transferencia Interna", "Transferencia", True),     # DEB.TRAN.INTERBMISMO TIT
+    ("MIS TIT", "Transferencia Interna", "Transferencia", True),
+    ("MMO.TITULAR", "Transferencia Interna", "Transferencia", True),
+    ("PAGO PRESTAMO", "Prestamo", "Débito automático", False),
+    ("CANJE ZONAL", "Cheques", "Cheque Propio", False),
+    ("CHEQ.RECH", "Cheques", "Cheque de Terceros", False),             # cheque de un cliente rechazado, se debita
+    ("PM/TOT", "Otros", "Débito automático", False),                    # resumen tarjeta corporativa / AgroNación
+    ("COMIS", "Gastos Bancarios", "Débito automático", False),
+    ("COM TRANSFE", "Gastos Bancarios", "Débito automático", False),
+    ("COM PRORROGA", "Gastos Bancarios", "Débito automático", False),
+    ("GRAVAMEN", "Impuestos", "Débito automático", False),
+    ("RETEN.", "Impuestos", "Débito automático", False),
+    # --- todos
     ("CUOTA PRESTAMO", "Prestamo", "Débito automático", False),
     ("CUOTA DE PRESTAMO", "Prestamo", "Débito automático", False),
     ("DEBITO PRESTAMOS", "Prestamo", "Débito automático", False),
@@ -383,6 +683,18 @@ REGLAS_EGRESO = [
     ("MACRONLINE", "Proveedores MP y Logist.", "Transferencia", False),
 ]
 REGLAS_INGRESO = [
+    # --- Nación
+    ("MISMO TIT", "Transferencia Interna", "Transferencia", True),
+    ("MIS TIT", "Transferencia Interna", "Transferencia", True),       # CRED BE O BCO-MIS TIT IBK
+    ("MMO.TITULAR", "Transferencia Interna", "Transferencia", True),   # TRANSF.INTER.MMO.TITULAR
+    ("DIST.TITULAR", "Cobranza Facturas", "Transferencia", False),     # TRANSF.INT.DIST.TITULAR
+    ("DIS TIT", "Cobranza Facturas", "Transferencia", False),          # C BE TR O/BCO-DIS TIT IBK
+    ("ALTA PRESTAMO", "Prestamo", "Transferencia", False),
+    ("DEP. CH", "Cheques", "Cheque de Terceros", False),
+    ("CAM.FED", "Cheques", "Cheque de Terceros", False),               # cámara federal: cheques de otra plaza
+    ("CAM FED", "Cheques", "Cheque de Terceros", False),
+    ("REINTEGRO LEY", "Otros", "", False),
+    # --- todos
     ("TRANSFERENCIA CUENTAS PAIS", "Transferencia Interna", "Transferencia", True),
     ("TRANSFERENCIA CCP", "Transferencia Interna", "Transferencia", True),
     ("CUENTA PROPIA", "Transferencia Interna", "Transferencia", True),
@@ -419,6 +731,12 @@ REGLAS_INGRESO = [
     ("N/C DBCR", "Otros", "", False),
 ]
 NOTAS = {
+    "CANJE ZONAL": "cheque propio de $25 M que sale por canje cada semana; el mismo día entra la plata desde otra cuenta propia",
+    "TARJETA": "resumen de tarjeta de crédito corporativa: ¿qué se paga con ella? (proveedores, combustible...) preguntar",
+    "PM/TOT": "pago del resumen de la tarjeta corporativa / AgroNación",
+    "CHEQ.RECH": "cheque de un cliente que rebotó: se acreditó y se volvió a debitar",
+    "CAM FED": "cheque de un cliente rechazado (cámara), después se debita",
+    "ALTA PRESTAMO": "préstamo nuevo (documentos) acreditado: financiación, no cobranza",
     "NUMERO DE OPERACION": "depósito por número de operación: ¿cobranza? revisar",
     "CCERR": "cheque de cámara acreditado (circuito cerrado)",
     "DEUD. PUBLICA": "acreditación 'DEUD. PUBLICA-P.PREVIO': ¿descuento de valores? preguntar al banco",
@@ -470,17 +788,22 @@ def procesar(carpeta, empresa="A"):
 
     saldos, movs, resumen_bancos = [], [], []
     for b in bancos:
-        vistos, propios = set(), []
-        # 1. PDF manda; después las planillas agregan lo que falta.
+        vistos, propios = defaultdict(int), []
+        # 1. PDF manda; después las planillas agregan lo que falta. Dos movimientos son
+        # "el mismo" si coinciden cuenta, fecha e importe, pero se cuenta CUÁNTAS veces
+        # aparece cada combinación: si el mismo día hay tres sueldos iguales, son tres
+        # (antes se quedaba con uno solo y se perdían los otros dos).
         for l in sorted(b["lecturas"], key=lambda l: 0 if l["movimientos"] and l["movimientos"][0]["fuente"] == "pdf" else 1):
-            n_nuevos = 0
+            n_nuevos, en_esta = 0, defaultdict(int)
             for m in l["movimientos"]:
                 k = (m["cuenta"], m["fecha"], round(m["importe"], 2))
-                if k in vistos:
+                en_esta[k] += 1
+                if en_esta[k] <= vistos[k]:
                     continue
-                vistos.add(k)
                 propios.append(dict(m, banco=b["nombre"]))
                 n_nuevos += 1
+            for k, n in en_esta.items():
+                vistos[k] = max(vistos[k], n)
             l["nuevos"] = n_nuevos
         propios.sort(key=lambda m: (m["cuenta"], m["fecha"]))
         # 2. Saldo por cuenta y día: el último saldo de cada día, de lo que tenga saldo.
