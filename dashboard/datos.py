@@ -422,6 +422,11 @@ def ingresos_por_dia(contrato, unidad, hoy, dias=30):
         if not (hoy <= f <= hasta):
             continue
         con = (x.get("concepto") or "?").strip()
+        # Un movimiento REAL de un extracto trae el concepto del banco
+        # ("TRANSF:76V4MR2Z8DG1..."). Como serie del grafico va su categoria
+        # de la planilla (Cobranza Facturas), no el renglon del extracto.
+        if (x.get("estado") or "").upper() == "REAL" and x.get("categoria_planilla"):
+            con = "%s (real)" % x["categoria_planilla"]
         por_dia.setdefault(f, {})
         por_dia[f][con] = por_dia[f].get(con, 0.0) + float(x.get("importe") or 0)
         fuentes[con] = fuentes.get(con, 0.0) + float(x.get("importe") or 0)

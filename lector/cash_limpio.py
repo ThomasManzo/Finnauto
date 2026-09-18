@@ -508,7 +508,8 @@ def _tipo_meta(cat, tipo):
 
 
 def _m(v):
-    return "$" + format(int(round(abs(v))), ",d").replace(",", ".")
+    # Con signo: una caja negativa (descubierto) tiene que verse negativa.
+    return ("-" if v < 0 else "") + "$" + format(int(round(abs(v))), ",d").replace(",", ".")
 
 
 def imprimir(c):
