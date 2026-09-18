@@ -414,11 +414,27 @@ def leer(archivo, cliente, hoy=None):
                     cuotas.append(x)
                     egresos_cf.append(x)
                 else:
+                    obs_l = _norm(_col(d, "observ")).upper()
+                    nombre_l = _norm(_col(d, "linea")).upper()
+                    # Que es cada linea: un descubierto YA esta en la caja (es el saldo
+                    # negativo de la cuenta), asi que no se suma como deuda aparte.
+                    if "DESCUBIERTO" in nombre_l or "ACUERDO EN CTA" in nombre_l:
+                        tipo_l = "descubierto"
+                    elif "TARJETA" in nombre_l:
+                        tipo_l = "tarjeta"
+                    elif "DESC." in nombre_l or "DESCUENTO" in nombre_l or "VENTA VALORES" in nombre_l:
+                        tipo_l = "descuento"
+                    else:
+                        tipo_l = "prestamo"
                     lineas.append({"banco": _txt(_col(d, "banco")), "unidad": _u(_col(d, "empresa")),
-                                   "linea": _txt(_col(d, "linea")),
+                                   "linea": _txt(_col(d, "linea")), "tipo": tipo_l,
+                                   "capital_original": _num(_col(d, "capital original")),
                                    "capital_vigente": _num(_col(d, "capital vigente")),
                                    "situacion_bcra": _num(_col(d, "situacion")) or None,
-                                   "vence": _iso(_col(d, "vto"))})
+                                   "vence": _iso(_col(d, "vto")),
+                                   "en_caja": tipo_l == "descubierto" or "YA ESTA EN LA CAJA" in obs_l,
+                                   "falta_importe": "FALTA IMPORTE" in obs_l or "FALTA SALDO" in obs_l,
+                                   "estimado": "ESTIMAD" in obs_l and "NO TRAE" in obs_l})
 
     # ---- Saldos Bancarios: EL ULTIMO SALDO DE CADA CUENTA.
     #
