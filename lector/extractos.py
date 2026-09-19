@@ -700,9 +700,12 @@ REGLAS_INGRESO = [
     ("CUENTA PROPIA", "Transferencia Interna", "Transferencia", True),
     ("TRANSF INMED CP", "Transferencia Interna", "Transferencia", True),
     ("TR.NE", "Transferencia Interna", "Transferencia", True),
-    ("DESCUENTO DOCUMENTO", "Prestamo", "Transferencia", False),
-    ("CHEQUES DESCONTADOS", "Prestamo", "Transferencia", False),
-    ("DEUD. PUBLICA", "Prestamo", "Transferencia", False),
+    # Priscilla (18/09/2026): descontar cheques es la forma normal de meter plata en las
+    # cuentas; "N/C DEUD. PUBLICA-P.PREVIO" del Macro son transferencias de clientes.
+    ("DESCUENTO DOCUMENTO", "Descuento de Cheques", "Transferencia", False),
+    ("CHEQUES DESCONTADOS", "Descuento de Cheques", "Transferencia", False),
+    ("VENTA DE VALORES", "Descuento de Cheques", "Transferencia", False),
+    ("DEUD. PUBLICA", "Cobranza Facturas", "Transferencia", False),
     ("PRESTAMO", "Prestamo", "Transferencia", False),
     ("ACRED. CH", "Cheques", "Cheque de Terceros", False),
     ("ACREDITACION CHEQUE", "Cheques", "Cheque de Terceros", False),
@@ -739,7 +742,7 @@ NOTAS = {
     "ALTA PRESTAMO": "préstamo nuevo (documentos) acreditado: financiación, no cobranza",
     "NUMERO DE OPERACION": "depósito por número de operación: ¿cobranza? revisar",
     "CCERR": "cheque de cámara acreditado (circuito cerrado)",
-    "DEUD. PUBLICA": "acreditación 'DEUD. PUBLICA-P.PREVIO': ¿descuento de valores? preguntar al banco",
+    "DEUD. PUBLICA": "transferencia de un cliente (Priscilla 18/09: p.ej. la del 01/07 es de Kerps)",
     "EFECTIVO": "depósito en efectivo: ¿cobranza en efectivo o plata de la caja propia? revisar",
     "DEPOSITO": "depósito: ¿cobranza o plata de la caja propia? revisar",
     "ATM": "depósito en cajero: ¿cobranza o caja propia? revisar",
@@ -754,8 +757,9 @@ def clasificar(mov, cuit_propio):
     tipo = "Ingreso" if v > 0 else "Egreso"
     if cuit_propio and re.search(r'\b' + re.escape(cuit_propio) + r'\b', c.replace("-", "")):
         return (tipo, "Transferencia Interna", "Transferencia", True, "al/del CUIT propio (otra cuenta de NAVAR)")
-    if re.fullmatch(r'\d{18,}', c):
-        return (tipo, "Otros", "", False, "acreditación sin descripción (solo un número de operación): ¿valores al cobro, préstamo? preguntar al banco")
+    if re.fullmatch(r'\d{18,}', c) and v > 0:
+        # Macro acredita la venta de valores (descuento de cheques) solo con el número de operación (Priscilla, 18/09).
+        return (tipo, "Descuento de Cheques", "Transferencia", False, "venta de valores Macro (descuento de cheques de clientes), según Priscilla 18/09")
     for texto, cat, medio, interno in (REGLAS_INGRESO if v > 0 else REGLAS_EGRESO):
         if texto in c:
             nota = NOTAS.get(texto, "")

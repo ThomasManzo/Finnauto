@@ -260,6 +260,8 @@ def armar(mapa, hoy, empresa="A", pagos_reales=None):
             nota.append("cuota ESTIMADA: el mapa no trae valor de cuota, se calculó con saldo y tasa")
         if p["atraso_dias"]:
             nota.append("atraso %d días" % p["atraso_dias"])
+        if (p["banco_corto"], tipo) in NOTAS_PRISCILLA:
+            nota.append(NOTAS_PRISCILLA[(p["banco_corto"], tipo)])
         lineas.append(OrderedDict([
             ("Banco", p["banco_corto"]), ("Empresa", empresa), ("Linea / Producto", p["producto"]),
             ("Capital Original", p["valor_original"] if isinstance(p["valor_original"], (int, float)) else None),
@@ -271,6 +273,21 @@ def armar(mapa, hoy, empresa="A", pagos_reales=None):
         # ---- cuotas
         if tipo == "prestamo" and p["valor_cuota"] and p["cuotas"]:
             cuotas += _cronograma(p, hoy, empresa, origen, avisos)
+        elif tipo == "tarjeta" and _diferidas(p):
+            # Priscilla (18/09): las "operaciones diferidas" de la AgroNación son pagos a
+            # proveedores hechos con la tarjeta que van a entrar en los próximos resúmenes.
+            # No se sabe en cuántos: se reparten en 3 resúmenes (vto. 28 de cada mes),
+            # marcados ESTIMADO, hasta que llegue el detalle de la tarjeta.
+            total = _diferidas(p)
+            for k in range(3):
+                venc = _mas_meses(datetime.date(2026, 9, 28), k)
+                cuotas.append(OrderedDict([
+                    ("Banco", p["banco_corto"]), ("Empresa", empresa), ("Linea / Producto", p["producto"]),
+                    ("Nro Cuota", "resumen %d/3" % (k + 1)), ("Fecha Vencimiento", venc),
+                    ("Importe Capital", round(total / 3, 2)), ("Importe Interes", 0), ("Importe Total Cuota", None),
+                    ("Estado", "Pendiente"),
+                    ("Observaciones", origen + " · ESTIMADO: operaciones diferidas por %s (pagos a proveedores con la tarjeta, Priscilla 18/09) repartidas en 3 resúmenes; pedir el detalle de la tarjeta" % _m(total)),
+                ]))
         elif tipo == "tarjeta" and p["saldo"] and p["atraso_dias"]:
             # el resumen impago es deuda vencida hoy
             cuotas.append(OrderedDict([
@@ -309,6 +326,20 @@ def _estimar_cuota(p, avisos):
         p["proxima"] = {"nro": p["pagadas"] + 1, "fecha": prox, "importe": p["valor_cuota"]}
     avisos.append("%s %s: el mapa no trae valor de cuota; se estimó %s (saldo %s / %d cuotas + interés al %s%%). Pedir la tabla al banco" % (
         p["banco_corto"], p["producto"], _m(p["valor_cuota"]), _m(p["saldo"]), faltan, ("%.2f" % (tna * 100)).rstrip("0").rstrip(".")))
+
+
+def _diferidas(p):
+    """Importe de 'operaciones diferidas por $X' en las observaciones de una tarjeta."""
+    m = re.search(r'operaciones diferidas por\s+\$\s?([\d.,]+)', p["obs"], re.I)
+    return _num_ar(m.group(1)) if m else None
+
+
+# Lo que contestó Priscilla el 18/09 y va en las observaciones de las líneas.
+NOTAS_PRISCILLA = {
+    ("CORRIENTES", "prestamo"): "Priscilla 18/09: hay una refinanciación en curso",
+    ("BBVA", "prestamo"): "Priscilla 18/09: la cuota impaga quedó colgada por falta de fondos; el banco la debita cuando haya (es lo 'pendiente' del home banking)",
+    ("MACRO", "descuento"): "Priscilla 18/09: la venta de valores es la forma normal de meter plata en la cuenta (descuento de cheques de clientes)",
+}
 
 
 def _cronograma(p, hoy, empresa, origen, avisos):
@@ -396,7 +427,7 @@ def _cruzar_lineas_con_pagos(lineas, productos, pagos, avisos):
             continue
         for pg in pagos:
             if pg["banco"] == l["Banco"] and pg["fecha"] > p["fecha_mapa"] and abs(abs(pg["importe"]) - p["saldo"]) < 1:
-                l["Capital Vigente"] = 0
+                l["Capital Vigente"] = _diferidas(p) or 0      # lo que queda: las operaciones diferidas
                 l["Observaciones"] = "%s · PAGADO el %s según extracto (%s) · saldo que informaba el mapa: %s · %s" % (
                     l["Observaciones"].split(" · ", 2)[0] + " · " + l["Observaciones"].split(" · ", 2)[1],
                     pg["fecha"].strftime("%d/%m"), _m(pg["importe"]), _m(p["saldo"]), p["obs"])
