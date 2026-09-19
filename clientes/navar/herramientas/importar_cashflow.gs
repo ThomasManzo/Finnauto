@@ -95,7 +95,8 @@ function onOpen() {
     .addItem("Importar Deuda (deuda bancaria)", "importarDeuda")
     .addItem("Importar Impuestos (deuda impositiva)", "importarImpuestos")
     .addSeparator()
-    .addItem("Armar solapa Cash", "armarCash")
+    .addItem("Armar solapa Cash (Cash, Semanal, Mensual)", "armarCash")
+    .addItem("Armar solapa Plan (pisa las decisiones cargadas)", "armarPlan")
     .addToUi();
 }
 
