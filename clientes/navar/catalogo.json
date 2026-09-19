@@ -359,6 +359,10 @@
       "Transferencia Interna": [
         "TRANSFERENCIA_INTERNA",
         "FIJO"
+      ],
+      "Descuento de Cheques": [
+        "DESCUENTO_CHEQUES",
+        "FIJO"
       ]
     },
     "_nota_extractos": "'Transferencia Interna' la usan los lectores de extractos (lector/extracto_bbva.py) para plata que se mueve entre cuentas propias: barrido recaudacion -> principal, transferencias al CUIT propio, depositos de caja. No es ingreso ni gasto."

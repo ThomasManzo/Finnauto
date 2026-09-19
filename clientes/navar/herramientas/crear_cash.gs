@@ -6,6 +6,14 @@
  *                   saldo real, acuerdo de descubierto y disponible. Abajo, lo atrasado.
  *   "Cash Semanal"  SEMANA POR SEMANA, como el cash viejo de NAVAR: 4 semanas para
  *                   atrás (real) y 12 para adelante (estimado). Mismos renglones.
+ *   "Cash Mensual"  MES POR MES, 6 meses para adelante: los 3 meses cerrados de
+ *                   extracto (real) son la base; cada renglón que se repite (cobranza,
+ *                   proveedores, sueldos, impuestos corrientes, intereses) se proyecta
+ *                   como el promedio de esos 3 meses × (1 + inflación)^n, con la
+ *                   inflación en una celda editable (1,7 % mensual al 18/09/2026).
+ *                   Lo que tiene fecha (cuotas, deuda impositiva, cheques propios,
+ *                   proyectados cargados) va por su fecha; proveedores toma el mayor
+ *                   entre lo que vence en Tango y el promedio.
  *
  * Todo es fórmula sobre las solapas Movimientos, Cuentas a Cobrar, Cuentas a Pagar,
  * Cartera de Cheques, Saldos Bancarios, Deuda Bancaria y Deuda Impositiva. Nadie
@@ -111,11 +119,203 @@ function _renglones_() {
 }
 
 
+var INFLACION_MENSUAL = 0.017;     // valor inicial de la celda editable de Cash Mensual
+var MESES_ADELANTE = 6;
+
 function armarCash() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   _armarHoja_(ss, "Cash", 1, DIAS_ATRAS, DIAS_ADELANTE, true);
   _armarHoja_(ss, "Cash Semanal", 7, SEM_ATRAS, SEM_ADELANTE, false);
-  try { ss.toast("Solapas Cash y Cash Semanal armadas", "finauto", 8); } catch (e) {}
+  _armarMensual_(ss, "Cash Mensual");
+  try { ss.toast("Solapas Cash, Cash Semanal y Cash Mensual armadas", "finauto", 8); } catch (e) {}
+}
+
+
+// ================================================================== Cash Mensual
+// Renglones del mensual. real = fórmula sobre el extracto para un mes entero
+// ({M} = primer día del mes, {F} = primer día del mes siguiente). est = cómo se
+// estima: "prom" (promedio de los 3 meses base × inflación), "lista" (lo que tiene
+// fecha en la lista, desde hoy), "max" (el mayor entre lista y promedio), "cero".
+function _renglonesMensual_() {
+  function real(tipo, cat) {
+    return "SUMIFS(" + R.movImp + "," + R.movFecha + ",\">=\"&{M}," + R.movFecha + ",\"<\"&{F}," + R.movTipo + ",\"" + tipo + "\"," +
+      R.movEstado + ",\"Real\"" + (cat ? "," + R.movCat + ",\"" + cat + "\"" : "") + ")";
+  }
+  // listas: desde MAX(mes, hoy) hasta fin de mes. Lo vencido no entra: es stock.
+  var desde = "\">=\"&MAX({M},$B$2)", hasta = "\"<\"&{F}";
+  return {
+    ingresos: [
+      { n: "Cobranza acreditada (transferencias y depósitos de clientes)", real: real("Ingreso", "Cobranza Facturas"), est: "prom", f: "Movimientos · Ingreso · Cobranza Facturas" },
+      { n: "Cheques de clientes depositados", real: real("Ingreso", "Cheques"), est: "prom", f: "Movimientos · Ingreso · Cheques" },
+      { n: "Descuento de cheques (venta de valores)", real: real("Ingreso", "Descuento de Cheques"), est: "prom", f: "Movimientos · Ingreso · Descuento de Cheques · es cobranza en cheque adelantada por el banco" },
+      { n: "Préstamos nuevos", real: real("Ingreso", "Prestamo"), est: "cero", f: "Movimientos · Ingreso · Prestamo · no se proyecta: es una decisión" },
+      { n: "Sin identificar", real: real("Ingreso", "Otros"), est: "cero", f: "Movimientos · Ingreso · Otros" },
+      { n: "(informativo) Facturas de Tango que vencen en el mes, A + AA", real: "",
+        lista: "SUMIFS(" + R.cobPend + "," + R.cobVto + "," + desde + "," + R.cobVto + "," + hasta + "," + R.cobEstado + ",\"<>Cobrado\"," + R.cobObs + ",\"<>REVISAR*\")",
+        est: "lista", info: true, f: "Cuentas a Cobrar · lo facturado con vencimiento en el mes; lo no facturado todavía no está" },
+    ],
+    egresos: [
+      { n: "Proveedores", real: real("Egreso", "Proveedores MP y Logist."), est: "max",
+        lista: "SUMIFS(" + R.pagPend + "," + R.pagVto + "," + desde + "," + R.pagVto + "," + hasta + "," + R.pagEstado + ",\"<>Pagado\"," + R.pagObs + ",\"<>REVISAR*\")",
+        f: "el mayor entre lo que vence en Tango ese mes y el promedio real × inflación" },
+      { n: "Sueldos y cargas (del 1 al 10)", real: real("Egreso", "Sueldos y Jornales"), est: "prom", f: "Movimientos · Egreso · Sueldos y Jornales · las horas extras se pagan en AA" },
+      { n: "Cuotas bancarias y tarjeta (cronograma)", real: real("Egreso", "Prestamo"), est: "lista",
+        lista: "SUMIFS(" + R.cuTot + "," + R.cuVto + "," + desde + "," + R.cuVto + "," + hasta + "," + R.cuEstado + ",\"Pendiente\")",
+        f: "Deuda Bancaria · cronograma (dato del banco o estimado; la AgroNación diferida va en 3 resúmenes)" },
+      { n: "Impuestos corrientes (IVA, cargas, retenciones del mes)", real: real("Egreso", "Impuestos"), est: "prom", f: "Movimientos · Egreso · Impuestos · promedio de lo que se pagó" },
+      { n: "Impuestos: deuda y planes con vencimiento en el mes", real: "", est: "lista",
+        lista: "SUMIFS(" + R.diImp + "," + R.diVto + "," + desde + "," + R.diVto + "," + hasta + "," + R.diEstado + ",\"<>Pagado\")",
+        f: "Deuda Impositiva · anticipos y planes; lo vencido es stock (abajo)" },
+      { n: "Cheques propios (por fecha de pago)", real: real("Egreso", "Cheques"), est: "lista",
+        lista: "SUMIFS(" + R.chqImp + "," + R.chqTipo + ",\"Propio*\"," + R.chqEstado + ",\"En Cartera\"," + R.chqFecha + "," + desde + "," + R.chqFecha + "," + hasta + ")",
+        f: "Cartera de Cheques · Propio Emitido" },
+      { n: "Tarjeta, honorarios y otros", real: real("Egreso", "Otros") + "+" + real("Egreso", "Honorarios y Dividendos"), est: "prom", f: "Movimientos · Egreso · Otros + Honorarios" },
+      { n: "Intereses y gastos bancarios", real: real("Egreso", "Gastos Bancarios"), est: "prom", f: "Movimientos · Egreso · Gastos Bancarios" },
+      { n: "Otros con fecha (cosecha, estampillas; carga de NAVAR)", real: "", est: "lista",
+        lista: "-SUMIFS(" + R.movImp + "," + R.movFecha + "," + desde + "," + R.movFecha + "," + hasta + "," + R.movTipo + ",\"Egreso\"," + R.movEstado + ",\"Proyectado\"," + R.movCat + ",\"<>Sueldos y Jornales\")",
+        f: "Movimientos · proyectados con fecha, salvo sueldos (ya están arriba)" },
+    ]
+  };
+}
+
+
+function _armarMensual_(ss, nombre) {
+  var h = ss.getSheetByName(nombre);
+  if (h) h.clear(); else h = ss.insertSheet(nombre);
+  ss.setActiveSheet(h);
+  var nBase = 3, nFut = MESES_ADELANTE, nCols = nBase + 1 + nFut;    // 3 base + mes actual + 6
+  var colProm = 2 + nCols, colComo = colProm + 1, colFuente = colProm + 2;
+
+  h.getRange(1, 1).setValue("CASH · " + ss.getName().replace(" - Cash Flow", "") + " · mes por mes, 6 meses").setFontWeight("bold").setFontSize(14);
+  h.getRange(1, 1, 1, 6).setBackground("#1c3f60").setFontColor("#ffffff");
+  h.getRange(2, 1).setValue("Hoy"); h.getRange(2, 2).setFormula("=TODAY()").setNumberFormat("dd/mm/yyyy");
+  h.getRange(3, 1).setValue("Inflación mensual (editable)"); h.getRange(3, 2).setValue(INFLACION_MENSUAL).setNumberFormat("0.0%").setBackground("#fff8e1");
+  h.getRange(3, 3).setValue("← cambiá este número y se recalcula todo lo estimado").setFontStyle("italic").setFontColor("#5f6368");
+  h.getRange(4, 1).setValue("Cómo se estima: los 3 meses cerrados de extracto son la base; lo que se repite va como promedio × (1 + inflación)^n; lo que tiene fecha va por su fecha. Lo vencido no entra: es stock (abajo).").setFontStyle("italic").setFontColor("#5f6368");
+
+  // ---- encabezado de meses
+  var fila = 6, filaMeses = fila;
+  h.getRange(fila, 1).setValue("Concepto").setFontWeight("bold");
+  for (var i = 0; i < nCols; i++) {
+    var col = 2 + i, k = i - nBase;                       // k = -3..-1 base, 0 mes actual, 1.. futuros
+    h.getRange(fila, col).setFormula("=EOMONTH($B$2," + (k - 1) + ")+1").setNumberFormat("mmm yy").setFontWeight("bold").setHorizontalAlignment("right")
+      .setBackground(k < 0 ? "#e6f4ea" : (k === 0 ? "#fef7e0" : "#fef7e0"));
+  }
+  h.getRange(fila, colProm).setValue("Prom. base").setFontWeight("bold").setHorizontalAlignment("right");
+  h.getRange(fila, colComo).setValue("Cómo").setFontWeight("bold");
+  h.getRange(fila, colFuente).setValue("Fuente").setFontWeight("bold");
+  h.getRange(fila, 1, 1, colFuente).setBorder(false, false, true, false, false, false, "#3c4043", SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+  fila++;
+  for (var j = 0; j < nCols; j++) {
+    var kk = j - nBase;
+    h.getRange(fila, 2 + j).setValue(kk < 0 ? "real (base)" : (kk === 0 ? "real + estimado" : "estimado")).setFontSize(9)
+      .setFontColor(kk < 0 ? "#137333" : "#b06000").setHorizontalAlignment("right");
+  }
+  fila++;
+
+  var ultBase = "$" + _colLetra_(1 + nBase) + "$" + filaMeses;          // celda del último mes base
+  var reng = _renglonesMensual_();
+  function bloque(titulo, lista) {
+    _seccion_(h, fila++, titulo, "#e8f0fe", "#174ea6");
+    var primera = fila;
+    lista.forEach(function (r) {
+      h.getRange(fila, 1).setValue(r.n).setFontStyle(r.info ? "italic" : "normal").setFontColor(r.info ? "#5f6368" : "#202124");
+      var promRef = "$" + _colLetra_(colProm) + fila;
+      for (var c = 0; c < nCols; c++) {
+        var k = c - nBase, M = _colLetra_(2 + c) + "$" + filaMeses, F = "(EOMONTH(" + M + ",0)+1)";
+        var n = "((YEAR(" + M + ")-YEAR(" + ultBase + "))*12+MONTH(" + M + ")-MONTH(" + ultBase + "))";
+        var factor = "MAX(0,(EOMONTH(" + M + ",0)-MAX(" + M + ",$B$2)+1)/DAY(EOMONTH(" + M + ",0)))";  // parte del mes que falta
+        var realFx = r.real ? r.real.replace(/\{M\}/g, M).replace(/\{F\}/g, "MIN(" + F + ",$B$2)") : "";
+        var listaFx = r.lista ? r.lista.replace(/\{M\}/g, M).replace(/\{F\}/g, F) : "";
+        var promFx = promRef + "*(1+$B$3)^" + n + "*" + factor;
+        var fx;
+        if (k < 0) fx = r.real ? "=" + r.real.replace(/\{M\}/g, M).replace(/\{F\}/g, F) : "";
+        else if (r.est === "prom") fx = "=" + (realFx ? realFx + "+" : "") + promFx;
+        else if (r.est === "lista") fx = "=" + (realFx ? realFx + "+" : "") + listaFx;
+        else if (r.est === "max") fx = "=" + (realFx ? realFx + "+" : "") + "MAX(" + listaFx + "," + promFx + ")";
+        else fx = realFx ? "=" + realFx : "";
+        if (fx) h.getRange(fila, 2 + c).setFormula(fx); else h.getRange(fila, 2 + c).setValue("—").setHorizontalAlignment("right").setFontColor("#9aa0a6");
+      }
+      if (r.est === "prom" || r.est === "max") h.getRange(fila, colProm).setFormula("=AVERAGE(B" + fila + ":" + _colLetra_(1 + nBase) + fila + ")").setFontColor("#5f6368");
+      h.getRange(fila, colComo).setValue({ prom: "promedio × inflación", lista: "por fecha (lista)", max: "mayor entre lista y promedio", cero: "no se proyecta" }[r.est]).setFontColor("#5f6368").setFontSize(10);
+      h.getRange(fila, colFuente).setValue(r.f).setFontStyle("italic").setFontColor("#5f6368");
+      if (r.info) h.getRange(fila, 2, 1, nCols).setFontStyle("italic").setFontColor("#5f6368");
+      fila++;
+    });
+    var ult = fila - 1;
+    h.getRange(fila, 1).setValue("Total " + titulo.split("· ")[1].toLowerCase()).setFontWeight("bold");
+    for (var c2 = 0; c2 < nCols; c2++) {
+      var L = _colLetra_(2 + c2);
+      // los renglones informativos no suman
+      var partes = [];
+      for (var q = primera; q <= ult; q++) if (!lista[q - primera].info) partes.push(L + q);
+      h.getRange(fila, 2 + c2).setFormula("=" + partes.join("+")).setFontWeight("bold");
+    }
+    h.getRange(fila, 1, 1, colFuente).setBorder(true, false, true, false, false, false, "#3c4043", SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+    var filaTotal = fila;
+    fila += 2;
+    return filaTotal;
+  }
+  var totIng = bloque("1 · Ingresos", reng.ingresos);
+  var totEgr = bloque("2 · Egresos", reng.egresos);
+
+  // ---- saldo al cierre de cada mes. El mes actual arranca de la caja de hoy y suma
+  // solo lo que falta del mes: lo real del mes ya está adentro del saldo de hoy.
+  var filaCash = _filaTotalBancosDeCash_(ss);
+  h.getRange(fila, 1).setValue("Saldo bancos al cierre del mes").setFontWeight("bold");
+  var filaRealIng = fila + 2, filaRealEgr = fila + 3;
+  for (var m = 0; m < nCols; m++) {
+    var k2 = m - nBase, L2 = _colLetra_(2 + m), Lp = _colLetra_(1 + m);
+    if (k2 < 0) h.getRange(fila, 2 + m).setValue("—").setHorizontalAlignment("right").setFontColor("#9aa0a6");
+    else if (k2 === 0) h.getRange(fila, 2 + m).setFormula("=Cash!$C$" + filaCash + "+(" + L2 + totIng + "-" + L2 + filaRealIng + ")-(" + L2 + totEgr + "-" + L2 + filaRealEgr + ")").setFontWeight("bold");
+    else h.getRange(fila, 2 + m).setFormula("=" + Lp + fila + "+" + L2 + totIng + "-" + L2 + totEgr).setFontWeight("bold");
+  }
+  h.getRange(fila, colFuente).setValue("saldo de hoy (Cash) + lo que falta del mes; después, mes a mes").setFontStyle("italic").setFontColor("#5f6368");
+  h.getRange(fila, 1, 1, colFuente).setBackground("#fff8e1");
+  var filaSaldo = fila++;
+  h.getRange(fila, 1).setValue("Disponible al cierre (saldo + acuerdos de descubierto)").setFontWeight("bold");
+  for (var m2 = 0; m2 < nCols; m2++) {
+    var L3 = _colLetra_(2 + m2);
+    if (m2 - nBase < 0) h.getRange(fila, 2 + m2).setValue("—").setHorizontalAlignment("right").setFontColor("#9aa0a6");
+    else h.getRange(fila, 2 + m2).setFormula("=" + L3 + filaSaldo + "+Cash!$D$" + filaCash).setFontWeight("bold");
+  }
+  h.getRange(fila, colFuente).setValue("negativo = lo comprometido de ese mes no se cubre ni usando todo el descubierto: hay que refinanciar o elegir qué no pagar").setFontStyle("italic").setFontColor("#5f6368");
+  h.getRange(fila, 1, 1, colFuente).setBackground("#fce8e6");
+  fila++;
+  // lo real del mes en curso (para no contarlo dos veces en el saldo)
+  h.getRange(fila, 1).setValue("de lo cual ya pasó (real del mes en curso): ingresos").setFontSize(10).setFontColor("#5f6368");
+  h.getRange(fila + 1, 1).setValue("de lo cual ya pasó (real del mes en curso): egresos").setFontSize(10).setFontColor("#5f6368");
+  for (var m3 = 0; m3 < nCols; m3++) {
+    var M3 = _colLetra_(2 + m3) + "$" + filaMeses;
+    var ri = "=SUMIFS(" + R.movImp + "," + R.movFecha + ",\">=\"&" + M3 + "," + R.movFecha + ",\"<\"&MIN(EOMONTH(" + M3 + ",0)+1,$B$2)," + R.movTipo + ",\"Ingreso\"," + R.movEstado + ",\"Real\")";
+    var re = "=-SUMIFS(" + R.movImp + "," + R.movFecha + ",\">=\"&" + M3 + "," + R.movFecha + ",\"<\"&MIN(EOMONTH(" + M3 + ",0)+1,$B$2)," + R.movTipo + ",\"Egreso\"," + R.movEstado + ",\"Real\")";
+    h.getRange(fila, 2 + m3).setFormula(ri).setFontSize(10).setFontColor("#5f6368");
+    h.getRange(fila + 1, 2 + m3).setFormula(re).setFontSize(10).setFontColor("#5f6368");
+  }
+  fila += 3;
+
+  // ---- atrasado (stock), igual que en Cash
+  _seccion_(h, fila++, "3 · Atrasado hoy (stock: no está en ningún mes, se paga por decisión)", "#fce8e6", "#a50e0e");
+  _encabezado_(h, fila++, ["Concepto", "Monto", "", "", "", "", "Fuente"]);
+  var primeraAtr = fila, reng0 = _renglones_();
+  reng0.atrasado.forEach(function (r) {
+    h.getRange(fila, 1).setValue(r.n).setFontStyle(r.info ? "italic" : "normal");
+    h.getRange(fila, 2).setFormula(r.est);
+    h.getRange(fila, 7).setValue(r.f).setFontStyle("italic").setFontColor("#5f6368");
+    fila++;
+  });
+  h.getRange(fila, 1).setValue("Total atrasado a pagar").setFontWeight("bold");
+  h.getRange(fila, 2).setFormula("=SUM(B" + primeraAtr + ":B" + (fila - 2) + ")").setFontWeight("bold");
+  h.getRange(fila, 1, 1, 7).setBorder(true, false, true, false, false, false, "#3c4043", SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+
+  // ---- formato
+  h.getRange(7, 2, fila, nCols + 1).setNumberFormat("#,##0;[Red]-#,##0;\"—\"");
+  h.getRange(2, 2).setNumberFormat("dd/mm/yyyy"); h.getRange(3, 2).setNumberFormat("0.0%");
+  for (var i3 = 0; i3 < nCols; i3++) h.getRange(filaMeses, 2 + i3).setNumberFormat("mmm yy");
+  h.setColumnWidth(1, 360);
+  for (var w = 0; w < nCols; w++) h.setColumnWidth(2 + w, 104);
+  h.setColumnWidth(colProm, 104); h.setColumnWidth(colComo, 190); h.setColumnWidth(colFuente, 420);
+  h.setFrozenRows(filaMeses); h.setFrozenColumns(1);
 }
 
 
