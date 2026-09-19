@@ -161,11 +161,16 @@ function _separadorLocal_(ss, h) {
       return out;
     });
   });
-  // setFormulas pisa también las celdas sin fórmula (les pone "") -> solo las que tienen
-  var vals = rango.getValues();
+  // Se escriben por tramos de celdas seguidas con fórmula (una llamada por tramo, no
+  // por celda: celda por celda son 1.500 llamadas y tarda minutos). Las celdas con
+  // texto o número quedan como están.
   for (var r = 0; r < nuevas.length; r++) {
-    for (var c = 0; c < nuevas[r].length; c++) {
-      if (nuevas[r][c] && nuevas[r][c] !== formulas[r][c]) h.getRange(r + 1, c + 1).setFormula(nuevas[r][c]);
+    var c = 0;
+    while (c < nuevas[r].length) {
+      if (!nuevas[r][c]) { c++; continue; }
+      var ini = c;
+      while (c < nuevas[r].length && nuevas[r][c]) c++;
+      h.getRange(r + 1, ini + 1, 1, c - ini).setFormulas([nuevas[r].slice(ini, c)]);
     }
   }
   Logger.log(h.getName() + ": " + cambiadas + " fórmulas reescritas con ';'");
