@@ -127,7 +127,48 @@ function armarCash() {
   _armarHoja_(ss, "Cash", 1, DIAS_ATRAS, DIAS_ADELANTE, true);
   _armarHoja_(ss, "Cash Semanal", 7, SEM_ATRAS, SEM_ADELANTE, false);
   _armarMensual_(ss, "Cash Mensual");
+  ["Cash", "Cash Semanal", "Cash Mensual"].forEach(function (n) { _separadorLocal_(ss, ss.getSheetByName(n)); });
   try { ss.toast("Solapas Cash, Cash Semanal y Cash Mensual armadas", "finauto", 8); } catch (e) {}
+}
+
+
+// ---- La Sheet está en español (Argentina): la coma es el decimal y los argumentos
+// de las fórmulas van con punto y coma. Las fórmulas de este script se escriben con
+// coma (formato en inglés); si la planilla no las entiende (18/09: salió todo
+// #ERROR!), se reescriben con ";". Se prueba primero en una celda, para no romper
+// nada si la planilla sí las acepta.
+function _separadorLocal_(ss, h) {
+  var prueba = h.getRange(1, 30);
+  prueba.setFormula("=MAX(1,2)");
+  SpreadsheetApp.flush();
+  var conComa = (prueba.getValue() === 2);
+  prueba.clearContent();
+  if (conComa) return;
+  var rango = h.getDataRange();
+  var formulas = rango.getFormulas();
+  var cambiadas = 0;
+  var nuevas = formulas.map(function (fila) {
+    return fila.map(function (f) {
+      if (!f) return f;
+      cambiadas++;
+      // coma → punto y coma, salvo adentro de comillas
+      var out = "", enComillas = false;
+      for (var i = 0; i < f.length; i++) {
+        var ch = f.charAt(i);
+        if (ch === '"') enComillas = !enComillas;
+        out += (ch === "," && !enComillas) ? ";" : ch;
+      }
+      return out;
+    });
+  });
+  // setFormulas pisa también las celdas sin fórmula (les pone "") -> solo las que tienen
+  var vals = rango.getValues();
+  for (var r = 0; r < nuevas.length; r++) {
+    for (var c = 0; c < nuevas[r].length; c++) {
+      if (nuevas[r][c] && nuevas[r][c] !== formulas[r][c]) h.getRange(r + 1, c + 1).setFormula(nuevas[r][c]);
+    }
+  }
+  Logger.log(h.getName() + ": " + cambiadas + " fórmulas reescritas con ';'");
 }
 
 
