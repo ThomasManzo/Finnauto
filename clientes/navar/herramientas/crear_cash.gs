@@ -45,7 +45,7 @@ var FORMATO_NUM = "#,##0;[Red]-#,##0;\"\"";     // ceros en blanco
 // Rangos de las listas (columnas de cada solapa, tal cual están).
 var R = {
   movFecha: "Movimientos!$B:$B", movTipo: "Movimientos!$D:$D", movCat: "Movimientos!$E:$E",
-  movImp: "Movimientos!$G:$G", movEstado: "Movimientos!$K:$K",
+  movImp: "Movimientos!$G:$G", movOrigen: "Movimientos!$J:$J", movEstado: "Movimientos!$K:$K",
   cobPend: "'Cuentas a Cobrar'!$I:$I", cobEmp: "'Cuentas a Cobrar'!$C:$C", cobVto: "'Cuentas a Cobrar'!$F:$F",
   cobEstado: "'Cuentas a Cobrar'!$J:$J", cobObs: "'Cuentas a Cobrar'!$L:$L",
   pagPend: "'Cuentas a Pagar'!$J:$J", pagEmp: "'Cuentas a Pagar'!$C:$C", pagVto: "'Cuentas a Pagar'!$G:$G",
@@ -75,9 +75,12 @@ function armarCash() {
 
 // ================================================================== renglones
 // {D} = celda con la fecha de inicio de la columna; {F} = fin (exclusivo).
+// Lo REAL es solo lo que vino del extracto (Origen "Extracto ..."). Las filas migradas del
+// cash viejo dicen Estado "Real" pero Origen "Manual": son agregados semanales, no
+// movimientos, y si entraran duplicarían todo.
 function _movReal_(tipo, cat) {
   return "SUMIFS(" + R.movImp + "," + R.movFecha + ",\">=\"&{D}," + R.movFecha + ",\"<\"&{F}," + R.movTipo + ",\"" + tipo + "\"," +
-    R.movEstado + ",\"Real\"" + (cat ? "," + R.movCat + ",\"" + cat + "\"" : "") + ")";
+    R.movEstado + ",\"Real\"," + R.movOrigen + ",\"Extracto*\"" + (cat ? "," + R.movCat + ",\"" + cat + "\"" : "") + ")";
 }
 function _proy_(cat, distinto) {
   return "SUMIFS(" + R.movImp + "," + R.movFecha + ",\">=\"&{D}," + R.movFecha + ",\"<\"&{F}," + R.movTipo + ",\"Egreso\"," +
@@ -116,7 +119,7 @@ function _renglones_() {
       { n: "Cheques propios (por fecha de pago)", est: _lista_(R.chqImp, R.chqFecha, "," + R.chqTipo + ",\"Propio*\"," + R.chqEstado + ",\"En Cartera\"," + R.chqObs + ",\"<>REVISAR*\""), f: "Cartera de Cheques · Propio Emitido" },
       { n: "Otros con fecha (cosecha, estampillas, honorarios)", est: "-" + _proy_("Sueldos y Jornales", true), f: "Movimientos · proyectados con fecha, salvo sueldos" },
       { n: "Intereses y gastos bancarios (promedio real 90 días)",
-        est: "-SUMIFS(" + R.movImp + "," + R.movTipo + ",\"Egreso\"," + R.movCat + ",\"Gastos Bancarios\"," + R.movEstado + ",\"Real\"," + R.movFecha + ",\">=\"&($B$3-90))/90*({F}-{D})",
+        est: "-SUMIFS(" + R.movImp + "," + R.movTipo + ",\"Egreso\"," + R.movCat + ",\"Gastos Bancarios\"," + R.movOrigen + ",\"Extracto*\"," + R.movFecha + ",\">=\"&($B$3-90))/90*({F}-{D})",
         f: "promedio de lo real de los últimos 90 días · ESTIMADO" },
     ],
     atrasado: [
@@ -275,7 +278,7 @@ function _cuerpo_(ss, h, fila, nCols, atras, D, F, colFuente, cierreTxt, mensual
       h.getRange(fila, 1).setValue("de lo cual ya pasó (real hasta el último extracto)").setFontSize(10).setFontColor("#5f6368");
       var tipo = titulo === "Ingresos" ? "Ingreso" : "Egreso";
       for (var c3 = 0; c3 < nCols; c3++) {
-        var f3 = (tipo === "Egreso" ? "=-" : "=") + "SUMIFS(" + R.movImp + "," + R.movFecha + ",\">=\"&" + D(c3) + "," + R.movFecha + ",\"<\"&MIN(" + F(c3) + ",$B$2)," + R.movTipo + ",\"" + tipo + "\"," + R.movEstado + ",\"Real\")";
+        var f3 = (tipo === "Egreso" ? "=-" : "=") + "SUMIFS(" + R.movImp + "," + R.movFecha + ",\">=\"&" + D(c3) + "," + R.movFecha + ",\"<\"&MIN(" + F(c3) + ",$B$2)," + R.movTipo + ",\"" + tipo + "\"," + R.movEstado + ",\"Real\"," + R.movOrigen + ",\"Extracto*\")";
         h.getRange(fila, 2 + c3).setFormula(f3).setFontSize(10).setFontColor("#5f6368");
       }
       if (tipo === "Ingreso") filaRealIng = fila; else filaRealEgr = fila;
@@ -502,7 +505,7 @@ function _titulo_(h, texto, ancho) {
 
 function _cabecera_(h) {
   h.getRange(2, 1).setValue("Hoy"); h.getRange(2, 2).setFormula("=TODAY()").setNumberFormat("dd/mm/yyyy");
-  h.getRange(3, 1).setValue("Último día con extracto"); h.getRange(3, 2).setFormula("=MAXIFS(" + R.movFecha + "," + R.movEstado + ",\"Real\")").setNumberFormat("dd/mm/yyyy");
+  h.getRange(3, 1).setValue("Último día con extracto"); h.getRange(3, 2).setFormula("=MAXIFS(" + R.movFecha + "," + R.movOrigen + ",\"Extracto*\")").setNumberFormat("dd/mm/yyyy");
   h.getRange(3, 3).setValue("en $ · columnas verdes = real (extracto) · amarillas = estimado (listas con fecha) · nunca se mezclan").setFontStyle("italic").setFontColor("#5f6368");
 }
 
