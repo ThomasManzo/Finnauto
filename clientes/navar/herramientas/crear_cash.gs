@@ -53,14 +53,18 @@ var R = {
   chqTipo: "'Cartera de Cheques'!$B:$B", chqFecha: "'Cartera de Cheques'!$G:$G", chqImp: "'Cartera de Cheques'!$I:$I",
   chqEstado: "'Cartera de Cheques'!$J:$J", chqObs: "'Cartera de Cheques'!$L:$L",
   salFecha: "'Saldos Bancarios'!$A:$A", salBanco: "'Saldos Bancarios'!$B:$B", salImp: "'Saldos Bancarios'!$E:$E",
-  dbLinea: "'Deuda Bancaria'!$C$3:$C$60", dbOrig: "'Deuda Bancaria'!$D$3:$D$60",
+  dbBanco: "'Deuda Bancaria'!$A$3:$A$60", dbLinea: "'Deuda Bancaria'!$C$3:$C$60", dbOrig: "'Deuda Bancaria'!$D$3:$D$60", dbVig: "'Deuda Bancaria'!$E$3:$E$60",
+  cuBanco: "'Deuda Bancaria'!$A$64:$A$3000", cuLinea: "'Deuda Bancaria'!$C$64:$C$3000",
   cuVto: "'Deuda Bancaria'!$E$64:$E$3000", cuTot: "'Deuda Bancaria'!$H$64:$H$3000", cuEstado: "'Deuda Bancaria'!$I$64:$I$3000",
-  diVto: "'Deuda Impositiva'!$D:$D", diImp: "'Deuda Impositiva'!$E:$E", diEstado: "'Deuda Impositiva'!$F:$F",
+  diNombre: "'Deuda Impositiva'!$A:$A", diVto: "'Deuda Impositiva'!$D:$D", diImp: "'Deuda Impositiva'!$E:$E", diEstado: "'Deuda Impositiva'!$F:$F",
+  planTipo: "Plan!$A:$A",
 };
+var PLAN_PRIMERA_COL_MES = 15;          // columna O de la solapa Plan: el mes en curso; P..U los 6 siguientes
 
 
 function armarCash() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss.getSheetByName("Plan")) armarPlan();          // el Plan guarda decisiones: solo se crea si no está
   _armarPeriodica_(ss, "Cash", 1, DIAS_ATRAS, DIAS_ADELANTE);
   _armarPeriodica_(ss, "Cash Semanal", 7, SEM_ATRAS, SEM_ADELANTE);
   _armarMensual_(ss, "Cash Mensual");
@@ -143,11 +147,13 @@ function _renglonesMensual_() {
       { n: "Proveedores", real: _movReal_("Egreso", "Proveedores MP y Logist."), neg: true, mensual: "max",
         lista: lista(R.pagPend, R.pagVto, "," + R.pagEstado + ",\"<>Pagado\"," + R.pagObs + ",\"<>REVISAR*\""), f: "el mayor entre lo que vence en Tango ese mes y el promedio × inflación" },
       { n: "Sueldos y cargas (del 1 al 10)", real: _movReal_("Egreso", "Sueldos y Jornales"), neg: true, mensual: "prom", f: "Movimientos · Sueldos · horas extras en AA" },
-      { n: "Cuotas bancarias y tarjeta (cronograma)", real: _movReal_("Egreso", "Prestamo"), neg: true, mensual: "lista",
-        lista: lista(R.cuTot, R.cuVto, "," + R.cuEstado + ",\"Pendiente\""), f: "Deuda Bancaria · cronograma (AgroNación diferida en 3 resúmenes, ESTIMADO)" },
+      { n: "Cuotas bancarias y tarjeta (según Plan)", real: _movReal_("Egreso", "Prestamo"), neg: true, mensual: "plan", plan: "Banco",
+        f: "solapa Plan · cronograma o refinanciación, según la decisión de cada línea" },
       { n: "Impuestos corrientes (IVA, cargas, retenciones)", real: _movReal_("Egreso", "Impuestos"), neg: true, mensual: "prom", f: "Movimientos · Impuestos · promedio de lo pagado" },
-      { n: "Impuestos: deuda y planes con vencimiento en el mes", mensual: "lista",
-        lista: lista(R.diImp, R.diVto, "," + R.diEstado + ",\"<>Pagado\""), f: "Deuda Impositiva · anticipos y planes; lo vencido es stock" },
+      { n: "Impuestos: deuda y planes (según Plan)", mensual: "plan", plan: "Impuesto",
+        f: "solapa Plan · vencimientos o plan de pagos, según la decisión de cada impuesto" },
+      { n: "Regularización de atrasado (según Plan)", mensual: "plan", plan: "Atrasado",
+        f: "solapa Plan · lo vencido con proveedores y cheques que se decide pagar, en cuotas" },
       { n: "Cheques propios (por fecha de pago)", real: _movReal_("Egreso", "Cheques"), neg: true, mensual: "lista",
         lista: lista(R.chqImp, R.chqFecha, "," + R.chqTipo + ",\"Propio*\"," + R.chqEstado + ",\"En Cartera\""), f: "Cartera de Cheques · Propio Emitido" },
       { n: "Tarjeta, honorarios y otros", real: _movReal_("Egreso", "Otros") + "+" + _movReal_("Egreso", "Honorarios y Dividendos"), neg: true, mensual: "prom", f: "Movimientos · Otros + Honorarios" },
@@ -254,7 +260,7 @@ function _cuerpo_(ss, h, fila, nCols, atras, D, F, colFuente, cierreTxt, mensual
       }
       if (mensual) {
         if (r.mensual === "prom" || r.mensual === "max") h.getRange(fila, mensual.colProm).setFormula("=AVERAGE(B" + fila + ":" + _colLetra_(1 + atras) + fila + ")").setFontColor("#5f6368");
-        h.getRange(fila, mensual.colComo).setValue({ prom: "promedio × inflación", lista: "por fecha (lista)", max: "mayor entre Tango y promedio", cero: "no se proyecta" }[r.mensual]).setFontColor("#5f6368").setFontSize(10);
+        h.getRange(fila, mensual.colComo).setValue({ prom: "promedio × inflación", lista: "por fecha (lista)", max: "mayor entre Tango y promedio", cero: "no se proyecta", plan: "según solapa Plan" }[r.mensual]).setFontColor("#5f6368").setFontSize(10);
       }
       h.getRange(fila, colFuente).setValue(r.f).setFontStyle("italic").setFontColor("#5f6368");
       fila++;
@@ -336,8 +342,129 @@ function _formulaMensual_(r, c, atras, D, F, m, fila) {
   if (r.mensual === "prom") est = prom;
   else if (r.mensual === "lista") est = lista;
   else if (r.mensual === "max") est = "MAX(" + lista + "," + prom + ")";
+  else if (r.mensual === "plan") {
+    // la columna del Plan para este mes: O = mes en curso, P.. los siguientes
+    var colPlan = _colLetra_(PLAN_PRIMERA_COL_MES + (c - atras));
+    est = "SUMIFS(Plan!$" + colPlan + ":$" + colPlan + "," + R.planTipo + ",\"" + r.plan + "\")";
+  }
   if (!real && !est) return "";
   return "=" + [real, est].filter(function (x) { return x; }).join("+");
+}
+
+
+// ================================================================== Plan
+// Una fila por línea de deuda (banco), por impuesto y por grupo de atrasado, con la
+// DECISIÓN al lado: pagar como está, refinanciar (cuotas nuevas, gracia, tasa) o
+// posponer. Los 7 meses de la derecha calculan cuánto se paga cada mes según esa
+// decisión, y Cash Mensual los suma. Las decisiones son de la persona: este script
+// solo las arma la primera vez (o cuando se corre "Armar solapa Plan", que las pisa).
+var DECISIONES_BANCO = ["Pagar como está", "Refinanciar", "Posponer"];
+var DECISIONES_ATRASADO = ["Regularizar en cuotas", "Posponer"];
+
+function armarPlan() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var h = _hojaLimpia_(ss, "Plan", 22);
+  var nMeses = MESES_ADELANTE + 1;
+  _titulo_(h, "PLAN · " + _cliente_(ss) + " · qué se paga, qué se refinancia, qué se pospone", 14 + nMeses);
+  h.getRange(2, 1).setValue("Hoy"); h.getRange(2, 2).setFormula("=TODAY()").setNumberFormat("dd/mm/yyyy");
+  h.getRange(3, 1).setValue("Cómo se usa: en cada fila elegí la Decisión (columna H). Si es refinanciar o regularizar, poné meses de gracia, cantidad de cuotas y tasa mensual: la cuota nueva se calcula sola (sistema francés) y los meses de la derecha muestran cuánto sale cada mes. Cash Mensual toma esos meses. Prioridad y Por qué son de ustedes.").setFontStyle("italic").setFontColor("#5f6368");
+
+  var enc = ["Tipo", "Acreedor", "Concepto", "Deuda total hoy", "Vencido hoy", "Vence en 6 meses (cronograma)", "Prioridad (1 = primero)",
+             "Decisión", "Meses de gracia", "Cuotas nuevas", "Tasa mensual", "Cuota nueva", "Primer vencimiento", "Por qué"];
+  var filaEnc = 5;
+  enc.forEach(function (t, i) { h.getRange(filaEnc, 1 + i).setValue(t).setFontWeight("bold").setWrap(true); });
+  for (var m = 0; m < nMeses; m++) {
+    h.getRange(filaEnc, PLAN_PRIMERA_COL_MES + m).setFormula("=EOMONTH($B$2," + (m - 1) + ")+1").setNumberFormat("mmm yy").setFontWeight("bold").setHorizontalAlignment("right").setBackground("#fef7e0");
+  }
+  h.getRange(filaEnc, 1, 1, 14 + nMeses).setBackground("#f1f3f4").setBorder(false, false, true, false, false, false, "#3c4043", SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+  h.getRange(filaEnc, PLAN_PRIMERA_COL_MES, 1, nMeses).setBackground("#fef7e0");
+
+  var filas = [];
+  // ---- bancos: una fila por línea con capital vigente o cuotas, sin descubiertos (ya están en la caja)
+  var db = ss.getSheetByName("Deuda Bancaria");
+  var lineas = db.getRange(3, 1, 58, 10).getValues();
+  lineas.forEach(function (l) {
+    var banco = String(l[0] || "").trim(), linea = String(l[2] || "").trim();
+    if (!banco || !linea) return;
+    if (/escubierto|acuerdo en cta/i.test(linea)) return;
+    filas.push({ tipo: "Banco", acreedor: banco, concepto: linea, prioridad: _prioridadBanco_(banco, linea), decision: "Pagar como está" });
+  });
+  // ---- impuestos: una fila por impuesto
+  var di = ss.getSheetByName("Deuda Impositiva");
+  var vistos = {};
+  di.getRange(2, 1, Math.max(di.getLastRow() - 1, 1), 6).getValues().forEach(function (r) {
+    var imp = String(r[0] || "").trim();
+    if (!imp || vistos[imp] || String(r[5]).toLowerCase() === "pagado") return;
+    vistos[imp] = true;
+    filas.push({ tipo: "Impuesto", acreedor: "ARCA / DGR / Municipio", concepto: imp, prioridad: /sicore|iva|aportes|planes/i.test(imp) ? 1 : 4, decision: "Pagar como está" });
+  });
+  // ---- atrasado: lo vencido con proveedores y cheques propios
+  filas.push({ tipo: "Atrasado", acreedor: "Proveedores A", concepto: "Facturas vencidas (Tango, sin deuda vieja)", prioridad: 3, decision: "Posponer" });
+  filas.push({ tipo: "Atrasado", acreedor: "Proveedores AA", concepto: "Facturas vencidas (Tango, sin deuda vieja)", prioridad: 3, decision: "Posponer" });
+  filas.push({ tipo: "Atrasado", acreedor: "Cheques propios", concepto: "Vencidos sin debitar", prioridad: 2, decision: "Posponer" });
+
+  var fila = filaEnc + 1;
+  filas.forEach(function (f) {
+    var r = fila, A = "$A" + r, B = "$B" + r, C = "$C" + r, D = "$D" + r, H = "$H" + r, I = "$I" + r, J = "$J" + r, K = "$K" + r, L = "$L" + r, M = "$M" + r;
+    h.getRange(r, 1).setValue(f.tipo); h.getRange(r, 2).setValue(f.acreedor); h.getRange(r, 3).setValue(f.concepto);
+    if (f.tipo === "Banco") {
+      h.getRange(r, 4).setFormula("=SUMIFS(" + R.dbVig + "," + R.dbBanco + "," + B + "," + R.dbLinea + "," + C + ")");
+      h.getRange(r, 5).setFormula("=SUMIFS(" + R.cuTot + "," + R.cuBanco + "," + B + "," + R.cuLinea + "," + C + "," + R.cuVto + ",\"<\"&$B$2," + R.cuEstado + ",\"Pendiente\")");
+      h.getRange(r, 6).setFormula("=SUMIFS(" + R.cuTot + "," + R.cuBanco + "," + B + "," + R.cuLinea + "," + C + "," + R.cuVto + ",\">=\"&$B$2," + R.cuVto + ",\"<\"&EDATE($B$2,6)," + R.cuEstado + ",\"Pendiente\")");
+    } else if (f.tipo === "Impuesto") {
+      h.getRange(r, 4).setFormula("=SUMIFS(" + R.diImp + "," + R.diNombre + "," + C + "," + R.diEstado + ",\"<>Pagado\")");
+      h.getRange(r, 5).setFormula("=SUMIFS(" + R.diImp + "," + R.diNombre + "," + C + "," + R.diVto + ",\"<\"&$B$2," + R.diEstado + ",\"<>Pagado\")");
+      h.getRange(r, 6).setFormula("=SUMIFS(" + R.diImp + "," + R.diNombre + "," + C + "," + R.diVto + ",\">=\"&$B$2," + R.diVto + ",\"<\"&EDATE($B$2,6)," + R.diEstado + ",\"<>Pagado\")");
+    } else {
+      var venc = f.acreedor === "Cheques propios"
+        ? "SUMIFS(" + R.chqImp + "," + R.chqTipo + ",\"Propio*\"," + R.chqEstado + ",\"En Cartera\"," + R.chqFecha + ",\"<\"&$B$2)"
+        : "SUMIFS(" + R.pagPend + "," + R.pagEmp + ",\"" + (f.acreedor === "Proveedores A" ? "A" : "AA") + "\"," + R.pagVto + ",\"<\"&$B$2," + R.pagEstado + ",\"<>Pagado\"," + R.pagObs + ",\"<>REVISAR*\")";
+      h.getRange(r, 4).setFormula("=" + venc); h.getRange(r, 5).setFormula("=" + D);
+    }
+    h.getRange(r, 7).setValue(f.prioridad);
+    h.getRange(r, 8).setValue(f.decision).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(f.tipo === "Atrasado" ? DECISIONES_ATRASADO : DECISIONES_BANCO, true).build());
+    h.getRange(r, 9).setValue(0); h.getRange(r, 10).setValue(f.tipo === "Banco" ? 60 : (f.tipo === "Impuesto" ? 12 : 6)); h.getRange(r, 11).setValue(f.tipo === "Banco" ? 0.03 : (f.tipo === "Impuesto" ? 0.04 : 0)).setNumberFormat("0.0%");
+    h.getRange(r, 12).setFormula("=IF(OR(" + H + "=\"Refinanciar\"," + H + "=\"Regularizar en cuotas\"),IF(" + K + ">0,PMT(" + K + "," + J + ",-" + D + ")," + D + "/" + J + "),\"\")");
+    h.getRange(r, 13).setFormula("=IF(" + L + "=\"\",\"\",EOMONTH($B$2," + I + ")+1)").setNumberFormat("dd/mm/yyyy");
+    h.getRange(r, 8, 1, 4).setBackground("#fff8e1"); h.getRange(r, 7).setBackground("#fff8e1"); h.getRange(r, 14).setBackground("#fff8e1");
+    for (var m2 = 0; m2 < nMeses; m2++) {
+      var mes = _colLetra_(PLAN_PRIMERA_COL_MES + m2) + "$" + filaEnc, fin = "(EOMONTH(" + mes + ",0)+1)";
+      var comoEsta;
+      if (f.tipo === "Banco") comoEsta = "SUMIFS(" + R.cuTot + "," + R.cuBanco + "," + B + "," + R.cuLinea + "," + C + "," + R.cuVto + ",\">=\"&MAX(" + mes + ",$B$2)," + R.cuVto + ",\"<\"&" + fin + "," + R.cuEstado + ",\"Pendiente\")";
+      else if (f.tipo === "Impuesto") comoEsta = "SUMIFS(" + R.diImp + "," + R.diNombre + "," + C + "," + R.diVto + ",\">=\"&MAX(" + mes + ",$B$2)," + R.diVto + ",\"<\"&" + fin + "," + R.diEstado + ",\"<>Pagado\")";
+      else comoEsta = "0";
+      var refi = "IF(AND(" + L + "<>\"\"," + mes + ">=" + M + "," + mes + "<EDATE(" + M + "," + J + "))," + L + ",0)";
+      h.getRange(r, PLAN_PRIMERA_COL_MES + m2).setFormula("=IF(" + H + "=\"Pagar como está\"," + comoEsta + ",IF(" + H + "=\"Posponer\",0," + refi + "))");
+    }
+    fila++;
+  });
+  // totales
+  h.getRange(fila, 1).setValue("Total").setFontWeight("bold");
+  [4, 5, 6].forEach(function (c) { h.getRange(fila, c).setFormula("=SUM(" + _colLetra_(c) + (filaEnc + 1) + ":" + _colLetra_(c) + (fila - 1) + ")").setFontWeight("bold"); });
+  for (var m3 = 0; m3 < nMeses; m3++) {
+    var cl = _colLetra_(PLAN_PRIMERA_COL_MES + m3);
+    h.getRange(fila, PLAN_PRIMERA_COL_MES + m3).setFormula("=SUM(" + cl + (filaEnc + 1) + ":" + cl + (fila - 1) + ")").setFontWeight("bold");
+  }
+  _lineaTotal_(h, fila, 14 + nMeses);
+  h.getRange(filaEnc + 1, 4, fila - filaEnc, 3).setNumberFormat(FORMATO_NUM);
+  h.getRange(filaEnc + 1, 12, fila - filaEnc, 1).setNumberFormat(FORMATO_NUM);
+  h.getRange(filaEnc + 1, PLAN_PRIMERA_COL_MES, fila - filaEnc, nMeses).setNumberFormat(FORMATO_NUM);
+  h.getRange(filaEnc + 1, 11, fila - filaEnc, 1).setNumberFormat("0.0%");
+  h.setColumnWidth(1, 80); h.setColumnWidth(2, 150); h.setColumnWidth(3, 260); [4, 5, 6].forEach(function (c) { h.setColumnWidth(c, 110); });
+  h.setColumnWidth(7, 80); h.setColumnWidth(8, 150); h.setColumnWidth(9, 70); h.setColumnWidth(10, 70); h.setColumnWidth(11, 70); h.setColumnWidth(12, 110); h.setColumnWidth(13, 100); h.setColumnWidth(14, 260);
+  h.setFrozenRows(filaEnc); h.setFrozenColumns(3);
+  h.getRange(filaEnc, 1, 1, 14).setBackground("#f1f3f4");
+  _separadorLocal_(ss, h);
+  try { ss.toast("Solapa Plan armada. Las decisiones se cargan a mano en la columna H.", "finauto", 8); } catch (e) {}
+}
+
+// Prioridad propuesta (1 = primero), por consecuencia de no pagar. Se puede cambiar a mano.
+function _prioridadBanco_(banco, linea) {
+  if (/tarjeta/i.test(linea)) return 4;
+  if (/galicia|macro/i.test(banco)) return 2;      // son los que descuentan los cheques: si cierran, se para el motor
+  if (/nacion/i.test(banco)) return 3;
+  if (/corrientes/i.test(banco)) return 5;         // situación 3, en refinanciación
+  return 4;
 }
 
 
