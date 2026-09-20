@@ -1,23 +1,29 @@
 # -*- coding: utf-8 -*-
 """
-informe_situacion — el PDF de la reunión del martes 22/09/2026: qué vimos, la foto real,
-los 6 meses sin tocar nada, cómo lo solucionamos, accionables, prioridades de pago y las
-preguntas que le hacemos a Priscilla para ordenarlas.
+informe_situacion — el PDF "Situación de caja y plan" de NAVAR.
 
-Todo número sale de los datos leídos (extractos, Tango, mapa de deuda, planilla de
-impuestos) y de la misma proyección que arma la solapa Cash Mensual
-(herramientas/proyeccion_mensual.py). El escenario "con plan" es una simulación: las
-decisiones se toman en la solapa Plan de la Sheet, no acá.
+Versión 2 (20/09/2026): TODOS los números salen de la Sheet "NAVAR - Cash Flow" exportada a
+Excel (solapas Cash Mensual, Plan, Deuda Bancaria, Deuda Impositiva). No hay ningún número
+tipeado acá: si la Sheet cambia, se vuelve a correr y el PDF cambia. Lo real es real hasta
+el último extracto; lo demás está marcado como estimado.
+
+Tres escenarios, todos con la misma operación (lo que la Sheet proyecta):
+  A · sin tocar nada: cuotas y vencimientos como están en el cronograma;
+  B · el plan cargado en la solapa Plan (la propuesta);
+  C · lo que haría falta para volver a cero (supuestos explícitos, ver escenario_c).
+El escenario B es una PROPUESTA: que un banco la apruebe es otra cosa, y el PDF lo dice.
 
 Uso:
-    python clientes/navar/herramientas/informe_situacion.py
+    python clientes/navar/herramientas/informe_situacion.py [--sheet <export.xlsx>] [--hoy AAAA-MM-DD]
     (deja privado/salidas/NAVAR - Situación y plan <fecha>.pdf)
 """
 
 import os
 import sys
+import glob
 import datetime
-import importlib.util
+import argparse
+from collections import defaultdict
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 BASE_REPO = os.path.abspath(os.path.join(AQUI, "..", "..", ".."))
@@ -25,29 +31,45 @@ os.chdir(BASE_REPO)
 sys.path.insert(0, BASE_REPO)
 sys.path.insert(0, AQUI)
 
+import openpyxl
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib import colors
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, KeepTogether
+from reportlab.graphics.shapes import Drawing, Line, String, Rect, PolyLine
 
 import propuesta as PR          # los estilos y ayudas del PDF anterior (mismo look)
 
-P, LI, tabla, kpis, caja, m = PR.P, PR.LI, PR.tabla, PR.kpis, PR.caja, PR.m
-E, TINTA, SUAVE, TENUE, VERDE, ROJO, AMBAR, FONDO, ROJO_FONDO = PR.E, PR.TINTA, PR.SUAVE, PR.TENUE, PR.VERDE, PR.ROJO, PR.AMBAR, PR.FONDO, PR.ROJO_FONDO
-HOY = datetime.date(2026, 9, 19)
-HOY_TXT = HOY.strftime("%d/%m/%Y")
-
-spec = importlib.util.spec_from_file_location("pm", os.path.join(AQUI, "proyeccion_mensual.py"))
-pm = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(pm)
-RES = pm.res
-COLS = RES["cols"]
-MESES = {"01": "ene", "02": "feb", "03": "mar", "06": "jun", "07": "jul", "08": "ago", "09": "sep", "10": "oct", "11": "nov", "12": "dic"}
+P, LI, tabla, kpis, caja = PR.P, PR.LI, PR.tabla, PR.kpis, PR.caja
+E, TINTA, SUAVE, TENUE, VERDE, ROJO, AMBAR, FONDO, ROJO_FONDO, LINEA = (
+    PR.E, PR.TINTA, PR.SUAVE, PR.TENUE, PR.VERDE, PR.ROJO, PR.AMBAR, PR.FONDO, PR.ROJO_FONDO, PR.LINEA)
+AZUL = colors.HexColor("#3A5FA8")
+NOMBRE = {"NACION": "Nación", "CORRIENTES": "Corrientes", "MACRO": "Macro", "GALICIA": "Galicia", "BBVA": "BBVA"}
+CONCEPTO = {"SICORE": "SICORE", "PLANES DE PAGO ARCA": "Planes de pago ARCA", "AGENTES INGRESOS BRUTOS": "Agentes de Ingresos Brutos",
+            "EMPLEADOR-APORTES SEG. SOCIAL": "Aportes seguridad social", "BIENES ACC Y PARTICIPACIONES": "Bienes personales (acciones)",
+            "GANANCIAS SOCIEDADES": "Ganancias sociedades", "IVA": "IVA"}
 
 
-def lab(c):
-    return MESES[c[5:]] + " " + c[2:4]
+def m(v, corto=False):
+    """$ con punto de miles; corto = en millones"""
+    if corto:
+        return ("-" if v < 0 else "") + "$" + format(int(round(abs(float(v or 0)) / 1e6)), ",d").replace(",", ".") + " M"
+    return PR.m(v)
+
+
+def nom(b):
+    return NOMBRE.get(str(b), str(b).title())
+
+
+def conc(c):
+    return CONCEPTO.get(str(c), str(c))
+
+MESES = {1: "ene", 2: "feb", 3: "mar", 4: "abr", 5: "may", 6: "jun", 7: "jul", 8: "ago", 9: "sep", 10: "oct", 11: "nov", 12: "dic"}
+
+
+def lab(d):
+    return "%s %s" % (MESES[d.month], str(d.year)[2:])
 
 
 def mm_(v):
@@ -55,244 +77,529 @@ def mm_(v):
     return ("-" if v < 0 else "") + format(int(round(abs(v) / 1e6)), ",d").replace(",", ".")
 
 
-# ------------------------------------------------------------------ escenario "con plan"
-# Supuestos (se explicitan en el PDF; las decisiones reales se toman en la solapa Plan):
-#  - préstamos bancarios (sin la tarjeta): se refinancian a 60 cuotas, 3 meses de gracia,
-#    3 % mensual, sobre el capital vigente ($2.220 M) -> cuota ~ $80 M desde enero;
-#  - la AgroNación diferida se paga en sus 3 resúmenes (sep-nov);
-#  - ARCA: los planes que propone el contador (SICORE 9 x 32,2 desde noviembre + 13,3 al
-#    contado en octubre; CCSS 8 x 3,3; Bienes Personales 18 x 0,26) + los planes vigentes;
-#  - lo vencido con proveedores no se regulariza en estos 6 meses (queda como stock).
-def escenario_con_plan():
-    cols = COLS
-    fut = [c for c in cols if c >= "2026-09"]
-    capital_prestamos = 2480e6 - 260e6
-    cuota_refi = capital_prestamos * 0.03 / (1 - (1.03) ** -60)
-    cuotas = {}
-    for c in fut:
-        v = 0.0
-        if c in ("2026-09", "2026-10", "2026-11"):
-            v += 86.8e6                      # resúmenes AgroNación
-        if c == "2026-09":
-            v += 17.5e6 + 15.4e6             # Nación 21/09 (recién volvieron a situación 1) y Macro 24/09
-        if c >= "2027-01":
-            v += cuota_refi
-        cuotas[c] = v
-    impuestos_plan = {}
-    for c in fut:
-        v = 0.0
-        if c == "2026-09":
-            v += 49.7e6                      # lo urgente antes del 25/09
-        if c == "2026-10":
-            v += 13.3e6 + 36.5e6             # contado SICORE + planes vigentes
-        if c >= "2026-11":
-            v += 32.2e6 + 2.8e6
-        if c >= "2026-10":
-            v += 3.3e6 + 0.26e6
-        impuestos_plan[c] = v
-    return cuotas, impuestos_plan, cuota_refi
+def pmt(capital, tasa, n):
+    return capital * tasa / (1 - (1 + tasa) ** -n) if tasa else capital / n
 
 
-def tabla_escenario(cuotas_plan=None, impuestos_plan=None):
-    """Filas resumidas de la proyección: ingresos, egresos operativos, deuda, saldo, disponible."""
-    ing = RES["tot"]["ing"]
-    filas = []
-    egr_lineas = {n: [v for v, _ in vals] for n, _, vals in RES["egr"]}
-    cu = egr_lineas["Cuotas bancarias (cronograma)"]
-    im = egr_lineas["Impuestos: deuda y planes (vencimientos)"]
-    oper = [sum(v[i] for n, v in egr_lineas.items() if n not in ("Cuotas bancarias (cronograma)", "Impuestos: deuda y planes (vencimientos)")) for i in range(len(COLS))]
-    cuotas = list(cu)
-    imp = list(im)
-    if cuotas_plan:
-        cuotas = [cuotas_plan.get(c, cu[i]) if c >= "2026-09" else cu[i] for i, c in enumerate(COLS)]
-        imp = [impuestos_plan.get(c, im[i]) if c >= "2026-09" else im[i] for i, c in enumerate(COLS)]
-    egr = [oper[i] + cuotas[i] + imp[i] for i in range(len(COLS))]
-    saldos, s = [], RES["caja_hoy"]
-    real_ing = [sum(fr for _, _, vals in RES["ing"] for fr in [vals[i][0]]) for i in range(len(COLS))]
-    for i, c in enumerate(COLS):
-        if c < "2026-09":
-            saldos.append(None)
+# ------------------------------------------------------------------ leer la Sheet
+def ultimo_export():
+    c = sorted(glob.glob(os.path.join("clientes", "navar", "privado", "NAVAR - Cash Flow (export Sheets *.xlsx")))
+    if not c:
+        sys.exit("No hay export de la Sheet en privado/. Bajarla como Excel primero.")
+    return c[-1]
+
+
+def leer(sheet, hoy):
+    wb = openpyxl.load_workbook(sheet, data_only=True)
+    D = {"hoy": hoy}
+
+    # ---- Cash Mensual: renglón → lista de valores por mes
+    ws = wb["Cash Mensual"]
+    filas = list(ws.iter_rows(values_only=True))
+    fechas = next(r for r in filas if r[0] == "Fecha")
+    cols = [c for c in fechas[1:] if isinstance(c, datetime.datetime)]
+    D["cols"] = [c.date() for c in cols]
+    n = len(cols)
+    D["ultimo_extracto"] = next(r[1] for r in filas if r[0] and str(r[0]).startswith("Último día")).date()
+    D["inflacion"] = next(r[1] for r in filas if r[0] and str(r[0]).startswith("Inflación"))
+    M = {}
+    for r in filas:
+        if r[0] and isinstance(r[0], str):
+            M[r[0].strip()] = [float(v) if isinstance(v, (int, float)) else 0.0 for v in r[1:1 + n]]
+    D["M"] = M
+    # bancos: la última columna con saldo real
+    bancos = {}
+    en_bancos = False
+    for r in filas:
+        if r[0] == "1 · Bancos (saldo real al cierre)":
+            en_bancos = True
             continue
-        if c == "2026-09":
-            # el mes en curso: caja de hoy + lo que falta del mes (lo real ya está en la caja)
-            s = RES["saldos"][i] - (cu[i] - cuotas[i]) - (im[i] - imp[i])
+        if en_bancos:
+            if r[0] is None or str(r[0]).startswith("Total"):
+                if str(r[0] or "").startswith("Total"):
+                    break
+                continue
+            vals = [v for v in r[1:1 + n] if isinstance(v, (int, float))]
+            bancos[r[0]] = vals[-1] if vals else 0.0
+    D["bancos"] = bancos
+
+    # ---- Plan
+    ws = wb["Plan"]
+    filas = list(ws.iter_rows(values_only=True))
+    enc = next(r for r in filas if r[0] == "Tipo")
+    meses_plan = [c.date() for c in enc if isinstance(c, datetime.datetime)]
+    plan = []
+    for r in filas[filas.index(enc) + 1:]:
+        if r[0] in ("Banco", "Impuesto", "Atrasado"):
+            d = dict(zip(enc, r))
+            d["meses"] = {mp: float(v or 0) for mp, v in zip(meses_plan, [r[enc.index(c)] for c in enc if isinstance(c, datetime.datetime)])}
+            plan.append(d)
+    D["plan"] = plan
+
+    # ---- Deuda Bancaria: líneas y cronograma pendiente por mes y banco (escenario "sin tocar nada")
+    ws = wb["Deuda Bancaria"]
+    filas = list(ws.iter_rows(values_only=True))
+    enc_l = filas[1]
+    lineas = []
+    for r in filas[2:]:
+        if r[0] == "Banco" or r[0] is None or str(r[0]).startswith("B)"):
+            if r[0] == "Banco":
+                break
+            continue
+        lineas.append(dict(zip(enc_l, r)))
+    D["lineas"] = lineas
+    D["descubiertos"] = {l["Banco"]: float(l["Capital Original"] or 0) for l in lineas if "escubierto" in str(l["Linea / Producto"])}
+    i_cron = next(i for i, r in enumerate(filas) if r[0] == "Banco" and "Nro Cuota" in r)
+    enc_c = filas[i_cron]
+    cron = defaultdict(float)
+    cron_banco = defaultdict(float)
+    for r in filas[i_cron + 1:]:
+        d = dict(zip(enc_c, r))
+        f = d.get("Fecha Vencimiento")
+        if not f or d.get("Estado") != "Pendiente":
+            continue
+        imp = d.get("Importe Total Cuota") or ((d.get("Importe Capital") or 0) + (d.get("Importe Interes") or 0))
+        if f.date() < hoy:
+            cron["vencido"] += imp
         else:
-            s = s + ing[i] - egr[i]
-        saldos.append(s)
-    return {"ing": ing, "oper": oper, "cuotas": cuotas, "imp": imp, "egr": egr, "saldos": saldos,
-            "disp": [None if v is None else v + RES["acuerdos"] for v in saldos]}
+            k = f.date().replace(day=1)
+            cron[k] += imp
+            cron_banco[(k, d["Banco"], d["Linea / Producto"])] += imp
+    D["cron"], D["cron_banco"] = cron, cron_banco
+
+    # ---- Deuda Impositiva pendiente por mes
+    ws = wb["Deuda Impositiva"]
+    filas = list(ws.iter_rows(values_only=True))
+    enc_i = filas[0]
+    imp_mes = defaultdict(float)
+    for r in filas[1:]:
+        d = dict(zip(enc_i, r))
+        f = d.get("Fecha Vencimiento")
+        if not f or str(d.get("Estado") or "").lower().startswith("pag"):
+            continue
+        v = float(d.get("Importe") or 0)
+        if f.date() < hoy:
+            imp_mes["vencido"] += v
+        else:
+            imp_mes[f.date().replace(day=1)] += v
+    D["imp_mes"] = imp_mes
+    return D
 
 
-def tabla_proy(esc, titulo):
-    enc = ["", ] + [lab(c) for c in COLS]
-    def fila(nombre, vals, neg=False):
-        out = [nombre]
-        for v in vals:
-            if v is None:
-                out.append("")
+# ------------------------------------------------------------------ escenarios
+def escenarios(D):
+    """Devuelve {A,B,C}: por mes futuro, cuotas, impuestos, saldo y disponible. La operación es la misma."""
+    cols = D["cols"]
+    M = D["M"]
+    hoy_mes = D["hoy"].replace(day=1)
+    i_hoy = cols.index(hoy_mes)
+    fut = cols[i_hoy:]                       # mes en curso + 6
+    res_op = M["Resultado de la operación (antes de la deuda)"]
+    acuerdos = M["Descubiertos acordados con los bancos"][i_hoy]
+    saldo_sep_B = M["Saldo de bancos al cierre del mes"][i_hoy]
+    cuotas_B = M["Cuotas bancarias y tarjeta"]
+    imp_B = M["Impuestos: deuda y planes"]
+    reg_B = M["Regularización de atrasado"]
+
+    # lo que en el mes en curso ya está pagado (real) = lo que la Sheet muestra menos lo que el Plan pone para el mes
+    plan_mes = lambda tipo, mes: sum(p["meses"].get(mes, 0) for p in D["plan"] if p["Tipo"] == tipo)
+    real_cuotas_mes = cuotas_B[i_hoy] - plan_mes("Banco", hoy_mes)
+    real_imp_mes = imp_B[i_hoy] - plan_mes("Impuesto", hoy_mes)
+
+    def correr(cuotas, imp, reg):
+        saldos, disp = [], []
+        s = None
+        for i, c in enumerate(cols):
+            if i < i_hoy:
+                saldos.append(M["Saldo de bancos al cierre del mes"][i]); disp.append(M["Saldo disponible (cierre + descubiertos)"][i]); continue
+            if i == i_hoy:
+                # el mes en curso: la Sheet ya tiene la caja real + lo que falta según el Plan; se ajusta la diferencia
+                s = saldo_sep_B - (cuotas[i] - cuotas_B[i]) - (imp[i] - imp_B[i]) - (reg[i] - reg_B[i])
             else:
-                txt = mm_(v)
-                out.append(Paragraph(('<font color="#B3261E">%s</font>' % txt) if (v < 0) else txt,
-                                     ParagraphStyle("n", parent=PR.b, fontSize=8.2, leading=10.5, alignment=2, spaceAfter=0)))
-        return out
+                s = s + res_op[i] - cuotas[i] - imp[i] - reg[i]
+            saldos.append(s); disp.append(s + acuerdos)
+        return {"cuotas": cuotas, "imp": imp, "reg": reg, "saldos": saldos, "disp": disp,
+                "egr": [M["Total egresos de la operación"][i] + cuotas[i] + imp[i] + reg[i] for i in range(len(cols))]}
+
+    # A · sin tocar nada: cronograma + vencimientos impositivos
+    cuotas_A = [real_cuotas_mes + D["cron"].get(c, 0) if i == i_hoy else (D["cron"].get(c, 0) if i > i_hoy else cuotas_B[i]) for i, c in enumerate(cols)]
+    imp_A = [real_imp_mes + D["imp_mes"].get(c, 0) if i == i_hoy else (D["imp_mes"].get(c, 0) if i > i_hoy else imp_B[i]) for i, c in enumerate(cols)]
+    A = correr(cuotas_A, imp_A, [0.0] * len(cols))
+    B = correr(cuotas_B, imp_B, reg_B)
+    C, sup_c = escenario_c(D, correr, cols, i_hoy, real_cuotas_mes, real_imp_mes, cuotas_B, imp_B, reg_B)
+    return {"A": A, "B": B, "C": C, "sup_c": sup_c, "fut": fut, "i_hoy": i_hoy, "acuerdos": acuerdos, "res_op": res_op}
+
+
+def escenario_c(D, correr, cols, i_hoy, real_cuotas_mes, real_imp_mes, cuotas_B, imp_B, reg_B):
+    """C · lo que haría falta: parte del Plan (B) y además
+       - Nación (reprogramación) y Macro (préstamos) también a 60 cuotas, 3 meses de gracia, 3 % mensual;
+       - la tarjeta AgroNación diferida en 6 resúmenes en lugar de 3;
+       - SICORE en 24 cuotas en lugar de 12.
+       Es lo que hay que pedir para que en marzo el disponible vuelva a ser positivo."""
+    hoy_mes = cols[i_hoy]
+    def mas_meses(d, k):
+        y, mth = d.year, d.month + k
+        while mth > 12:
+            y += 1; mth -= 12
+        return d.replace(year=y, month=mth)
+    tasa, n_c, gracia = 0.03, 60, 3
+    primer = mas_meses(hoy_mes, gracia + 1)
+    cuotas = defaultdict(float)
+    imp = defaultdict(float)
+    sup = []
+    refi = {}
+    for p in D["plan"]:
+        cap = float(p["Deuda total hoy"] or 0)
+        conc = str(p["Concepto"])
+        if p["Tipo"] == "Banco":
+            if p["Acreedor"] == "NACION" and "AgroNación" in conc:
+                for k in range(6):
+                    cuotas[mas_meses(hoy_mes, k)] += cap / 6
+                sup.append("AgroNación ($%s M) en 6 resúmenes en vez de 3" % mm_(cap))
+            elif p["Acreedor"] in ("NACION", "MACRO") and ("Reprog" in conc or "Préstamo" in conc) and cap > 0:
+                # la cuota de este mes se paga; después, gracia y cuota nueva
+                cuotas[hoy_mes] += p["meses"].get(hoy_mes, 0)
+                c = pmt(cap, tasa, n_c)
+                for k in range(gracia + 1, 7):
+                    cuotas[mas_meses(hoy_mes, k)] += c
+                refi[p["Acreedor"]] = (refi.get(p["Acreedor"], (0, 0))[0] + cap, refi.get(p["Acreedor"], (0, 0))[1] + c)
+            else:
+                for mes, v in p["meses"].items():
+                    cuotas[mes] += v
+        elif p["Tipo"] == "Impuesto":
+            if conc == "SICORE":
+                c = pmt(cap, 0.03, 24)
+                for k in range(2, 7):
+                    imp[mas_meses(hoy_mes, k)] += c
+                sup.append("SICORE ($%s M) en 24 cuotas → $%s M/mes" % (mm_(cap), mm_(c)))
+            else:
+                for mes, v in p["meses"].items():
+                    imp[mes] += v
+    for bco, (cap, c) in refi.items():
+        sup.append("préstamos de %s ($%s M) a %d cuotas con %d meses de gracia al %d %% → $%s M/mes" % (nom(bco), mm_(cap), n_c, gracia, int(tasa * 100), mm_(c)))
+    cu = [real_cuotas_mes + cuotas.get(c, 0) if i == i_hoy else (cuotas.get(c, 0) if i > i_hoy else cuotas_B[i]) for i, c in enumerate(cols)]
+    im = [real_imp_mes + imp.get(c, 0) if i == i_hoy else (imp.get(c, 0) if i > i_hoy else imp_B[i]) for i, c in enumerate(cols)]
+    return correr(cu, im, [0.0] * len(cols)), sup
+
+
+# ------------------------------------------------------------------ piezas del PDF
+def celda_num(v, bold=False):
+    if v is None:
+        return ""
+    txt = mm_(v)
+    st = ParagraphStyle("n", parent=PR.b, fontName="Helvetica-Bold" if bold else "Helvetica", fontSize=8.2, leading=10.5, alignment=2, spaceAfter=0)
+    return Paragraph(('<font color="#B3261E">%s</font>' % txt) if v < 0 else txt, st)
+
+
+def tabla_meses(D, esc, titulo, nota, resumida=False):
+    cols = D["cols"]
+    M = D["M"]
+    i_hoy = D["hoy"].replace(day=1)
+    enc = [""] + [lab(c) for c in cols]
+    def fila(nombre, vals, bold=False):
+        return [Paragraph(("<b>%s</b>" if bold else "%s") % nombre, ParagraphStyle("l", parent=PR.b, fontSize=8.2, leading=10.5, spaceAfter=0))] + [celda_num(v, bold) for v in vals]
     filas = [[Paragraph(x, ParagraphStyle("h", parent=PR.b, fontSize=8, leading=10, alignment=2 if i else 0, spaceAfter=0, textColor=TENUE)) for i, x in enumerate(enc)],
-             fila("Ingresos", esc["ing"]),
-             fila("Egresos de la operación", esc["oper"]),
+             ["", ] + [Paragraph("real" if c < i_hoy else ("real + est." if c == i_hoy else "est."), ParagraphStyle("h", parent=PR.b, fontSize=6.8, leading=8, alignment=2, spaceAfter=0, textColor=TENUE)) for c in cols],
+             fila("Resultado de la operación", M["Resultado de la operación (antes de la deuda)"], True),
              fila("Cuotas bancos y tarjeta", esc["cuotas"]),
              fila("Impuestos: deuda y planes", esc["imp"]),
-             fila("Total egresos", esc["egr"]),
+             fila("Resultado después de la deuda", [M["Resultado de la operación (antes de la deuda)"][i] - esc["cuotas"][i] - esc["imp"][i] - esc["reg"][i] for i in range(len(cols))], True),
              fila("Saldo en bancos al cierre", esc["saldos"]),
-             fila("Disponible (con descubiertos)", esc["disp"])]
-    t = tabla(filas, [38 * mm] + [13.2 * mm] * len(COLS), chico=True)
-    t.setStyle(TableStyle([("FONTNAME", (0, 5), (-1, 5), "Helvetica-Bold"), ("LINEABOVE", (0, 5), (-1, 5), 0.8, TENUE),
-                           ("BACKGROUND", (0, 6), (-1, 6), colors.HexColor("#FFF8E1")), ("BACKGROUND", (0, 7), (-1, 7), ROJO_FONDO),
-                           ("BACKGROUND", (1, 0), (3, -1), colors.HexColor("#F3FAF5"))]))
-    return KeepTogether([P(titulo, "h3"), t, P("en millones de $ · jun-ago real (extracto) · sep real + estimado · oct-mar estimado · lo vencido de hoy no está en ningún mes", "nota")])
+             fila("Disponible (con descubiertos)", esc["disp"], True)]
+    if not resumida:
+        filas[2:2] = [fila("Ingresos", M["Total ingresos"]), fila("Egresos de la operación", M["Total egresos de la operación"])]
+    k = 0 if resumida else 2
+    t = tabla(filas, [38 * mm] + [13.2 * mm] * len(cols), chico=True)
+    t.setStyle(TableStyle([("LINEABOVE", (0, 2 + k), (-1, 2 + k), 0.8, TENUE), ("LINEABOVE", (0, 5 + k), (-1, 5 + k), 0.8, TENUE),
+                           ("BACKGROUND", (0, 7 + k), (-1, 7 + k), colors.HexColor("#FFF8E1")),
+                           ("BACKGROUND", (1, 0), (3, -1), colors.HexColor("#F3FAF5")),
+                           ("BOTTOMPADDING", (0, 1), (-1, 1), 1), ("TOPPADDING", (0, 1), (-1, 1), 0)]))
+    return KeepTogether([P(titulo, "h3"), t, P(nota, "nota")])
 
 
-def pie(canvas, doc):
+def grafico(D, ESC):
+    """Disponible mes a mes en los tres escenarios."""
+    cols = D["cols"]
+    i0 = ESC["i_hoy"]
+    xs = cols[i0:]
+    W, H = 170 * mm, 54 * mm
+    d = Drawing(W, H)
+    izq, der, arr, aba = 14 * mm, 4 * mm, 6 * mm, 10 * mm
+    series = [("A · sin tocar nada", ESC["A"]["disp"][i0:], ROJO), ("B · plan propuesto", ESC["B"]["disp"][i0:], AZUL), ("C · lo que haría falta", ESC["C"]["disp"][i0:], VERDE)]
+    vals = [v for _, s, _ in series for v in s] + [0]
+    lo, hi = min(vals), max(vals)
+    lo, hi = min(lo, 0) * 1.08 - (hi - lo) * 0.22, max(hi, 0) * 1.08 + 1      # aire abajo para la leyenda
+    def X(i):
+        return izq + (W - izq - der) * i / (len(xs) - 1)
+    def Y(v):
+        return aba + (H - arr - aba) * (v - lo) / (hi - lo)
+    # grilla
+    paso = 100e6
+    v = (int(lo / paso)) * paso
+    while v <= hi:
+        d.add(Line(izq, Y(v), W - der, Y(v), strokeColor=LINEA if v else TENUE, strokeWidth=0.8 if v == 0 else 0.4))
+        d.add(String(izq - 2 * mm, Y(v) - 2.5, mm_(v), fontName="Helvetica", fontSize=6.5, fillColor=TENUE, textAnchor="end"))
+        v += paso
+    for i, c in enumerate(xs):
+        d.add(String(X(i), 2 * mm, lab(c), fontName="Helvetica", fontSize=7, fillColor=SUAVE, textAnchor="middle"))
+    x_leg = izq + 2 * mm
+    for k, (nombre, s, col) in enumerate(series):
+        d.add(PolyLine([(X(i), Y(v)) for i, v in enumerate(s)], strokeColor=col, strokeWidth=1.6))
+        y_leg = aba + 3 * mm + (len(series) - 1 - k) * 4 * mm      # abajo a la izquierda: ahí no pasa ninguna línea
+        d.add(Line(x_leg, y_leg + 1, x_leg + 5 * mm, y_leg + 1, strokeColor=col, strokeWidth=1.6))
+        d.add(String(x_leg + 6.5 * mm, y_leg - 1, "%s · marzo: %s" % (nombre, mm_(s[-1])), fontName="Helvetica-Bold", fontSize=6.8, fillColor=col))
+    return d
+
+
+def pie(canvas, doc, hoy_txt):
     canvas.saveState()
     canvas.setFont("Helvetica", 7.5)
     canvas.setFillColor(TENUE)
-    canvas.drawString(20 * mm, 12 * mm, "NAVAR S.A. · Situación de caja y plan · finauto · %s" % HOY_TXT)
+    canvas.drawString(20 * mm, 12 * mm, "NAVAR S.A. · Situación de caja y plan · finauto · %s" % hoy_txt)
     canvas.drawRightString(190 * mm, 12 * mm, "Confidencial · página %d" % doc.page)
     canvas.restoreState()
 
 
-def armar(out):
+# ------------------------------------------------------------------ el documento
+def armar(D, out):
+    hoy = D["hoy"]
+    hoy_txt = hoy.strftime("%d/%m/%Y")
+    ult = D["ultimo_extracto"].strftime("%d/%m")
+    M = D["M"]
+    ESC = escenarios(D)
+    A, B, C = ESC["A"], ESC["B"], ESC["C"]
+    cols = D["cols"]
+    i0 = ESC["i_hoy"]
+    fut = cols[i0 + 1:]
+
+    # números de cabecera
+    bancos = {k: v for k, v in D["bancos"].items() if k != "Varios"}
+    saldo_bancos = sum(bancos.values())
+    caja_aa = D["bancos"].get("Varios", 0)
+    desc_usado = -sum(v for v in bancos.values() if v < 0)
+    acuerdos = ESC["acuerdos"]
+    deuda_bancos = sum(float(l["Capital Vigente"] or 0) for l in D["lineas"] if "escubierto" not in str(l["Linea / Producto"]))
+    deuda_bancos_plan = sum(float(p["Deuda total hoy"] or 0) for p in D["plan"] if p["Tipo"] == "Banco")
+    deuda_imp = sum(float(p["Deuda total hoy"] or 0) for p in D["plan"] if p["Tipo"] == "Impuesto")
+    atrasado = M["Total atrasado a pagar"][0]
+    at = {k: M[k][0] for k in ("Proveedores A vencidos", "Proveedores AA vencidos", "Cuotas bancarias impagas", "Impuestos vencidos", "Cheques propios vencidos sin debitar")}
+    res_op_fut = [ESC["res_op"][i] for i in range(i0 + 1, len(cols))]
+    cap_min, cap_max = min(res_op_fut), max(res_op_fut)
+    cuotas_A_fut = [A["cuotas"][i] + A["imp"][i] for i in range(i0 + 1, len(cols))]
+    cuotas_B_fut = [B["cuotas"][i] + B["imp"][i] for i in range(i0 + 1, len(cols))]
+    ing_base = sum(M["Total ingresos"][i] - M["Préstamos nuevos"][i] for i in range(3)) / 3
+    egr_base = sum(M["Total egresos de la operación"][:3]) / 3
+
     doc = SimpleDocTemplate(out, pagesize=A4, leftMargin=20 * mm, rightMargin=20 * mm, topMargin=18 * mm, bottomMargin=20 * mm,
                             title="NAVAR S.A. · Situación de caja y plan", author="finauto")
     S = []
-    sin = tabla_escenario()
-    cuotas_plan, imp_plan, cuota_refi = escenario_con_plan()
-    con = tabla_escenario(cuotas_plan, imp_plan)
 
-    # ---------------------------------------------------------------- portada / en una página
+    # ---------------------------------------------------------------- portada
     S += [P("NAVAR S.A.", "h2"), P("Situación de caja y plan", "titulo"),
-          P("Lo que vimos, los próximos seis meses, cómo creemos que se resuelve y qué hay que hacer esta semana. Para la reunión del martes 22/09/2026.", "sub"),
-          kpis([(m(-189.5e6, True), "en cuentas corrientes hoy (5 bancos)", ROJO),
-                (m(1.406e9, True), "atrasado: proveedores, cuotas, impuestos, cheques", ROJO),
-                (m(2.83e9, True), "deuda con bancos (capital)", TINTA),
-                (m(605e6, True), "deuda impositiva", TINTA)]),
+          P("Dónde está la caja hoy, qué pasa en los próximos seis meses si no se toca nada, qué proponemos y qué hace falta pedir. Datos reales hasta el %s (último extracto); lo demás es estimación y está marcado. %s." % (ult, hoy_txt), "sub"),
+          kpis([(m(saldo_bancos, True), "en cuentas corrientes al %s (5 bancos)" % ult, ROJO),
+                (m(atrasado, True), "atrasado: proveedores, cuotas, impuestos, cheques", ROJO),
+                (m(deuda_bancos_plan, True), "deuda con bancos (capital, sin descubiertos)", TINTA),
+                (m(deuda_imp, True), "deuda impositiva", TINTA)]),
           Spacer(1, 8),
           P("En una página", "h1"),
-          P("<b>La operación, sola, da.</b> Entran unos $490 M por mes (cobranzas, cheques depositados y cheques descontados) y la operación cuesta unos $350 M (proveedores, sueldos, impuestos corrientes, banco). Sobran $100–150 M por mes, y eso pagando a los proveedores menos de lo que se les debería pagar.", "grande"),
-          P("<b>La deuda no da.</b> Las cuotas de bancos y tarjeta piden $170–250 M por mes en los próximos seis meses, más los planes de ARCA. El servicio de la deuda es el doble de lo que la operación deja.", "grande"),
-          P("<b>Ya no hay colchón.</b> Los descubiertos están al tope ($196 M usados sobre $160 M acordados), hay $1.406 M atrasados y Corrientes ya informa situación 3.", "grande"),
-          caja([P("No es un problema de caja: es un problema de estructura de deuda que se está pagando con caja, y la caja no alcanza. La salida es refinanciar a un número que la operación pueda pagar (~$100–150 M por mes para toda la deuda), proteger lo que no puede cortarse (ARCA, sueldos, los bancos que descuentan los cheques) y decidir, con un cash que se mira todas las semanas, qué se paga y qué no.", "p")], borde=ROJO),
+          P("<b>La operación, sola, da.</b> En los tres meses cerrados entraron en promedio %s por mes de la operación (cobranzas, cheques depositados y descontados; sin préstamos) y la operación costó %s (proveedores, sueldos, impuestos corrientes, banco). Proyectado, la operación deja entre %s y %s por mes. Ese número es la <b>capacidad de pago</b>: lo único que se le puede prometer a un banco o a ARCA." % (m(ing_base, True), m(egr_base, True), m(cap_min, True), m(cap_max, True)), "grande"),
+          P("<b>La deuda pide el doble.</b> Sin tocar nada, entre octubre y marzo las cuotas de bancos, tarjeta e impuestos piden entre %s y %s por mes. Con el plan propuesto bajan a %s–%s, y todavía quedan por encima de lo que la operación deja en la mitad de los meses." % (m(min(cuotas_A_fut), True), m(max(cuotas_A_fut), True), m(min(cuotas_B_fut), True), m(max(cuotas_B_fut), True)), "grande"),
+          P("<b>Ya no hay colchón.</b> Los descubiertos están usados (%s sobre %s acordados), hay %s atrasados y Corrientes informa situación 3. Septiembre cierra en %s en bancos porque en lo que queda del mes vencen, según Tango, más pagos de los que entran." % (m(desc_usado, True), m(acuerdos, True), m(atrasado, True), m(B["saldos"][i0], True)), "grande"),
+          caja([P("No es un problema de caja: es una estructura de deuda que se está pagando con caja, y la caja no alcanza. La salida tiene tres partes que van juntas: (1) refinanciar a un número que la operación pueda pagar, (2) proteger lo que no puede cortarse (ARCA, sueldos, los bancos que descuentan los cheques) y (3) decidir cada semana, con el cash a la vista, qué se paga y qué no. <b>El plan de este documento es una propuesta: que cada banco la acepte es otra negociación, y por eso se muestra también qué pasa si dicen que no.</b>", "p")], borde=ROJO),
           ]
 
-    # ---------------------------------------------------------------- 1 · qué hicimos
-    S += [PageBreak(), P("1 · Qué leímos para llegar a esto", "h1"),
-          P("Todo lo que dice este documento sale de datos, no de la planilla vieja ni de estimaciones a mano:", "p"),
-          LI("<b>Extractos de los cinco bancos</b>, junio a septiembre: 2.375 movimientos reales, clasificados (cobranza, descuento de cheques, proveedores, sueldos, cuotas, impuestos, intereses). El Nación llegó escaneado y se leyó con reconocimiento de texto, controlado renglón por renglón contra el saldo."),
-          LI("<b>Tango</b>: cuentas a cobrar y a pagar con vencimiento, cartera de cheques, recibos y órdenes de pago de junio a hoy (con CUIT), nómina de clientes y proveedores."),
-          LI("<b>Mapa de deuda bancaria</b> (planilla de NAVAR, revisada): 26 productos en 5 bancos, cuota por cuota."),
-          LI("<b>Deuda impositiva</b>: la planilla de Celia revisada por el Estudio Monti el 18/09."),
-          LI("<b>Respuestas de Priscilla</b> (18/09) sobre lo que los extractos no explican solos: venta de valores, tarjeta AgroNación, cheques, sueldos, AA."),
+    # ---------------------------------------------------------------- 1 · de dónde sale
+    S += [PageBreak(), P("1 · De dónde salen los números", "h1"),
+          P("Todo lo que dice este documento sale de la planilla «NAVAR - Cash Flow», y la planilla sale de datos, no de estimaciones a mano:", "p"),
+          LI("<b>Extractos de los cinco bancos</b>, junio a septiembre: cada movimiento real, clasificado (cobranza, descuento de cheques, proveedores, sueldos, cuotas, impuestos, intereses). Saldo real por cuenta y por día hasta el %s." % ult),
+          LI("<b>Tango</b>: cuentas a cobrar y a pagar con vencimiento, cartera de cheques, recibos y órdenes de pago."),
+          LI("<b>Mapa de deuda bancaria</b> (planilla de NAVAR al 09/09, revisada): %d productos en 5 bancos, cuota por cuota." % len(D["lineas"])),
+          LI("<b>Deuda impositiva</b>: la planilla de Celia revisada por el estudio contable el 18/09."),
+          LI("<b>Respuestas de Priscilla</b> (18/09) sobre lo que los extractos no explican solos: venta de valores, tarjeta AgroNación, cheques, sueldos, la caja de AA."),
+          P("Cómo se proyecta", "h2"),
+          P("Lo que se repite (cobranza, cheques, sueldos, impuestos corrientes, intereses) se proyecta como el promedio de los tres meses cerrados × %.1f %% mensual de inflación. Lo que tiene fecha (cuotas, planes, cheques, facturas de Tango) va por su fecha. Para el mes en curso se suma lo real hasta el %s más lo que falta. Es exactamente la cuenta que hace la solapa «Cash Mensual» de la planilla, donde la inflación es una celda editable." % (D["inflacion"] * 100, ult), "p"),
           P("Lo que NO está y hay que tener presente", "h2"),
-          LI("El costo de la <b>cosecha</b> (no está en ninguna lista; es el egreso grande de la temporada)."),
-          LI("La caja de <b>AA</b> es efectivo: se carga a mano, hoy $39,3 M al 31/08."),
-          LI("Corrientes: el límite del acuerdo en cuenta corriente. Nación: la hipoteca «La Gloria» y la tarjeta corporativa, sin importe. Macro: el saldo usado de la venta de valores ($270 M acordados)."),
+          LI("El costo de la <b>cosecha</b>: no está en ninguna lista y es el egreso grande de la temporada. Es la primera pregunta abierta."),
+          LI("La caja de <b>AA</b> es efectivo (%s al 31/08): se carga a mano y no se mueve en la proyección." % m(caja_aa, True)),
+          LI("Corrientes: el límite del acuerdo en cuenta corriente. Nación: la hipoteca «La Gloria» y la tarjeta corporativa, sin importe. Macro: el límite usado de la venta de valores."),
           ]
 
     # ---------------------------------------------------------------- 2 · la foto
-    S += [P("2 · La foto real de hoy", "h1"),
+    orden = ["NACION", "CORRIENTES", "MACRO", "GALICIA", "BBVA"]
+    que = {"NACION": "el 14/09 pagaron la AgroNación y una cuota impaga con el descubierto nuevo; vuelven a situación 1",
+           "CORRIENTES": "en el límite; 4 préstamos con cuotas impagas, situación 3, refinanciación en curso",
+           "MACRO": "por acá pagan sueldos y entra la venta de valores (descuento de cheques)",
+           "GALICIA": "descuenta cheques: es el motor de la caja",
+           "BBVA": "cuota de septiembre sin fondos, colgada"}
+    fb = [["Banco", "Saldo al %s" % ult, "Descubierto acordado", "Disponible", "Qué se ve"]]
+    for bco in orden:
+        s = bancos.get(bco, 0)
+        ac = D["descubiertos"].get(bco, 0)
+        disp = max(0.0, s + ac)
+        fb.append([nom(bco), m(s, True), m(ac, True) if ac else "sin acuerdo", m(disp, True) + ("" if s + ac >= 0 else " (excedido %s)" % m(-(s + ac), True)), que[bco]])
+    fb.append([Paragraph("<b>Total</b>", E["p"]), Paragraph("<b>%s</b>" % m(saldo_bancos, True), E["p"]), m(acuerdos, True), Paragraph("<b>%s</b>" % m(sum(max(0.0, bancos.get(b, 0) + D["descubiertos"].get(b, 0)) for b in orden), True), E["p"]), "más la caja de AA en efectivo: %s" % m(caja_aa, True)])
+    por_banco = defaultdict(float)
+    for p in D["plan"]:
+        if p["Tipo"] == "Banco":
+            por_banco[p["Acreedor"]] += float(p["Deuda total hoy"] or 0)
+    det_bancos = " · ".join("%s %s" % (nom(b), m(v, True)) for b, v in sorted(por_banco.items(), key=lambda x: -x[1]))
+    imp_det = " · ".join("%s %s" % (conc(p["Concepto"]), m(float(p["Deuda total hoy"]), True)) for p in sorted([p for p in D["plan"] if p["Tipo"] == "Impuesto"], key=lambda p: -float(p["Deuda total hoy"] or 0))[:5])
+    S += [PageBreak(), P("2 · La foto real de hoy", "h1"),
           P("Bancos (cuentas corrientes, último extracto)", "h2"),
-          tabla([["Banco", "Saldo", "Acuerdo de descubierto", "Disponible", "Qué se ve"],
-                 ["Nación", m(-101.7e6, True), "$100 M (14/09)", "$0 (excedido $1,7 M)", "el 14/09 pagaron la AgroNación ($82,8 M) y una cuota impaga ($17,5 M) con el descubierto nuevo"],
-                 ["Corrientes", m(-45.3e6, True), "sin informar", "$0", "clavado en el límite; 4 préstamos con 3 cuotas impagas, situación 3, refinanciación en curso"],
-                 ["Macro", m(-39.7e6, True), "$50 M", "$10,3 M", "por acá pagan sueldos (~$93 M/mes) y entra la venta de valores (~$260 M/mes)"],
-                 ["Galicia", m(-9.1e6, True), "$10 M", "$0,9 M", "descuenta cheques: $387 M en tres meses y medio"],
-                 ["BBVA", m(6.4e6, True), "sin acuerdo", "$6,4 M", "cuota de $15,4 M del 11/09 sin fondos, colgada"],
-                 [Paragraph("<b>Total</b>", E["p"]), Paragraph("<b>%s</b>" % m(-189.5e6, True), E["p"]), "$160 M", Paragraph("<b>$17,5 M</b>", E["p"]), "más la caja de AA en efectivo: $39,3 M"]],
-                [22 * mm, 20 * mm, 30 * mm, 28 * mm, 70 * mm], chico=True),
+          tabla(fb, [22 * mm, 22 * mm, 26 * mm, 30 * mm, 70 * mm], chico=True),
           P("Deuda (capital) y atrasado", "h2"),
           tabla([["Concepto", "Monto", "Detalle"],
-                 ["Bancos: préstamos, tarjetas, descuento de cheques", m(2.83e9, True), "Corrientes $1.027 M (sit. 3) · Nación $850 M (incluye $260 M diferidos de la AgroNación) · Macro $327 M · BBVA $309 M · Galicia $228 M"],
-                 ["Impuestos", m(605e6, True), "SICORE 2024 $315 M (la mitad son intereses) · tasa de comercio $110 M · planes ARCA $67 M · aportes $42 M · IIBB $34 M · resto $37 M"],
-                 ["Proveedores vencidos (Tango, sin la deuda vieja)", m(435e6, True), "A $389 M en 175 facturas · AA $46 M"],
-                 ["Cuotas bancarias impagas", m(362e6, True), "Corrientes $347 M (junio a septiembre) · BBVA $15 M"],
-                 ["Impuestos vencidos", m(548e6, True), "48 vencimientos; lo urgente antes del 25/09: $49,7 M (SICORE julio, plan W255056, plan IVA W118963, Misiones, DGR)"],
-                 ["Cheques propios vencidos sin debitar", m(62e6, True), "4 cheques; tres parecen pagados según el extracto (Priscilla lo confirma)"],
-                 [Paragraph("<b>Atrasado total a pagar</b>", E["p"]), Paragraph("<b>%s</b>" % m(1.406e9, True), E["p"]), "no está en ningún mes de la proyección: se paga por decisión"]],
+                 ["Bancos: préstamos, tarjetas, descuento de cheques", m(deuda_bancos_plan, True), det_bancos + " · más %s de descubiertos usados, que ya están en el saldo" % m(desc_usado, True)],
+                 ["Impuestos", m(deuda_imp, True), imp_det],
+                 ["Proveedores vencidos (Tango, sin la deuda vieja)", m(at["Proveedores A vencidos"] + at["Proveedores AA vencidos"], True), "A %s · AA %s" % (m(at["Proveedores A vencidos"], True), m(at["Proveedores AA vencidos"], True))],
+                 ["Cuotas bancarias impagas", m(at["Cuotas bancarias impagas"], True), "Corrientes (junio a septiembre) y BBVA (septiembre)"],
+                 ["Impuestos vencidos", m(at["Impuestos vencidos"], True), "lo urgente antes del 25/09 según el estudio: SICORE julio, planes ARCA, Misiones, DGR"],
+                 ["Cheques propios vencidos sin debitar", m(at["Cheques propios vencidos sin debitar"], True), "a confirmar: varios parecen pagados según el extracto"],
+                 [Paragraph("<b>Atrasado total a pagar</b>", E["p"]), Paragraph("<b>%s</b>" % m(atrasado, True), E["p"]), "no está en ningún mes de la proyección: se paga por decisión, y esa decisión se carga en la solapa Plan"]],
                 [58 * mm, 20 * mm, 92 * mm], chico=True),
           ]
 
-    # ---------------------------------------------------------------- 3 · seis meses
-    S += [PageBreak(), P("3 · Los próximos seis meses", "h1"),
-          P("La proyección usa los tres meses cerrados de extracto como base: lo que se repite (cobranza, sueldos, impuestos corrientes) se proyecta como el promedio × 1,7 % mensual de inflación; lo que tiene fecha (cuotas, planes, cheques) va por su fecha. Es la misma cuenta que hace la solapa «Cash Mensual» de la planilla, donde la inflación es una celda editable.", "p"),
-          tabla_proy(sin, "Sin tocar nada: pagando todo lo que vence como está"),
-          Spacer(1, 6),
-          P("Cierra en <b>%s</b> en marzo con los descubiertos incluidos. Octubre es el peor mes: $247 M de cuotas (con el resumen de la AgroNación), sueldos y $50 M de planes de ARCA." % m(sin["disp"][-1], True), "p"),
+    # ---------------------------------------------------------------- 3 · tres meses reales
+    S += [PageBreak(), P("3 · Los tres meses reales: qué entra y qué sale", "h1"),
+          P("Junio, julio y agosto según el extracto (no según Tango ni la planilla vieja). Es la base de toda la proyección.", "p")]
+    ren_ing = ["Cobranza acreditada", "Cheques de clientes (depositados y descontados)", "Préstamos nuevos"]
+    ren_egr = ["Proveedores A", "Sueldos y cargas", "Impuestos corrientes", "Cheques propios", "Intereses y gastos bancarios", "Otros (tarjeta, honorarios, cosecha)"]
+    fr = [["", lab(cols[0]), lab(cols[1]), lab(cols[2]), "promedio"]]
+    def f3(nombre, vals, bold=False):
+        return [Paragraph(("<b>%s</b>" if bold else "%s") % nombre, ParagraphStyle("l", parent=PR.b, fontSize=8.4, leading=11, spaceAfter=0))] + [celda_num(v, bold) for v in vals[:3]] + [celda_num(sum(vals[:3]) / 3, bold)]
+    for r in ren_ing:
+        fr.append(f3(r, M[r]))
+    fr.append(f3("Total ingresos", M["Total ingresos"], True))
+    for r in ren_egr:
+        fr.append(f3(r, M[r]))
+    fr.append(f3("Total egresos de la operación", M["Total egresos de la operación"], True))
+    fr.append(f3("Resultado de la operación", M["Resultado de la operación (antes de la deuda)"], True))
+    fr.append(f3("Cuotas bancarias y tarjeta pagadas", M["Cuotas bancarias y tarjeta"]))
+    fr.append(f3("Resultado después de la deuda", M["Resultado después de la deuda"], True))
+    t = tabla(fr, [70 * mm, 25 * mm, 25 * mm, 25 * mm, 25 * mm], chico=True)
+    t.setStyle(TableStyle([("LINEABOVE", (0, 4), (-1, 4), 0.8, TENUE), ("LINEABOVE", (0, 11), (-1, 11), 0.8, TENUE), ("BACKGROUND", (0, 12), (-1, 12), colors.HexColor("#FFF8E1"))]))
+    S += [t, P("en millones de $ · «Proveedores A» es lo que salió del banco a proveedores: menos de lo que Tango dice que vencía; la diferencia es el atrasado · julio incluye %s de préstamos nuevos que después se fueron en cuotas" % m(M["Préstamos nuevos"][1], True), "nota"),
+          caja([P("Lo que muestra: <b>la operación deja entre %s y %s por mes</b> antes de la deuda (con la variación normal de una yerbatera). Ese margen ya se está usando para pagar cuotas: en junio se pagaron %s de cuotas y el mes cerró en %s; en julio entraron préstamos nuevos para pagar cuotas viejas." % (m(min(M["Resultado de la operación (antes de la deuda)"][:3]), True), m(max(M["Resultado de la operación (antes de la deuda)"][:3]), True), m(M["Cuotas bancarias y tarjeta"][0], True), m(M["Resultado después de la deuda"][0], True)), "p")], borde=AMBAR)]
+
+    # ---------------------------------------------------------------- 4 · seis meses
+    S += [PageBreak(), P("4 · Los próximos seis meses, en tres escenarios", "h1"),
+          P("La operación es la misma en los tres (lo que proyecta la planilla). Lo que cambia es la deuda: cómo están las cuotas hoy, cómo quedan con la propuesta, y qué haría falta pedir para volver a cero.", "p"),
+          grafico(D, ESC),
+          P("Saldo disponible al cierre de cada mes (saldo en bancos + descubiertos acordados), en millones de $. Por debajo de cero: no se cubre lo comprometido ni usando todo el descubierto.", "nota"),
           Spacer(1, 4),
-          tabla_proy(con, "Con un plan: refinanciar los préstamos, planes de ARCA al máximo, proteger la operación"),
+          tabla_meses(D, A, "A · Sin tocar nada: pagando todo lo que vence como está", "en millones de $ · cuotas según el cronograma de cada banco y vencimientos impositivos con fecha · lo vencido de hoy no está en ningún mes"),
           Spacer(1, 6),
-          P("Supuestos del escenario (se ajustan en la solapa «Plan» de la planilla): los préstamos bancarios ($2.220 M de capital, sin la tarjeta) se refinancian a 60 cuotas con 3 meses de gracia al 3 %% mensual → cuota de %s desde enero; la AgroNación diferida se paga en sus tres resúmenes; los planes de ARCA que propone el contador (SICORE $13,3 M al contado + 9 × $32,2 M, CCSS 8 × $3,3 M) se firman; lo vencido con proveedores no se regulariza en estos seis meses. Cierra en <b>%s</b> en marzo: de perder $60 M por mes pasa a recuperar ~$50 M por mes desde diciembre. Ese margen es el que permite negociar cuotas más largas con ARCA o empezar a regularizar proveedores." % (m(cuota_refi, True), m(con["disp"][-1], True)), "p"),
-          caja([P("Lo que este escenario dice, con todas sus aproximaciones: <b>la capacidad de pago de NAVAR para toda su deuda es de $100 a $150 M por mes</b>. Cualquier acuerdo con un banco o con ARCA que sume más que eso se rompe al segundo mes.", "p")], borde=AMBAR),
+          P("Cierra en <b>%s</b> de disponible en marzo. Octubre y noviembre son los peores meses: las cuotas del cronograma piden %s y %s con una operación que deja %s y %s." % (m(A["disp"][-1], True), m(A["cuotas"][i0 + 1], True), m(A["cuotas"][i0 + 2], True), m(ESC["res_op"][i0 + 1], True), m(ESC["res_op"][i0 + 2], True)), "p"),
+          caja([P("Lo que los tres escenarios dicen, con todas sus aproximaciones: <b>la capacidad de pago de NAVAR para toda su deuda es de %s a %s por mes</b>. Cualquier acuerdo con un banco o con ARCA que sume más que eso se rompe al segundo mes. Y el agujero de septiembre (%s) hay que taparlo con algo que no sea caja de la operación." % (m(cap_min, True), m(cap_max, True), m(B["saldos"][i0], True)), "p")], borde=AMBAR),
+          PageBreak(),
+          tabla_meses(D, B, "B · El plan propuesto (lo que está cargado en la solapa Plan)", "en millones de $ · misma operación que en A · Corrientes, Galicia y BBVA refinanciados a 48–60 cuotas con 3 meses de gracia al 3 % mensual · Nación y Macro se pagan como están · SICORE en 12 cuotas · tasa de comercio e inmobiliario pospuestos · lo vencido con proveedores no se regulariza en estos seis meses", resumida=True),
+          Spacer(1, 6),
+          P("Cierra en <b>%s</b> de disponible en marzo: <b>frena la caída pero no recupera el pozo de septiembre</b>. De diciembre en adelante la operación y la deuda quedan parejas (resultado después de la deuda cerca de cero). Es lo que se puede pedir hoy sin tocar a los dos bancos que están al día." % m(B["disp"][-1], True), "p"),
+          Spacer(1, 4),
+          tabla_meses(D, C, "C · Lo que haría falta para volver a cero", "en millones de $ · todo lo de B, y además: " + "; ".join(ESC["sup_c"]), resumida=True),
+          Spacer(1, 6),
+          P("Cierra en <b>%s</b> de disponible en marzo, con el saldo en bancos en %s. Es decir: <b>para que las cuentas vuelvan a cero hace falta refinanciar toda la deuda bancaria, incluidos los dos bancos que hoy están al día, y estirar ARCA</b>. Y aun así quedan meses en rojo: %s. Ese bache no sale de la operación: sale de un aporte, de la venta de un activo, de adelantar cobranza o de stock." % (m(C["disp"][-1], True), m(C["saldos"][-1], True), ", ".join("%s (%s)" % (lab(cols[i]), m(C["disp"][i], True)) for i in range(i0, len(cols)) if C["disp"][i] < 0) or "ninguno"), "p"),
           ]
 
-    # ---------------------------------------------------------------- 4 · cómo lo solucionamos
-    S += [PageBreak(), P("4 · Cómo creemos que se resuelve", "h1"),
-          P("1 · Esta semana: que no se corte nada vital", "h3"),
-          LI("<b>ARCA antes del 25/09: $49,7 M.</b> Un embargo de cuentas frena la operación entera. SICORE julio ($19,9 M, si no entra demanda), plan W255056 ($16 M, se debita del Macro el 26), plan IVA W118963 ($8,3 M, si no caduca), Misiones ($0,5 M), DGR Corrientes ($5 M)."),
-          LI("<b>Sueldos</b> del 1 al 10 de octubre (~$93 M por Macro)."),
-          LI("<b>Nación, cuota del 21/09 ($17,5 M).</b> Acaban de usar $100 M de descubierto para volver a situación 1 ahí: no tirarlo."),
-          LI("<b>Galicia y Macro</b>: las cuotas del 24 y 29/09 ($39 M). Son los bancos que descuentan los cheques; si cierran esa línea, se para el motor de $260 M por mes."),
-          P("2 · Pagar por consecuencia, no por antigüedad", "h3"),
-          P("Orden propuesto (a confirmar con Priscilla, ver sección 6): ARCA (embarga) → sueldos → Galicia y Macro (descuentan cheques) → Nación → proveedores de hoja y de cosecha → resto de proveedores → Corrientes y tarjetas → municipal. La tasa de comercio ($110 M) y la obra social pueden esperar, dijo el contador. Corrientes está en situación 3 y en refinanciación: no se recupera pagando cuotas sueltas.", "p"),
-          P("3 · Refinanciar en serio, con un número defendible", "h3"),
-          P("La capacidad de pago real para toda la deuda es ~$100–150 M por mes. Hoy se piden ~$250 M. Hay que llevar los $2.830 M de bancos a cuotas que sumen eso: plazo largo (48–60 meses), 3 a 6 meses de gracia. Corrientes ya lo está haciendo; Nación tiene la reprogramación; Galicia lo tiene anotado en su propia planilla. Con ARCA, pedir el máximo de cuotas: 9 cuotas de $32 M para el SICORE son demasiado cortas para esta caja.", "p"),
-          P("4 · El disponible manda", "h3"),
-          P("Regla operativa desde el martes: no se compromete un peso que el «Saldo disponible» de la semana no muestre. El cash se mira todos los lunes con Priscilla; se actualiza con extractos y Tango; las decisiones (qué se paga, qué se refinancia, qué se pospone) se cargan en la solapa «Plan» y el cash recalcula.", "p"),
+    # ---------------------------------------------------------------- 5 · el plan, banco por banco
+    fut6 = cols[i0 + 1:]
+    fp = [["Acreedor", "Deuda hoy", "Cronograma oct–mar", "Propuesta", "Queda oct–mar", "Si dicen que no"]]
+    por_acreedor = defaultdict(lambda: {"deuda": 0.0, "cron": 0.0, "plan": 0.0, "dec": set(), "conc": []})
+    for p in D["plan"]:
+        if p["Tipo"] != "Banco":
+            continue
+        a = por_acreedor[p["Acreedor"]]
+        a["deuda"] += float(p["Deuda total hoy"] or 0)
+        a["plan"] += sum(p["meses"].get(mth, 0) for mth in fut6)
+        a["dec"].add(p["Decisión"])
+        if p["Decisión"] == "Refinanciar":
+            a["conc"].append((float(p["Deuda total hoy"] or 0), int(p["Cuotas nuevas"] or 0), int(p["Meses de gracia"] or 0), float(p["Cuota nueva"] or 0), lab(p["Primer vencimiento"].date()) if p["Primer vencimiento"] else "—"))
+    for (mth, bco, _), v in D["cron_banco"].items():
+        if mth in fut6:
+            por_acreedor[bco]["cron"] += v
+    for bco in orden:
+        a = por_acreedor[bco]
+        if "Refinanciar" in a["dec"]:
+            cs = a["conc"]
+            prop = "Refinanciar %s (%s): %s cuotas con %s meses de gracia → %s por mes desde %s" % (
+                "%d préstamos" % len(cs) if len(cs) > 1 else "el préstamo", m(sum(c[0] for c in cs), True),
+                "/".join(sorted({str(c[1]) for c in cs})), "/".join(sorted({str(c[2]) for c in cs})), m(sum(c[3] for c in cs), True), cs[0][4])
+            sino = "marzo: %s menos de disponible" % m(a["cron"] - a["plan"], True)
+        else:
+            prop = "Pagar como está: " + ("está al día y descuenta cheques; no tocar" if bco == "MACRO" else "recién reprogramado; no perder la situación 1")
+            sino = "—"
+        fp.append([nom(bco), m(a["deuda"], True), m(a["cron"], True), prop, m(a["plan"], True), sino])
+    S += [PageBreak(), P("5 · El plan, acreedor por acreedor: qué se pide y qué pasa si dicen que no", "h1"),
+          P("Lo que está cargado en la solapa Plan. Cada fila es una negociación distinta, con su propio tiempo; lo que ya está en curso (Corrientes) es lo más probable.", "p"),
+          tabla(fp, [20 * mm, 18 * mm, 20 * mm, 66 * mm, 18 * mm, 28 * mm], chico=True),
+          P("«Pide el cronograma» y «Queda» son la suma de cuotas de octubre a marzo. La diferencia es lo que se le pide al banco que postergue en estos seis meses.", "nota"),
+          P("ARCA y provincia", "h2"),
+          tabla([["Concepto", "Deuda hoy", "Propuesta", "Por qué"]] +
+                [[conc(p["Concepto"]), m(float(p["Deuda total hoy"] or 0), True),
+                  (p["Decisión"] + (": %d cuotas de %s desde %s" % (int(p["Cuotas nuevas"] or 0), m(float(p["Cuota nueva"] or 0), True), lab(p["Primer vencimiento"].date())) if p["Decisión"] == "Refinanciar" and p["Primer vencimiento"] else "")),
+                  p["Por qué"]] for p in sorted([p for p in D["plan"] if p["Tipo"] == "Impuesto" and float(p["Deuda total hoy"] or 0) >= 10e6], key=lambda p: -float(p["Deuda total hoy"] or 0))],
+                [40 * mm, 20 * mm, 50 * mm, 60 * mm], chico=True),
+          P("Impuestos menores a $10 M (patentes, bienes personales, IVA) no se listan; están en la solapa Plan.", "nota"),
+          caja([P("<b>Antes de ir a un banco.</b> Un plan armado en una planilla y un plan aprobado por un comité de crédito son dos cosas distintas. Corrientes ya está en refinanciación; Galicia y BBVA hay que pedirlos; Nación y Macro conviene no tocarlos hasta que los otros tres estén cerrados. Cada «no» tiene su número en la última columna.", "p")], borde=AZUL),
           ]
 
-    # ---------------------------------------------------------------- 5 · accionables
-    S += [P("5 · Accionables", "h1"),
-          tabla([["Qué", "Quién", "Cuándo"],
-                 ["Pagar lo urgente de ARCA ($49,7 M) y generar los VEP", "Celia / Charles", "antes del 25/09"],
-                 ["Confirmar con el contador el plan de pagos más largo posible para SICORE 2024 y CCSS", "Celia + Estudio Monti", "semana del 22/09"],
-                 ["Pedir a cada banco la refinanciación con el número de capacidad de pago: Nación, Galicia, BBVA, Macro (Corrientes ya en curso)", "Charles / María Rosa", "semana del 22/09"],
-                 ["Confirmar la lista de prioridades de pago (sección 6) y cargarla en la solapa Plan", "Priscilla + Thomas", "martes 22/09"],
-                 ["Cargar el costo de la cosecha y los proveedores críticos (hoja) en el cash", "Priscilla", "esta semana"],
-                 ["Confirmar los 4 cheques propios vencidos (¿pagados?) y el límite del acuerdo de Corrientes", "Priscilla", "esta semana"],
-                 ["Extractos y exports de Tango cada semana (lunes) hasta que esté automatizado; token de Tango Live para automatizar", "Priscilla / Karina / Thomas", "desde el 28/09"],
-                 ["Revisión semanal del cash: disponible, qué se paga, qué se pospone", "Priscilla + Thomas", "todos los lunes"]],
-                [92 * mm, 42 * mm, 36 * mm], chico=True),
-          ]
-
-    # ---------------------------------------------------------------- 6 · prioridades y preguntas
-    S += [PageBreak(), P("6 · Prioridades de pago: la propuesta y lo que hay que preguntar", "h1"),
-          P("La prioridad no es «a quién le debemos más» sino «qué pasa si no pagamos». Esta es la propuesta inicial; se termina de armar con Priscilla y se carga en la solapa Plan.", "p"),
+    # ---------------------------------------------------------------- 6 · prioridades
+    S += [PageBreak(), P("6 · Prioridades de pago: por consecuencia, no por antigüedad", "h1"),
+          P("La prioridad no es «a quién le debemos más» sino «qué pasa si no pagamos». Es la que está cargada en la columna Prioridad de la solapa Plan y se ajusta con Priscilla.", "p"),
           tabla([["Prioridad", "A quién", "Por qué", "Qué pasa si no"],
                  ["1", "ARCA / DGR (vencimientos urgentes y planes)", "es el único acreedor que embarga cuentas", "embargo → se frena todo"],
-                 ["2", "Sueldos y cargas", "la operación no anda sin la gente; la obra social aguanta hasta 3 meses", "conflicto, paro"],
-                 ["3", "Galicia y Macro (cuotas y acuerdos)", "descuentan los cheques: son el motor de la caja", "cierran la línea → sin caja"],
-                 ["4", "Nación", "recién volvieron a situación 1 con $100 M de descubierto", "vuelve a situación 2, pierden el crédito"],
-                 ["5", "Proveedores de hoja y de cosecha", "sin hoja no hay producto", "cortan la entrega"],
-                 ["6", "Resto de proveedores (Envasando, logística, insumos)", "según tolerancia; algunos ya financian vía tarjeta", "cortan el crédito comercial"],
-                 ["7", "Corrientes (préstamos y tarjetas)", "ya está en situación 3 y en refinanciación", "el daño ya está hecho; se negocia el plan"],
+                 ["2", "Sueldos y cargas", "la operación no anda sin la gente", "conflicto, paro"],
+                 ["2", "Galicia y Macro (cuotas y acuerdos)", "descuentan los cheques: son el motor de la caja", "cierran la línea → sin caja"],
+                 ["3", "Nación y BBVA", "recién reprogramado / al día: no perder la situación 1", "vuelve a situación 2, pierden el crédito"],
+                 ["4", "Tarjetas (AgroNación, Visa)", "financian proveedores; se paga el resumen o se corta la tarjeta", "se corta la financiación de proveedores"],
+                 ["5", "Corrientes (préstamos)", "ya está en situación 3 y en refinanciación", "el daño ya está hecho; se negocia el plan"],
+                 ["6", "Proveedores de hoja y cosecha, después el resto", "sin hoja no hay producto; los demás según tolerancia", "cortan la entrega / el crédito comercial"],
                  ["8", "Tasa de comercio, patentes, inmobiliario", "no embargan rápido", "intereses"]],
                 [16 * mm, 48 * mm, 58 * mm, 48 * mm], chico=True),
-          P("Preguntas para Priscilla (para ordenar esto bien)", "h2"),
-          LI("<b>Hoja y cosecha.</b> ¿Quiénes son los proveedores de hoja? ¿Cuánto se les debe, cuánto se les paga por mes en cosecha y con qué plazo aguantan? ¿Cuándo empieza y cuánto cuesta la cosecha 2027 (jornales, transporte, secado)?"),
-          LI("<b>Envasando SRL.</b> Es el proveedor más grande ($245 M financiados con la tarjeta AgroNación). ¿Qué se le compra, con qué frecuencia, y qué pasa si se atrasa el pago del resumen?"),
-          LI("<b>Proveedores que cortan.</b> De la lista de 88 proveedores con saldo, ¿cuáles cortan la entrega si no cobran (los 10 que importan)? ¿Cuáles esperan?"),
-          LI("<b>Sueldos.</b> ¿Cuánta gente, cuánto es el total con cargas, y qué parte se paga en AA? ¿Hay atrasos con la obra social o ART?"),
-          LI("<b>Bancos.</b> ¿Con quién están negociando en Corrientes y qué proponen? ¿Galicia y Macro renovaron los acuerdos de descubierto y la línea de descuento? ¿Hasta cuándo?"),
-          LI("<b>ARCA.</b> ¿Quién decide qué VEP se paga (Celia, Charles)? ¿Están los $49,7 M para el 25/09 o hay que elegir?"),
-          LI("<b>Cheques.</b> ¿Cuántos cheques hay hoy en cartera y cuánto suman? ¿Cuánto más se puede descontar en Galicia y Macro (límite de las líneas)?"),
-          LI("<b>Cobranza.</b> ¿Los clientes grandes (Las Marías: $600 M en recibos desde junio) pagan a término? ¿Se puede adelantar cobranza con alguno?"),
-          LI("<b>Dueños.</b> ¿Hay aportes de los socios previstos o venta de algún activo (la hipoteca «La Gloria» sugiere que hay inmuebles)?"),
-          Spacer(1, 6),
-          caja([P("Cómo seguimos: el martes se confirma el orden de prioridades y se carga en la solapa Plan. Desde ahí, cada lunes el cash dice cuánto hay, qué vence y qué se paga. Las decisiones son de NAVAR; el cash las hace visibles antes, no después.", "p")], borde=VERDE),
           ]
 
-    doc.build(S, onFirstPage=pie, onLaterPages=pie)
+    # ---------------------------------------------------------------- 7 · esta semana y cómo sigue
+    urg = D["imp_mes"].get(hoy.replace(day=1), 0)
+    S += [P("Esta semana: que no se corte nada vital", "h3"),
+          LI("<b>ARCA</b>: los vencimientos de septiembre que quedan (%s según la planilla de impuestos) y lo urgente que marcó el estudio antes del 25/09. Un embargo de cuentas frena la operación entera." % m(urg, True)),
+          LI("<b>Sueldos</b> del 1 al 10 de octubre por Macro."),
+          LI("<b>Nación</b>: la cuota de septiembre. Acaban de usar el descubierto para volver a situación 1: no tirarlo."),
+          LI("<b>Galicia y Macro</b>: las cuotas de fin de mes. Son los bancos que descuentan los cheques."),
+          PageBreak(), P("7 · Accionables y cómo sigue", "h1"),
+          tabla([["Qué", "Quién", "Cuándo"],
+                 ["Confirmar el orden de prioridades y las decisiones de la solapa Plan", "Priscilla + Thomas", "esta semana"],
+                 ["Pagar lo urgente de ARCA y generar los VEP", "Celia / Charles", "antes del 25/09"],
+                 ["Pedir al estudio el plan más largo posible para SICORE y cargas sociales", "Celia + estudio", "semana del 22/09"],
+                 ["Corrientes: cerrar la refinanciación en curso con 60 cuotas y gracia", "Charles / María Rosa", "en curso"],
+                 ["Galicia y BBVA: pedir la refinanciación con el número de capacidad de pago", "Charles / María Rosa", "semana del 28/09"],
+                 ["Cargar el costo de la cosecha y la caja de AA en la planilla", "Priscilla", "esta semana"],
+                 ["Definir con qué se tapa el agujero de septiembre (aporte, activo, adelanto de cobranza, stock)", "Dueños", "antes de octubre"],
+                 ["Revisión semanal del cash: disponible, qué se paga, qué se pospone", "Priscilla + Thomas", "todos los lunes"]],
+                [92 * mm, 42 * mm, 36 * mm], chico=True),
+          P("Cómo se va a manejar el cash de acá en adelante", "h3"),
+          P("La planilla tiene tres pantallas (día por día, semana por semana, mes por mes) que son fórmula sobre listas: movimientos y saldos de banco, facturas de Tango, cheques, deuda bancaria e impositiva. Nadie tipea un número en una pantalla: cuando un banco debita una cuota, la deuda baja sola; cuando entra un préstamo, suben las cuotas futuras. Las decisiones (qué se paga, qué se refinancia, qué se pospone) se cargan en la solapa Plan y el mes por mes se recalcula. Cada lunes se cargan los extractos y Tango, se mira el disponible de la semana y se decide. La regla operativa: <b>no se compromete un peso que el disponible de la semana no muestre.</b>", "p"),
+          P("Preguntas abiertas (las que cambian los números)", "h3"),
+          LI("<b>Cosecha</b>: cuándo arranca, cuánto cuesta por mes y a quién se le paga."),
+          LI("<b>Proveedores de hoja</b>: quiénes, cuánto se les debe, cuánto aguantan."),
+          LI("<b>Caja de AA</b>: cuánto hay hoy y quién la carga cada día."),
+          LI("<b>Corrientes</b>: qué proponen en la refinanciación (plazo, gracia, tasa)."),
+          LI("<b>Galicia</b>: la cuota real del préstamo y si renovaron la línea de descuento."),
+          LI("<b>Dueños</b>: si hay aporte, activo para vender o cobranza que se pueda adelantar."),
+          caja([P("Cómo seguimos: esta semana se confirma el plan en la planilla; desde ahí, cada lunes el cash dice cuánto hay, qué vence y qué se paga. Las decisiones son de NAVAR; el cash las hace visibles antes, no después.", "p")], borde=VERDE),
+          ]
+
+    doc.build(S, onFirstPage=lambda c, d: pie(c, d, hoy_txt), onLaterPages=lambda c, d: pie(c, d, hoy_txt))
     return out
 
 
 if __name__ == "__main__":
-    out = os.path.join(BASE_REPO, "clientes", "navar", "privado", "salidas", "NAVAR - Situación y plan %s.pdf" % HOY.isoformat())
-    armar(out)
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--sheet", default=None, help="export de la Sheet a Excel (default: el último en privado/)")
+    ap.add_argument("--hoy", default=datetime.date.today().isoformat())
+    a = ap.parse_args()
+    hoy = datetime.date.fromisoformat(a.hoy)
+    D = leer(a.sheet or ultimo_export(), hoy)
+    out = os.path.join(BASE_REPO, "clientes", "navar", "privado", "salidas", "NAVAR - Situación y plan %s.pdf" % hoy.isoformat())
+    armar(D, out)
     print(out)
