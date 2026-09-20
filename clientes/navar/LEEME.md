@@ -50,7 +50,20 @@ USD 400/mes desde el mes 2, revisable a los 3 meses contra el acierto medido.
 La presentación (PDF de propuesta + vista rápida del tablero + la Sheet) fue
 lo que cerró. Primer peso cobrado de finauto.
 
-## Dónde estamos (18/09/2026)
+## Dónde estamos (20/09/2026)
+
+**Leer primero `documentos/manual_cash.md`**: qué es cada solapa, cómo se lee, qué es real y
+qué estimado, cómo impacta cada movimiento y cómo se actualiza. Lo mismo, en tablas, está en
+la solapa Instrucciones de la Sheet.
+
+- ✅ **Cash v4 en la Sheet** (`herramientas/crear_cash.gs`, corrido el 20/09 desde finauto → Armar solapa Cash): **Cash** (7 días de extracto + 28 adelante), **Cash Semanal** (lunes a domingo: 4 + actual + 12), **Cash Mensual** (3 + actual + 6, inflación en B4), **Plan** (una fila por deuda con decisión, con la propuesta cargada) e **Instrucciones**. Un renglón por concepto: real hasta el último extracto (17/09), estimado desde el día siguiente. Sin columna "Fuente"; ceros en blanco; filas "Resultado de la operación" (~$100–150 M/mes) y "Resultado después de la deuda". Semanal y diario usan el cronograma tal cual; **el mensual usa lo decidido en Plan** (columnas O..U).
+- ✅ **Scripts en Apps Script** (proyecto "NAVAR SA": `Código.gs` = tablero web, `Importar_cashflow.gs`, `Crear_Cashflow.gs`), pegados y corridos por Claude desde Chrome. Copias en Drive `NAVAR - Datos/Scripts/`. Las columnas de las listas se resuelven por encabezado (`_rangos_`): agregar una columna a mano (Thomas sumó "Año" en Cuentas a Cobrar) ya no corre las fórmulas. Las fórmulas se escriben con `,` y el script las reescribe con `;` si la planilla (es_AR) las rechaza.
+- ✅ **Errores corregidos 19–20/09** (detalle en `manual_cash.md` §7): separador `;`; Excel del home banking en orden inverso (Macro 15/09 daba +$71 M); filas migradas "Manual/Real" sumadas al extracto (julio $1.225 M en vez de $757 M); semanas partidas en hoy; signo de los intereses estimados; AA estimada faltaba en el mensual.
+- ✅ **Informe** `privado/salidas/NAVAR - Situación y plan 2026-09-19.pdf` (`herramientas/informe_situacion.py`): sin plan −$348 M en marzo; con la propuesta +$145 M. Prioridades de pago y preguntas para Priscilla.
+- ⬜ **Pendiente de Thomas**: borrar las solapas viejas "Semanal" y "Mensual" (las nuevas son "Cash Semanal" / "Cash Mensual"); no agregar columnas a mano en las listas (Importar Tango las pisa); cargar la caja AA a mano en Saldos Bancarios ("(varios)"); revisar/decidir en Plan con Priscilla.
+- ⬜ **Falta**: costo de cosecha (no está en ninguna lista); cruce banco ↔ Tango (`lector/cruce.py`); tablero web con los mismos bloques; automatizar (bots + token Tango + disparador horario de los importadores).
+
+## Dónde estábamos (18/09/2026)
 
 - ✅ **Primera conexión a la notebook de NAVAR hecha (16/09 a la noche).** Tango es **Delta 5 (25.01.000.4297)**, corre en el navegador contra `servidor:17000` (hay un servidor aparte en la red; la notebook es un cliente). Dos empresas: **NAVAR SA** (id 13, la asumimos "A") y **NAVAR SA Otros** ("AA"). Se entró con la cuenta nexo de Priscilla (autorizado por WhatsApp); el usuario propio de consulta sigue pendiente.
 - ✅ **Exports de Tango Live bajados** (15 archivos + SQL de cada consulta): cobranzas, pagos, cheques de terceros, cheques propios (solo A), saldos, movimientos, ventas. En `privado/tango/2026-09-16/` y en Drive `NAVAR - Datos/Tango`. Cuenta de Google de la empresa: `finanzasnavar@gmail.com` (creada por Thomas; falta pasar la clave a Priscilla).
@@ -68,8 +81,7 @@ lo que cerró. Primer peso cobrado de finauto.
 - ✅ **Diseño del cash nuevo** (`documentos/cash_v2_diseno.md`, mock `privado/salidas/cash_v2_mock.png`) y `herramientas/crear_cash.gs`: arma las solapas **Cash** (día por día: 7 atrás real, 28 adelante) y **Cash Semanal** (4 atrás, 12 adelante, como el cash viejo) con fórmulas sobre las listas. Bloques: bancos (saldo · acuerdo · disponible) · ingresos · egresos · saldo y disponible al cierre · atrasado (stock).
 - ✅ **Respuestas de Priscilla (18/09)** aplicadas: los $570 M del Macro sin descripción son **venta de valores** (descuento de cheques) → categoría nueva "Descuento de Cheques" (es cobranza en cheque adelantada, no préstamo); "N/C DEUD. PUBLICA" = transferencias de clientes → Cobranza; BBVA $15,5 M pendientes = la cuota impaga colgada; AgroNación $260 M diferidos = pagos a proveedores con tarjeta que entran en próximos resúmenes → 3 resúmenes estimados en el cronograma; Corrientes: refinanciación en curso; **AA opera en efectivo, sin bancos** (Tango registra, la caja es física: se carga a mano); cheques: casi siempre se descuentan, a veces se endosan (endoso = O/P, descuento = boleta de depósito en Tango); la "cobranza proyectada" del cash viejo era una estimación por kg que nunca se cumplía (se borra); sueldos del 1 al 10, horas extras en AA; cobranzas las carga Karina cuando entra la plata, O/P Milagros cuando se paga.
 - ✅ **Cash Mensual** (3 meses reales + 6 proyectados, inflación editable 1,7 %/mes) en `crear_cash.gs`, mock `privado/salidas/cash_mensual_mock.png`: ingresos operativos ~$510–555 M/mes contra egresos ~$525–665 M/mes → saldo en bancos de -$150 M a **-$508 M en marzo** si no se refinancia nada; disponible negativo desde septiembre.
-- ⬜ Falta: el cruce banco ↔ Tango (tesorería detalle), simplificar el tablero web a los mismos bloques, y que Thomas pegue los scripts y corra Importar Impuestos + Armar solapa Cash.
-- ⬜ Pendiente de Thomas (18/09): subir `para_pegar_bancos_2026-09-18.xlsx` y `para_pegar_deuda_2026-09-18.xlsx` a Drive, pegar el `importar_cashflow.gs` nuevo y correr los tres botones; subir el `finauto.html` nuevo a `NAVAR - Datos/Tablero`; preguntar por los $260 M diferidos de la AgroNación, el "N/C DEUD. PUBLICA" del Macro y los $15,5 M pendientes del BBVA.
+- ✅ (19/09) Archivos subidos a Drive, scripts pegados, botones corridos; las preguntas a Priscilla contestadas.
 
 **Decisiones que no hay que re-litigar:** no hay servidor pago; la notebook de NAVAR es el
 "servidor" (bots, Tango, finauto, Drive para escritorio) y Apps Script sirve el tablero.
@@ -99,6 +111,10 @@ python finauto.py --contrato clientes/navar/contrato_<fecha>.json --cliente nava
 | `documentos/ARREGLOS_ESQUELETO.md` | Los 8 arreglos al esqueleto del cash nuevo, con celda y fórmula. Para pasarle a quien lo edite. |
 | `herramientas/migrar_cash_viejo.py` | Convierte el cash viejo (6 semanas reales + 8 proyectadas) en filas para pegar en el esqueleto nuevo. Deja `privado/datos_migrados_del_cash_viejo.xlsx`. Se corre con `python clientes/navar/herramientas/migrar_cash_viejo.py`. |
 | `herramientas/propuesta.py` | Genera el PDF para la dueña con los números del contrato y las capturas de `privado/capturas/`. |
+| `herramientas/importar_cashflow.gs` | Apps Script: menú finauto → Importar Tango / Bancos / Deuda / Impuestos + Armar solapa Cash / Plan. Cada botón busca el `para_pegar_*` más nuevo en Drive y pisa lo que ese mismo lector cargó antes. |
+| `herramientas/crear_cash.gs` | Apps Script: arma Cash, Cash Semanal, Cash Mensual, Plan e Instrucciones con fórmulas sobre las listas. Se corre después de cambiar la estructura; Plan no se pisa salvo con "Armar solapa Plan". |
+| `documentos/manual_cash.md` | El manual del cash: solapas, lectura, real/estimado, impacto de cada movimiento, rutina de actualización, errores corregidos. |
+| `herramientas/informe_situacion.py` | El PDF "Situación y plan" (proyección sin plan / con plan, prioridades, preguntas). |
 | `herramientas/importar_tango.gs` | Apps Script para la Sheet: menú "finauto → Importar Tango". Busca en Drive el último `para_pegar_en_la_sheet_*.xlsx`, borra las filas de Tango anteriores y las "agregado", pega las nuevas sin tocar las fórmulas. |
 | `herramientas/tablero_web.gs` | El Apps Script que sirve el tablero en una URL privada de Google (lee `NAVAR - Datos/Tablero/finauto.html` de Drive, lista de mails permitidos, banda si tiene más de 48 hs). Se pega en la Sheet → Extensiones → Apps Script. |
 | `herramientas/arreglar_cash_v2.py` | Toma el cash que devolvió Cowork (`privado/NAVAR_-_Cash_Flow_Limpio.xlsx`), regenera el consolidado con semanas lunes-domingo, vacía los ejemplos y mueve los proyectados a las listas. Deja **`privado/NAVAR - Cash Flow Limpio v2.xlsx`, que es la versión buena**. |
