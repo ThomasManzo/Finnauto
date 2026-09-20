@@ -161,12 +161,12 @@ function _renglones_(periodo) {
   var cuotas = _lista_(R.cuTot, R.cuVto, "," + R.cuEstado + ",\"Pendiente\"");
   var impDeuda = _lista_(R.diImp, R.diVto, "," + R.diEstado + ",\"<>Pagado\"");
   var chqP = _lista_(R.chqImp, R.chqFecha, "," + R.chqTipo + ",\"Propio*\"," + R.chqEstado + ",\"En Cartera\"," + R.chqObs + ",\"<>REVISAR*\"");
-  var interes90 = "SUMIFS(" + R.movImp + "," + R.movTipo + ",\"Egreso\"," + R.movCat + ",\"Gastos Bancarios\"," + R.movOrigen + ",\"Extracto*\"," + R.movFecha + ",\">=\"&($B$3-90))/90*MAX(0,{F}-" + DESDE_EST + ")";
+  var interes90 = "-SUMIFS(" + R.movImp + "," + R.movTipo + ",\"Egreso\"," + R.movCat + ",\"Gastos Bancarios\"," + R.movOrigen + ",\"Extracto*\"," + R.movFecha + ",\">=\"&($B$3-90))/90*MAX(0,{F}-" + DESDE_EST + ")";
 
   var ingresos = [
     { n: "Cobranza acreditada", real: _real_("Ingreso", "Cobranza Facturas"), est: mensual ? "" : cobA, como: "prom",
       f: "real: transferencias y depósitos de clientes (extracto) · estimado: " + (mensual ? "promedio × inflación" : "facturas A que vencen en Tango") },
-    { n: "Cobranza AA (efectivo)", real: "", est: mensual ? "" : cobAA, como: "cero",
+    { n: "Cobranza AA (efectivo)", real: "", est: cobAA, como: "lista", lista: cobAA,
       f: "AA cobra en efectivo, no hay extracto · estimado: facturas AA que vencen en Tango" },
     { n: "Cheques de clientes (depositados y descontados)", real: _real_("Ingreso", "Cheques") + "+" + _real_("Ingreso", "Descuento de Cheques"), est: mensual ? "" : chqT, como: "prom",
       f: "real: cheques depositados + venta de valores / descuento (extracto) · estimado: " + (mensual ? "promedio × inflación" : "cheques en cartera por fecha de cobro") },
