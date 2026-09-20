@@ -43,28 +43,78 @@ var MESES_BASE = 3, MESES_ADELANTE = 6;
 var INFLACION_MENSUAL = 0.017;
 var FORMATO_NUM = "#,##0;[Red]-#,##0;\"\"";
 
-// Rangos de las listas (columnas de cada solapa, tal cual están).
-var R = {
-  movFecha: "Movimientos!$B:$B", movTipo: "Movimientos!$D:$D", movCat: "Movimientos!$E:$E",
-  movImp: "Movimientos!$G:$G", movOrigen: "Movimientos!$J:$J", movEstado: "Movimientos!$K:$K",
-  cobPend: "'Cuentas a Cobrar'!$I:$I", cobEmp: "'Cuentas a Cobrar'!$C:$C", cobVto: "'Cuentas a Cobrar'!$F:$F",
-  cobEstado: "'Cuentas a Cobrar'!$J:$J", cobObs: "'Cuentas a Cobrar'!$L:$L",
-  pagPend: "'Cuentas a Pagar'!$J:$J", pagEmp: "'Cuentas a Pagar'!$C:$C", pagVto: "'Cuentas a Pagar'!$G:$G",
-  pagEstado: "'Cuentas a Pagar'!$K:$K", pagObs: "'Cuentas a Pagar'!$N:$N",
-  chqTipo: "'Cartera de Cheques'!$B:$B", chqFecha: "'Cartera de Cheques'!$G:$G", chqImp: "'Cartera de Cheques'!$I:$I",
-  chqEstado: "'Cartera de Cheques'!$J:$J", chqObs: "'Cartera de Cheques'!$L:$L",
-  salFecha: "'Saldos Bancarios'!$A:$A", salBanco: "'Saldos Bancarios'!$B:$B", salImp: "'Saldos Bancarios'!$E:$E",
-  dbBanco: "'Deuda Bancaria'!$A$3:$A$60", dbLinea: "'Deuda Bancaria'!$C$3:$C$60", dbOrig: "'Deuda Bancaria'!$D$3:$D$60", dbVig: "'Deuda Bancaria'!$E$3:$E$60",
-  cuBanco: "'Deuda Bancaria'!$A$64:$A$3000", cuLinea: "'Deuda Bancaria'!$C$64:$C$3000",
-  cuVto: "'Deuda Bancaria'!$E$64:$E$3000", cuTot: "'Deuda Bancaria'!$H$64:$H$3000", cuEstado: "'Deuda Bancaria'!$I$64:$I$3000",
-  diNombre: "'Deuda Impositiva'!$A:$A", diVto: "'Deuda Impositiva'!$D:$D", diImp: "'Deuda Impositiva'!$E:$E", diEstado: "'Deuda Impositiva'!$F:$F",
-  planTipo: "Plan!$A:$A",
-};
+// Rangos de las listas. Se arman leyendo los ENCABEZADOS de cada solapa al momento de
+// correr (fila 1; en Deuda Bancaria, las dos filas "Banco"): si alguien agrega o mueve
+// una columna (el 19/09 apareció una columna "Año" en Cuentas a Cobrar y corrió todo),
+// las fórmulas siguen apuntando a la columna correcta. R se llena en armarCash / armarPlan.
+var R = { planTipo: "Plan!$A:$A" };
+
+var CAMPOS = [
+  ["Movimientos",        1, { movFecha: "Fecha", movTipo: "Tipo", movCat: "Categoria", movImp: "Importe", movOrigen: "Origen", movEstado: "Estado" }],
+  ["Cuentas a Cobrar",   1, { cobPend: "Saldo Pendiente", cobEmp: "Empresa", cobVto: "Fecha Vencimiento", cobEstado: "Estado", cobObs: "Observaciones" }],
+  ["Cuentas a Pagar",    1, { pagPend: "Saldo Pendiente", pagEmp: "Empresa", pagVto: "Fecha Vencimiento", pagEstado: "Estado", pagObs: "Observaciones" }],
+  ["Cartera de Cheques", 1, { chqTipo: "Tipo", chqFecha: "Fecha Pago / Cobro", chqImp: "Importe", chqEstado: "Estado", chqObs: "Observaciones" }],
+  ["Saldos Bancarios",   1, { salFecha: "Fecha", salBanco: "Banco", salImp: "Saldo" }],
+  ["Deuda Impositiva",   1, { diNombre: "Impuesto", diVto: "Fecha Vencimiento", diImp: "Importe", diEstado: "Estado" }],
+];
+
+function _rangos_(ss) {
+  var out = { planTipo: "Plan!$A:$A" };
+  CAMPOS.forEach(function (def) {
+    var h = ss.getSheetByName(def[0]);
+    if (!h) throw new Error("Falta la solapa " + def[0]);
+    var enc = h.getRange(def[1], 1, 1, h.getLastColumn()).getValues()[0];
+    Object.keys(def[2]).forEach(function (clave) {
+      var c = _colPorNombre_(enc, def[2][clave]);
+      if (c < 0) throw new Error("En " + def[0] + " no encuentro la columna '" + def[2][clave] + "'");
+      out[clave] = "'" + def[0] + "'!$" + _colLetra_(c + 1) + ":$" + _colLetra_(c + 1);
+    });
+  });
+  // Deuda Bancaria: dos bloques en la misma solapa, cada uno con su fila "Banco"
+  var db = ss.getSheetByName("Deuda Bancaria");
+  var colA = db.getRange(1, 1, db.getLastRow(), 1).getValues().map(function (r) { return _n_(r[0]); });
+  var encs = [];
+  colA.forEach(function (v, i) { if (v === "banco") encs.push(i + 1); });
+  if (encs.length !== 2) throw new Error("Deuda Bancaria: esperaba 2 filas 'Banco' (líneas y cronograma), hay " + encs.length);
+  var encA = db.getRange(encs[0], 1, 1, db.getLastColumn()).getValues()[0];
+  var encB = db.getRange(encs[1], 1, 1, db.getLastColumn()).getValues()[0];
+  function rangoDB(enc, nombre, desde, hasta) {
+    var c = _colPorNombre_(enc, nombre);
+    if (c < 0) throw new Error("En Deuda Bancaria no encuentro la columna '" + nombre + "'");
+    var L = _colLetra_(c + 1);
+    return "'Deuda Bancaria'!$" + L + "$" + desde + ":$" + L + "$" + hasta;
+  }
+  var finA = encs[1] - 3, iniB = encs[1] + 1, finB = Math.max(db.getMaxRows(), 3000);
+  out.dbBanco = rangoDB(encA, "Banco", encs[0] + 1, finA);
+  out.dbLinea = rangoDB(encA, "Linea / Producto", encs[0] + 1, finA);
+  out.dbOrig = rangoDB(encA, "Capital Original", encs[0] + 1, finA);
+  out.dbVig = rangoDB(encA, "Capital Vigente", encs[0] + 1, finA);
+  out.cuBanco = rangoDB(encB, "Banco", iniB, finB);
+  out.cuLinea = rangoDB(encB, "Linea / Producto", iniB, finB);
+  out.cuVto = rangoDB(encB, "Fecha Vencimiento", iniB, finB);
+  out.cuTot = rangoDB(encB, "Importe Total Cuota", iniB, finB);
+  out.cuEstado = rangoDB(encB, "Estado", iniB, finB);
+  return out;
+}
+
+// columna cuyo encabezado es el nombre (exacto primero, después "empieza con")
+function _colPorNombre_(enc, nombre) {
+  var n = _n_(nombre), i;
+  for (i = 0; i < enc.length; i++) if (_n_(enc[i]) === n) return i;
+  for (i = 0; i < enc.length; i++) if (_n_(enc[i]).indexOf(n) === 0) return i;
+  return -1;
+}
+
+function _n_(s) {
+  return String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
+}
+
 var PLAN_PRIMERA_COL_MES = 15;          // columna O de Plan = mes en curso; P..U los 6 siguientes
 
 
 function armarCash() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
+  R = _rangos_(ss);
   if (!ss.getSheetByName("Plan")) armarPlan();
   _armarPeriodica_(ss, "Cash", "dia");
   _armarPeriodica_(ss, "Cash Semanal", "semana");
@@ -379,6 +429,7 @@ function _propuesta_(tipo, acreedor, concepto) {
 
 function armarPlan() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
+  R = _rangos_(ss);
   var nMeses = MESES_ADELANTE + 1;
   var h = _hojaLimpia_(ss, "Plan", 14 + nMeses);
   _titulo_(h, "PLAN · " + _cliente_(ss) + " · qué se paga, qué se refinancia, qué se pospone", 14 + nMeses);
@@ -395,8 +446,9 @@ function armarPlan() {
 
   var filas = [];
   var db = ss.getSheetByName("Deuda Bancaria");
-  db.getRange(3, 1, 58, 10).getValues().forEach(function (l) {
-    var banco = String(l[0] || "").trim(), linea = String(l[2] || "").trim();
+  var bancosCol = db.getRange(R.dbBanco.split("!")[1]).getValues(), lineasCol = db.getRange(R.dbLinea.split("!")[1]).getValues();
+  bancosCol.forEach(function (r, i) {
+    var banco = String(r[0] || "").trim(), linea = String(lineasCol[i][0] || "").trim();
     if (!banco || !linea || /escubierto|acuerdo en cta/i.test(linea)) return;
     filas.push({ tipo: "Banco", acreedor: banco, concepto: linea });
   });
