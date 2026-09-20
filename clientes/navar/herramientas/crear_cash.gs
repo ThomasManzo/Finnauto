@@ -114,11 +114,11 @@ function _renglones_(periodo) {
   var interes90 = "SUMIFS(" + R.movImp + "," + R.movTipo + ",\"Egreso\"," + R.movCat + ",\"Gastos Bancarios\"," + R.movOrigen + ",\"Extracto*\"," + R.movFecha + ",\">=\"&($B$3-90))/90*MAX(0,{F}-" + DESDE_EST + ")";
 
   var ingresos = [
-    { n: "Cobranza acreditada en bancos", real: _real_("Ingreso", "Cobranza Facturas"), est: mensual ? "" : cobA, como: "prom",
+    { n: "Cobranza acreditada", real: _real_("Ingreso", "Cobranza Facturas"), est: mensual ? "" : cobA, como: "prom",
       f: "real: transferencias y depósitos de clientes (extracto) · estimado: " + (mensual ? "promedio × inflación" : "facturas A que vencen en Tango") },
     { n: "Cobranza AA (efectivo)", real: "", est: mensual ? "" : cobAA, como: "cero",
       f: "AA cobra en efectivo, no hay extracto · estimado: facturas AA que vencen en Tango" },
-    { n: "Cheques de clientes: depositados y descontados", real: _real_("Ingreso", "Cheques") + "+" + _real_("Ingreso", "Descuento de Cheques"), est: mensual ? "" : chqT, como: "prom",
+    { n: "Cheques de clientes (depositados y descontados)", real: _real_("Ingreso", "Cheques") + "+" + _real_("Ingreso", "Descuento de Cheques"), est: mensual ? "" : chqT, como: "prom",
       f: "real: cheques depositados + venta de valores / descuento (extracto) · estimado: " + (mensual ? "promedio × inflación" : "cheques en cartera por fecha de cobro") },
     { n: "Préstamos nuevos", real: _real_("Ingreso", "Prestamo"), est: "", como: "cero", f: "real: préstamos acreditados · no se proyecta: es una decisión" },
     { n: "Sin identificar (tiene que ser 0)", real: _real_("Ingreso", "Otros"), est: "", como: "cero", f: "lo que el banco acreditó sin decir qué es" },
@@ -127,23 +127,23 @@ function _renglones_(periodo) {
     { n: "Proveedores A", real: _real_("Egreso", "Proveedores MP y Logist."), est: mensual ? "" : pagA, como: "max", lista: pagA,
       f: "real: pagos a proveedores (extracto) · estimado: " + (mensual ? "el mayor entre lo que vence en Tango y el promedio × inflación" : "facturas A que vencen en Tango") },
     { n: "Proveedores AA", real: "", est: pagAA, como: "lista", lista: pagAA, f: "AA paga en efectivo · estimado: facturas AA que vencen en Tango" },
-    { n: "Sueldos y cargas (del 1 al 10)", real: _real_("Egreso", "Sueldos y Jornales"), est: mensual ? "" : "-" + _proy_("Sueldos y Jornales"), como: "prom",
+    { n: "Sueldos y cargas", real: _real_("Egreso", "Sueldos y Jornales"), est: mensual ? "" : "-" + _proy_("Sueldos y Jornales"), como: "prom",
       f: "real: extracto (Macro) · estimado: " + (mensual ? "promedio × inflación" : "lo proyectado con fecha en Movimientos") },
-    { n: "Impuestos corrientes (IVA, cargas, retenciones)", real: _real_("Egreso", "Impuestos"), est: "", como: "prom",
+    { n: "Impuestos corrientes", real: _real_("Egreso", "Impuestos"), est: "", como: "prom",
       f: "real: extracto · estimado: " + (mensual ? "promedio × inflación" : "no se estima día a día; ver Cash Mensual") },
     { n: "Cheques propios", real: _real_("Egreso", "Cheques"), est: chqP, como: "lista", lista: chqP, f: "real: debitados (extracto) · estimado: en cartera por fecha de pago" },
     { n: "Intereses y gastos bancarios", real: _real_("Egreso", "Gastos Bancarios"), est: mensual ? "" : interes90, como: "prom",
       f: "real: extracto · estimado: " + (mensual ? "promedio × inflación" : "promedio de los últimos 90 días") },
-    { n: "Otros (tarjeta, honorarios, cosecha, estampillas)", real: _real_("Egreso", "Otros") + "+" + _real_("Egreso", "Honorarios y Dividendos"), est: "-" + _proy_("Sueldos y Jornales", true), como: "lista", lista: "-" + _proy_("Sueldos y Jornales", true),
+    { n: "Otros (tarjeta, honorarios, cosecha)", real: _real_("Egreso", "Otros") + "+" + _real_("Egreso", "Honorarios y Dividendos"), est: "-" + _proy_("Sueldos y Jornales", true), como: "lista", lista: "-" + _proy_("Sueldos y Jornales", true),
       f: "real: extracto · estimado: lo proyectado con fecha en Movimientos (salvo sueldos)" },
   ];
   var deuda = mensual ? [
-    { n: "Cuotas bancarias y tarjeta (según Plan)", real: _real_("Egreso", "Prestamo"), est: "", como: "plan", plan: "Banco", f: "real: cuotas debitadas (extracto) · estimado: solapa Plan (cronograma o refinanciación, según la decisión)" },
-    { n: "Impuestos: deuda y planes (según Plan)", real: "", est: "", como: "plan", plan: "Impuesto", f: "solapa Plan: vencimientos de la deuda impositiva o plan de pagos, según la decisión" },
-    { n: "Regularización de atrasado (según Plan)", real: "", est: "", como: "plan", plan: "Atrasado", f: "solapa Plan: lo vencido con proveedores y cheques que se decide pagar en cuotas" },
+    { n: "Cuotas bancarias y tarjeta", real: _real_("Egreso", "Prestamo"), est: "", como: "plan", plan: "Banco", f: "real: cuotas debitadas (extracto) · estimado: solapa Plan (cronograma o refinanciación, según la decisión)" },
+    { n: "Impuestos: deuda y planes", real: "", est: "", como: "plan", plan: "Impuesto", f: "solapa Plan: vencimientos de la deuda impositiva o plan de pagos, según la decisión" },
+    { n: "Regularización de atrasado", real: "", est: "", como: "plan", plan: "Atrasado", f: "solapa Plan: lo vencido con proveedores y cheques que se decide pagar en cuotas" },
   ] : [
     { n: "Cuotas bancarias y tarjeta", real: _real_("Egreso", "Prestamo"), est: cuotas, como: "lista", f: "real: cuotas debitadas (extracto) · estimado: cronograma de Deuda Bancaria" },
-    { n: "Impuestos: deuda y planes con vencimiento", real: "", est: impDeuda, como: "lista", f: "estimado: Deuda Impositiva (planilla de Celia / contador) por fecha de vencimiento" },
+    { n: "Impuestos: deuda y planes", real: "", est: impDeuda, como: "lista", f: "estimado: Deuda Impositiva (planilla de Celia / contador) por fecha de vencimiento" },
   ];
   var atrasado = [
     { n: "Proveedores A vencidos", est: "SUMIFS(" + R.pagPend + "," + R.pagEmp + ",\"A\"," + R.pagVto + ",\"<\"&$B$2," + R.pagEstado + ",\"<>Pagado\"," + R.pagObs + ",\"<>REVISAR*\")", f: "Cuentas a Pagar · vencimiento < hoy · sin la deuda vieja (REVISAR)" },
@@ -171,7 +171,7 @@ function _armarPeriodica_(ss, nombre, periodo) {
   _titulo_(h, "CASH · " + _cliente_(ss) + " · " + cabecera, colFuente);
   h.getRange(2, 1).setValue("Hoy"); h.getRange(2, 2).setFormula("=TODAY()").setNumberFormat("dd/mm/yyyy");
   h.getRange(3, 1).setValue("Último día con extracto (real hasta acá)"); h.getRange(3, 2).setFormula("=MAXIFS(" + R.movFecha + "," + R.movOrigen + ",\"Extracto*\")").setNumberFormat("dd/mm/yyyy");
-  h.getRange(3, 3).setValue("en $ · verde = real (extracto) · amarillo = estimado (listas con fecha) · la columna con el último extracto adentro tiene las dos cosas").setFontStyle("italic").setFontColor("#5f6368");
+  h.getRange(3, 3).setValue("en $ · verde = real (extracto) · amarillo = estimado (listas con fecha) · qué es cada renglón y de dónde sale: solapa Instrucciones").setFontStyle("italic").setFontColor("#5f6368");
   if (mensual) {
     h.getRange(4, 1).setValue("Inflación mensual (editable)"); h.getRange(4, 2).setValue(INFLACION_MENSUAL).setNumberFormat("0.0%").setBackground("#fff8e1");
     h.getRange(4, 3).setValue("← cambiá este número y se recalcula lo estimado. Base: promedio de los 3 meses cerrados × (1 + inflación)^n; lo que tiene fecha va por su fecha; las cuotas y planes salen de la solapa Plan.").setFontStyle("italic").setFontColor("#5f6368");
@@ -197,7 +197,6 @@ function _armarPeriodica_(ss, nombre, periodo) {
     h.getRange(filaFechas, colProm).setValue("Prom. base").setFontWeight("bold").setHorizontalAlignment("right");
     h.getRange(filaFechas, colComo).setValue("Cómo se estima").setFontWeight("bold");
   }
-  h.getRange(filaFechas, colFuente).setValue("Fuente").setFontWeight("bold");
   h.getRange(filaFechas, 1, 1, colFuente).setBorder(false, false, true, false, false, false, "#3c4043", SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
   var D = function (c) { return _colLetra_(2 + c) + "$" + filaFechas; };
   var F = function (c) { return _fin_(periodo, D(c)); };
@@ -211,11 +210,10 @@ function _armarPeriodica_(ss, nombre, periodo) {
   var fila = filaFechas + 2;
 
   // ---- 1. saldos de bancos (real, arrastrando el último conocido; vacío hacia adelante)
-  _seccion_(h, fila++, "1 · Saldos de bancos al cierre (real, del extracto)", "#e8f0fe", "#174ea6", colFuente);
+  _seccion_(h, fila++, "1 · Bancos (saldo real al cierre)", "#e8f0fe", "#174ea6", colFuente);
   var bancos = _bancos_(ss), primeraBanco = fila;
   bancos.forEach(function (b) {
     h.getRange(fila, 1).setValue(b.etiqueta);
-    h.getRange(fila, colFuente).setValue(b.fuente).setFontStyle("italic").setFontColor("#5f6368");
     for (var c = 0; c < nCols; c++) {
       var corte = "MIN(" + F(c) + "-1,$B$3)";
       var cond = R.salBanco + ",\"" + b.nombre + "\"";
@@ -229,7 +227,6 @@ function _armarPeriodica_(ss, nombre, periodo) {
   var filaSaldoReal = fila;
   h.getRange(fila, 1).setValue("Total saldo real de bancos").setFontWeight("bold");
   for (var c1 = 0; c1 < nCols; c1++) h.getRange(fila, 2 + c1).setFormula("=IF(" + D(c1) + ">$B$3,\"\",SUM(" + L(c1) + primeraBanco + ":" + L(c1) + (fila - 1) + "))").setFontWeight("bold");
-  h.getRange(fila, colFuente).setValue("suma de los saldos de arriba · negativo = descubierto usado").setFontStyle("italic").setFontColor("#5f6368");
   _lineaTotal_(h, fila, colFuente);
   fila += 2;
 
@@ -260,7 +257,6 @@ function _armarPeriodica_(ss, nombre, periodo) {
         if (r.como === "prom" || r.como === "max") h.getRange(fila, colProm).setFormula("=AVERAGE(B" + fila + ":" + _colLetra_(1 + atras) + fila + ")").setFontColor("#5f6368");
         h.getRange(fila, colComo).setValue({ prom: "promedio × inflación", lista: "por fecha (lista)", max: "mayor entre Tango y promedio", cero: "no se proyecta", plan: "según solapa Plan" }[r.como]).setFontColor("#5f6368").setFontSize(10);
       }
-      h.getRange(fila, colFuente).setValue(r.f).setFontStyle("italic").setFontColor("#5f6368");
       fila++;
     });
     var filaTotal = fila;
@@ -272,17 +268,15 @@ function _armarPeriodica_(ss, nombre, periodo) {
   }
   var totIng = bloque("2 · Ingresos", reng.ingresos);
   var totOpe = bloque("3 · Egresos de la operación", reng.egresos);
-  var totDeu = bloque("4 · Deuda: cuotas, planes, regularización", reng.deuda);
+  var totDeu = bloque("4 · Deuda", reng.deuda);
 
   // ---- resultado: acá se ven los ~$150 M que deja la operación y cuánto se lleva la deuda
-  h.getRange(fila, 1).setValue("Resultado de la operación (ingresos − egresos de la operación)").setFontWeight("bold");
+  h.getRange(fila, 1).setValue("Resultado de la operación (antes de la deuda)").setFontWeight("bold");
   for (var c3 = 0; c3 < nCols; c3++) h.getRange(fila, 2 + c3).setFormula("=" + L(c3) + totIng + "-" + L(c3) + totOpe).setFontWeight("bold");
-  h.getRange(fila, colFuente).setValue("lo que la operación deja antes de pagar deuda: es la capacidad de pago").setFontStyle("italic").setFontColor("#5f6368");
   h.getRange(fila, 1, 1, colFuente).setBackground("#e6f4ea");
   var filaResOpe = fila++;
-  h.getRange(fila, 1).setValue("Resultado del período (después de la deuda)").setFontWeight("bold");
+  h.getRange(fila, 1).setValue("Resultado después de la deuda").setFontWeight("bold");
   for (var c4 = 0; c4 < nCols; c4++) h.getRange(fila, 2 + c4).setFormula("=" + L(c4) + filaResOpe + "-" + L(c4) + totDeu).setFontWeight("bold");
-  h.getRange(fila, colFuente).setValue("negativo = ese período la deuda se come más de lo que la operación deja").setFontStyle("italic").setFontColor("#5f6368");
   var filaRes = fila++;
   fila++;
 
@@ -295,6 +289,7 @@ function _armarPeriodica_(ss, nombre, periodo) {
     h.getRange(fila, 2 + c5).setFormula("=SUMIFS(" + R.movImp + "," + base5 + "," + R.movTipo + ",\"Ingreso\")").setFontSize(10).setFontColor("#9aa0a6");
     h.getRange(fila + 1, 2 + c5).setFormula("=-SUMIFS(" + R.movImp + "," + base5 + "," + R.movTipo + ",\"Egreso\")").setFontSize(10).setFontColor("#9aa0a6");
   }
+  h.hideRows(filaRealIng, 2);         // auxiliares: las usa el saldo al cierre, no hace falta verlas
   fila += 3;
 
   // ---- saldo al cierre · descubiertos · disponible
@@ -306,26 +301,22 @@ function _armarPeriodica_(ss, nombre, periodo) {
     var futuro = c6 === 0 ? mixto : L(c6 - 1) + fila + "+" + ing + "-" + egr;
     h.getRange(fila, 2 + c6).setFormula("=IF(" + F(c6) + "-1<=$B$3," + L(c6) + filaSaldoReal + ",IF(" + D(c6) + "<=$B$3," + mixto + "," + futuro + "))").setFontWeight("bold");
   }
-  h.getRange(fila, colFuente).setValue("real hasta el último extracto; después: cierre anterior + ingresos − egresos. Lo atrasado NO está: es stock").setFontStyle("italic").setFontColor("#5f6368");
   h.getRange(fila, 1, 1, colFuente).setBackground("#fff8e1");
   var filaCierre = fila++;
   h.getRange(fila, 1).setValue("Descubiertos acordados con los bancos").setFontWeight("bold");
   for (var c7 = 0; c7 < nCols; c7++) h.getRange(fila, 2 + c7).setFormula("=SUMIFS(" + R.dbOrig + "," + R.dbLinea + ",\"*escubierto*\")");
-  h.getRange(fila, colFuente).setValue("Deuda Bancaria · capital original de las líneas 'Descubierto' (Galicia 10 M, Macro 50 M, Nación 100 M; Corrientes sin informar)").setFontStyle("italic").setFontColor("#5f6368");
   var filaAcuerdos = fila++;
   h.getRange(fila, 1).setValue("Saldo disponible (cierre + descubiertos)").setFontWeight("bold");
   for (var c8 = 0; c8 < nCols; c8++) h.getRange(fila, 2 + c8).setFormula("=" + L(c8) + filaCierre + "+" + L(c8) + filaAcuerdos).setFontWeight("bold");
-  h.getRange(fila, colFuente).setValue("lo que de verdad se puede usar · negativo = no se cubre lo comprometido ni con todo el descubierto").setFontStyle("italic").setFontColor("#5f6368");
   h.getRange(fila, 1, 1, colFuente).setBackground("#fce8e6");
   fila += 2;
 
   // ---- 5. atrasado (stock)
-  _seccion_(h, fila++, "5 · Atrasado hoy (stock: no está en ninguna columna, se paga por decisión en la solapa Plan)", "#fce8e6", "#a50e0e", colFuente);
+  _seccion_(h, fila++, "5 · Atrasado hoy (no está en la curva: se paga por decisión, en Plan)", "#fce8e6", "#a50e0e", colFuente);
   var primeraAtr = fila;
   reng.atrasado.forEach(function (r) {
     h.getRange(fila, 1).setValue(r.n).setFontStyle(r.info ? "italic" : "normal");
     h.getRange(fila, 2).setFormula("=" + r.est);
-    h.getRange(fila, colFuente).setValue(r.f).setFontStyle("italic").setFontColor("#5f6368");
     fila++;
   });
   h.getRange(fila, 1).setValue("Total atrasado a pagar").setFontWeight("bold");
@@ -342,7 +333,7 @@ function _armarPeriodica_(ss, nombre, periodo) {
   h.setColumnWidth(1, 380);
   for (var w = 0; w < nCols; w++) h.setColumnWidth(2 + w, ancho);
   if (mensual) { h.setColumnWidth(colProm, 104); h.setColumnWidth(colComo, 200); }
-  h.setColumnWidth(colFuente, 460);
+  h.setColumnWidth(colFuente, 20);
   h.setFrozenRows(filaFechas + 1);
   h.setFrozenColumns(1);
 }
@@ -476,68 +467,107 @@ function armarPlan() {
 
 
 // ================================================================== Instrucciones
+// Cuatro tablas cortas: las solapas · qué es cada renglón y de dónde sale · cómo impacta
+// cada movimiento · cómo se actualiza. Es lo que hay que poder explicar en una reunión.
 function armarInstrucciones() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var h = ss.getSheetByName("Instrucciones");
-  if (!h) h = ss.insertSheet("Instrucciones", 0); else h.clear();
-  var L = [
-    ["NAVAR S.A. — Cash Flow", "titulo"],
-    ["Cómo está armado, cómo se lee y cómo se actualiza. Actualizado el " + Utilities.formatDate(new Date(), "America/Argentina/Buenos_Aires", "dd/MM/yyyy") + ".", "sub"],
-    ["", ""],
-    ["LAS SOLAPAS", "h"],
-    ["Hay dos clases de solapas: LISTAS (los datos, una fila por cosa) y PANTALLAS (todo fórmula sobre las listas; nadie tipea ahí).", ""],
-    ["", ""],
-    ["Listas (los datos)", "h2"],
-    ["Movimientos — cada movimiento real de banco (Origen 'Extracto ...') clasificado: cobranza, cheques, descuento de cheques, proveedores, sueldos, cuotas, impuestos, gastos bancarios. Las filas con Origen 'Manual' son las que quedaron del cash viejo (agregados semanales): las pantallas NO las usan.", ""],
-    ["Saldos Bancarios — el saldo al cierre de cada día, por cuenta, del extracto. La fila '(varios) AA' es la caja en efectivo de AA, cargada a mano.", ""],
-    ["Cuentas a Cobrar — facturas pendientes de clientes según Tango, con vencimiento. Las marcadas 'REVISAR: deuda vieja' (anteriores a 2026) no suman en ninguna pantalla.", ""],
-    ["Cuentas a Pagar — facturas pendientes de proveedores según Tango, con vencimiento. Ídem REVISAR.", ""],
-    ["Cartera de Cheques — cheques de terceros en cartera (con fecha de cobro) y cheques propios entregados (con fecha de pago).", ""],
-    ["Deuda Bancaria — dos bloques: A) cada línea (préstamo, tarjeta, descuento, descubierto) con su capital; B) el cronograma: cada cuota pendiente con fecha. Sale del mapa de deuda de NAVAR, cruzado con los extractos.", ""],
-    ["Deuda Impositiva — cada deuda con ARCA / DGR / municipio con vencimiento, de la planilla de Celia revisada por el contador.", ""],
-    ["", ""],
-    ["Pantallas (todo fórmula)", "h2"],
-    ["Cash — día por día: los 7 días de extracto más recientes (real) y 28 días hacia adelante (estimado).", ""],
-    ["Cash Semanal — semana por semana, de lunes a domingo: 4 semanas cerradas (real), la semana en curso (real hasta el último extracto + estimado el resto) y 12 hacia adelante. Es el formato del cash viejo.", ""],
-    ["Cash Mensual — mes por mes: 3 meses cerrados (real), el mes en curso y 6 hacia adelante. Lo que se repite se proyecta como promedio de los 3 meses × (1 + inflación)^n; la inflación es la celda B4. Las cuotas, planes y regularización salen de la solapa Plan.", ""],
-    ["Plan — una fila por deuda real (cada préstamo, cada impuesto, lo vencido con proveedores) con la Decisión: pagar como está, refinanciar (gracia, cuotas, tasa) o posponer. Arranca con la propuesta del 19/09; se cambia a mano y Cash Mensual recalcula.", ""],
-    ["", ""],
-    ["CÓMO SE LEE UNA PANTALLA (Cash, Cash Semanal, Cash Mensual)", "h"],
-    ["Arriba: Hoy (B2) y el Último día con extracto (B3). Todo lo que está hasta B3 es REAL; desde el día siguiente es ESTIMADO. La fila debajo de las fechas dice qué es cada columna: 'real', 'estimado' o 'real + est.' (la columna que tiene al último extracto adentro).", ""],
-    ["1 · Saldos de bancos: el saldo de cada banco al cierre de la columna, del extracto. Si el extracto de un banco llega hasta antes (Galicia al 08/09), arrastra el último conocido. Hacia adelante queda vacío: no se sabe por banco.", ""],
-    ["2 · Ingresos y 3 · Egresos de la operación: un renglón por concepto. En las columnas reales muestra lo que pasó por el banco; en las estimadas, lo que dicen las listas con fecha (Tango, cartera de cheques, lo proyectado). La columna 'Fuente' dice de dónde sale cada mitad.", ""],
-    ["4 · Deuda: cuotas de bancos y tarjeta, vencimientos de impuestos y (en el mensual) la regularización del atrasado, según la solapa Plan.", ""],
-    ["Resultado de la operación = ingresos − egresos de la operación: lo que la operación deja ANTES de la deuda. Es la capacidad de pago (hoy, del orden de $100–150 M por mes).", ""],
-    ["Resultado del período = después de la deuda. Negativo = ese período la deuda se come más de lo que la operación deja.", ""],
-    ["Saldo de bancos al cierre = real hasta el último extracto; después, cierre anterior + ingresos − egresos. Saldo disponible = cierre + descubiertos acordados ($160 M). Negativo = no se cubre lo comprometido ni con todo el descubierto.", ""],
-    ["5 · Atrasado (stock): lo vencido a hoy, por concepto. NO está en ninguna columna: no arranca la curva en rojo. Se paga por decisión (Plan → 'Regularizar en cuotas').", ""],
-    ["", ""],
-    ["CÓMO SE ACTUALIZA", "h"],
-    ["Las pantallas no se cargan: se recalculan solas cuando cambian las listas. Lo que hay que actualizar son las listas, con el menú 'finauto':", ""],
-    ["1. Extractos de banco → lector/extractos.py en la Mac → para_pegar_bancos_<fecha>.xlsx en Drive (NAVAR - Datos) → finauto → Importar Bancos. Actualiza Saldos Bancarios y Movimientos. Con eso se mueven B3 (último extracto), los saldos y todo lo real.", ""],
-    ["2. Tango (cobranzas, pagos, cheques) → lector/tango.py → para_pegar_en_la_sheet_<fecha>.xlsx → Importar Tango. Actualiza lo estimado: qué vence y cuándo.", ""],
-    ["3. Deuda bancaria → lector/deuda_bancaria.py (cruza el cronograma con el extracto: una cuota que aparece debitada pasa a 'Pagado' y el capital baja) → para_pegar_deuda_<fecha>.xlsx → Importar Deuda.", ""],
-    ["4. Impuestos → la planilla de Celia → lector/deuda_impositiva.py → para_pegar_impuestos_<fecha>.xlsx → Importar Impuestos.", ""],
-    ["5. Si cambió la estructura (nuevo banco, nuevo concepto): finauto → Armar solapa Cash. Rearma las pantallas; la solapa Plan no se toca (guarda las decisiones).", ""],
-    ["Hoy los pasos 1 a 4 los corre Thomas cuando llegan los archivos (extractos y exports de Tango). Con los bots de banco y el token de Tango Live, la notebook de NAVAR los corre sola cada mañana y el importador se dispara solo: nadie sube nada.", ""],
-    ["", ""],
-    ["CÓMO BAJA LA DEUDA CUANDO SE PAGA", "h"],
-    ["Una cuota pagada aparece en el extracto (Movimientos, 'Prestamo'). El lector de deuda la cruza con el cronograma y la marca 'Pagado' en Deuda Bancaria: deja de ser pendiente en las pantallas y en Plan. El capital vigente de la línea (bloque A) lo actualiza el mismo lector cuando el banco manda la tabla; si no, se corrige a mano en Deuda Bancaria. Con ARCA, igual: lo pagado se marca 'Pagado' en Deuda Impositiva.", ""],
-    ["", ""],
-    ["REGLAS QUE NO SE ROMPEN", "h"],
-    ["Nadie tipea números en las pantallas. Si un número está mal, está mal en la lista: se corrige ahí y las pantallas cambian solas.", ""],
-    ["Real y estimado nunca se mezclan en la misma celda salvo en la columna del último extracto, que lo dice.", ""],
-    ["Las filas 'REVISAR:' y las 'Manual' del cash viejo no suman. Están para no perder la información, no para el cash.", ""],
-    ["Ningún número sale a NAVAR sin validar: la caja real la confirma el extracto; lo vencido lo confirma Tango; la deuda la confirma el banco.", ""],
-  ];
-  L.forEach(function (fila, i) {
-    var c = h.getRange(i + 1, 1).setValue(fila[0]).setWrap(true);
-    if (fila[1] === "titulo") c.setFontSize(16).setFontWeight("bold").setFontColor("#174ea6");
-    else if (fila[1] === "sub") c.setFontStyle("italic").setFontColor("#5f6368");
-    else if (fila[1] === "h") c.setFontWeight("bold").setFontColor("#174ea6").setFontSize(12);
-    else if (fila[1] === "h2") c.setFontWeight("bold");
-  });
-  h.setColumnWidth(1, 1100);
+  if (!h) h = ss.insertSheet("Instrucciones", 0); else { h.clear(); h.clearFormats(); }
+  var fila = 1;
+  function titulo(t) { h.getRange(fila, 1).setValue(t).setFontSize(16).setFontWeight("bold").setFontColor("#174ea6"); fila += 1; }
+  function sub(t) { h.getRange(fila, 1).setValue(t).setFontStyle("italic").setFontColor("#5f6368"); fila += 2; }
+  function seccion(t) { h.getRange(fila, 1).setValue(t).setFontWeight("bold").setFontSize(12).setFontColor("#174ea6"); h.getRange(fila, 1, 1, 4).setBackground("#e8f0fe"); fila += 1; }
+  function tabla(enc, filas) {
+    enc.forEach(function (e, i) { h.getRange(fila, 1 + i).setValue(e).setFontWeight("bold").setBackground("#f1f3f4"); });
+    fila++;
+    filas.forEach(function (f) { f.forEach(function (v, i) { h.getRange(fila, 1 + i).setValue(v).setWrap(true).setVerticalAlignment("top"); }); fila++; });
+    fila++;
+  }
+  titulo("NAVAR S.A. — Cash Flow: cómo funciona");
+  sub("Actualizado el " + Utilities.formatDate(new Date(), "America/Argentina/Buenos_Aires", "dd/MM/yyyy") + ". Regla única: los datos viven en las LISTAS; las PANTALLAS son fórmula. Nadie tipea un número en una pantalla.");
+
+  seccion("1 · Las solapas");
+  tabla(["Solapa", "Qué es", "De dónde sale", "Quién la toca"], [
+    ["Cash", "Día por día: 7 días de extracto (real) + 28 días adelante (estimado)", "fórmula sobre las listas", "nadie"],
+    ["Cash Semanal", "Semana por semana, lunes a domingo: 4 cerradas (real) + la actual + 12 adelante", "fórmula sobre las listas", "nadie"],
+    ["Cash Mensual", "Mes por mes: 3 cerrados (real) + el actual + 6 adelante, con inflación editable (B4)", "fórmula sobre las listas + solapa Plan", "solo la celda de inflación"],
+    ["Plan", "Una fila por deuda: pagar como está / refinanciar / posponer. Cash Mensual toma las cuotas de acá", "Deuda Bancaria + Deuda Impositiva + lo vencido", "Thomas y Priscilla: la Decisión, gracia, cuotas, tasa, prioridad"],
+    ["Movimientos", "LISTA: cada movimiento real de banco, clasificado", "extractos → lector → Importar Bancos", "el importador"],
+    ["Saldos Bancarios", "LISTA: saldo al cierre de cada día, por cuenta", "extractos → Importar Bancos · la caja AA se carga a mano", "el importador · AA: a mano"],
+    ["Cuentas a Cobrar", "LISTA: facturas pendientes de clientes, con vencimiento", "Tango → lector → Importar Tango", "el importador"],
+    ["Cuentas a Pagar", "LISTA: facturas pendientes de proveedores, con vencimiento", "Tango → Importar Tango", "el importador"],
+    ["Cartera de Cheques", "LISTA: cheques de terceros en cartera y cheques propios entregados", "Tango → Importar Tango", "el importador"],
+    ["Deuda Bancaria", "LISTA: A) cada línea con su capital · B) cronograma: cada cuota pendiente", "mapa de deuda + extractos → Importar Deuda", "el importador · capital: a mano si el banco no manda tabla"],
+    ["Deuda Impositiva", "LISTA: cada deuda con ARCA / DGR / municipio, con vencimiento", "planilla de Celia → Importar Impuestos", "el importador"],
+  ]);
+
+  seccion("2 · Cómo se lee una pantalla");
+  tabla(["Parte", "Qué muestra"], [
+    ["Hoy / Último extracto", "B2 es hoy; B3 el último día con extracto. Hasta B3 todo es REAL; desde el día siguiente, ESTIMADO. La fila bajo las fechas lo dice por columna (real · estimado · real + est.)."],
+    ["1 · Bancos", "Saldo de cada banco al cierre de la columna, del extracto. Si un banco no tiene extracto hasta ahí, arrastra el último conocido. Hacia adelante queda vacío: no se sabe por banco."],
+    ["2 · Ingresos · 3 · Egresos de la operación", "Un renglón por concepto: en las columnas reales, lo que pasó por el banco; en las estimadas, lo que dicen las listas con fecha (tabla 3)."],
+    ["4 · Deuda", "Cuotas de bancos y tarjeta, vencimientos de impuestos y (mensual) regularización del atrasado. En el mensual salen de la solapa Plan."],
+    ["Resultado de la operación", "Ingresos − egresos de la operación = lo que la operación deja ANTES de la deuda. Es la capacidad de pago (hoy, $100–150 M por mes)."],
+    ["Resultado después de la deuda", "Lo anterior menos la deuda. Negativo = la deuda se come más de lo que la operación deja."],
+    ["Saldo de bancos al cierre", "Real hasta el último extracto; después, cierre anterior + ingresos − egresos."],
+    ["Saldo disponible", "Cierre + descubiertos acordados ($160 M). Negativo = no se cubre lo comprometido ni con todo el descubierto: hay que elegir."],
+    ["5 · Atrasado hoy", "Lo vencido, por concepto. NO está en ninguna columna (no arranca la curva en rojo). Se paga por decisión, en Plan."],
+  ]);
+
+  seccion("3 · Cada renglón: qué es lo real y qué es lo estimado");
+  tabla(["Renglón", "REAL (columnas pasadas) = extracto", "ESTIMADO (columnas futuras)"], [
+    ["Cobranza acreditada", "transferencias y depósitos de clientes (Movimientos · Cobranza Facturas)", "diario/semanal: facturas A que vencen (Cuentas a Cobrar) · mensual: promedio × inflación"],
+    ["Cobranza AA (efectivo)", "nada: AA cobra en efectivo, no pasa por banco", "facturas AA que vencen (Cuentas a Cobrar)"],
+    ["Cheques de clientes", "cheques depositados + venta de valores / descuento (Movimientos · Cheques + Descuento de Cheques)", "diario/semanal: cheques en cartera por fecha de cobro · mensual: promedio × inflación"],
+    ["Préstamos nuevos", "préstamos acreditados (Movimientos · Prestamo, ingreso)", "no se proyecta: es una decisión"],
+    ["Sin identificar", "lo que el banco acreditó sin decir qué es (Movimientos · Otros)", "tiene que ser 0"],
+    ["Proveedores A", "pagos a proveedores (Movimientos · Proveedores)", "diario/semanal: facturas A que vencen (Cuentas a Pagar) · mensual: el mayor entre eso y el promedio × inflación"],
+    ["Proveedores AA", "nada: AA paga en efectivo", "facturas AA que vencen (Cuentas a Pagar)"],
+    ["Sueldos y cargas", "Movimientos · Sueldos y Jornales (Macro)", "diario/semanal: lo proyectado con fecha en Movimientos · mensual: promedio × inflación"],
+    ["Impuestos corrientes", "Movimientos · Impuestos (IVA, cargas, retenciones, sellos)", "mensual: promedio × inflación · diario/semanal: no se estima"],
+    ["Cheques propios", "cheques debitados (Movimientos · Cheques, egreso)", "cheques propios en cartera por fecha de pago"],
+    ["Intereses y gastos bancarios", "Movimientos · Gastos Bancarios", "diario/semanal: promedio de los últimos 90 días · mensual: promedio × inflación"],
+    ["Otros (tarjeta, honorarios, cosecha)", "Movimientos · Otros + Honorarios", "lo proyectado con fecha en Movimientos (salvo sueldos)"],
+    ["Cuotas bancarias y tarjeta", "cuotas debitadas (Movimientos · Prestamo, egreso)", "diario/semanal: cronograma de Deuda Bancaria · mensual: solapa Plan"],
+    ["Impuestos: deuda y planes", "—", "diario/semanal: Deuda Impositiva por vencimiento · mensual: solapa Plan"],
+    ["Regularización de atrasado", "—", "mensual: solapa Plan (lo vencido que se decide pagar en cuotas)"],
+  ]);
+
+  seccion("4 · Cómo impacta cada movimiento");
+  tabla(["Pasa esto", "Dónde entra", "Qué cambia en el cash"], [
+    ["Un cliente paga por transferencia", "Movimientos (Cobranza Facturas, real) · en Tango se hace el recibo y la factura sale de Cuentas a Cobrar", "sube el saldo real; baja lo estimado a cobrar; baja 'Vencido a cobrar' si estaba vencida"],
+    ["Un cliente paga con cheque", "Tango: recibo + cheque en Cartera de Cheques (terceros)", "sube 'Cheques en cartera' (estimado por fecha de cobro); el saldo real NO cambia hasta que se deposita o descuenta"],
+    ["Se descuenta un cheque en el banco", "Movimientos (Descuento de Cheques, real) · el cheque sale de la cartera", "sube el saldo real; baja lo estimado de cheques; el interés queda en Gastos Bancarios"],
+    ["Se paga a un proveedor", "Movimientos (Proveedores, real) · Tango: orden de pago, la factura sale de Cuentas a Pagar", "baja el saldo real; baja lo estimado a pagar; baja 'Proveedores vencidos' si estaba vencida"],
+    ["Se entrega un cheque propio", "Cartera de Cheques (propio, con fecha de pago)", "aparece en 'Cheques propios' estimado a la fecha de pago; cuando se debita pasa a real y sale de la cartera"],
+    ["Se paga una cuota de préstamo", "Movimientos (Prestamo egreso, real) · Deuda Bancaria: la cuota pasa a 'Pagado' y el capital vigente baja", "baja el saldo real; baja 'Cuotas bancarias' estimado; baja la deuda total en Plan; si estaba vencida, baja 'Cuotas impagas'"],
+    ["Entra un préstamo nuevo", "Movimientos (Prestamo ingreso, real) · Deuda Bancaria: nueva línea + su cronograma", "sube el saldo real hoy; suben las cuotas futuras; sube la deuda total en Plan"],
+    ["Se paga un impuesto", "Movimientos (Impuestos, real) · Deuda Impositiva: la fila pasa a 'Pagado'", "baja el saldo real; baja lo estimado de impuestos; baja 'Impuestos vencidos'"],
+    ["Se firma un plan de pagos con ARCA", "Deuda Impositiva: la deuda original pasa a 'Pagado' y se cargan las cuotas del plan · en Plan, la decisión 'Refinanciar' hace lo mismo sin tocar la lista", "el stock vencido baja; aparecen cuotas mensuales en 'Impuestos: deuda y planes'"],
+    ["Se refinancia un préstamo", "Deuda Bancaria: cronograma nuevo (el banco manda la tabla) · mientras tanto, en Plan: 'Refinanciar' con gracia, cuotas y tasa", "cambian las cuotas futuras; el capital no cambia hasta que el banco lo confirme"],
+    ["Se usa más descubierto", "Movimientos (lo que se pagó) · el saldo real del banco queda más negativo", "baja el saldo real; baja el disponible (saldo + acuerdo)"],
+    ["Transferencia entre cuentas propias", "Movimientos, marcada INTERNO", "no cambia nada: sale de una cuenta y entra en otra"],
+  ]);
+
+  seccion("5 · Cómo se actualiza (hoy a mano, mañana solo)");
+  tabla(["Paso", "Qué", "Con qué", "Resultado"], [
+    ["1", "Extractos de los bancos (PDF / Excel del home banking)", "lector/extractos.py → para_pegar_bancos_<fecha>.xlsx en Drive → finauto → Importar Bancos", "Movimientos y Saldos Bancarios al día; B3 avanza; todo lo real se mueve solo"],
+    ["2", "Tango: cobranzas, pagos, cheques", "lector/tango.py → para_pegar_en_la_sheet_<fecha>.xlsx → Importar Tango", "lo estimado al día: qué vence y cuándo"],
+    ["3", "Deuda bancaria", "lector/deuda_bancaria.py (cruza cuotas con el extracto: la debitada pasa a Pagado) → Importar Deuda", "cuotas y capital al día"],
+    ["4", "Impuestos", "planilla de Celia → lector/deuda_impositiva.py → Importar Impuestos", "vencimientos y planes al día"],
+    ["5", "Si cambió la estructura", "finauto → Armar solapa Cash", "rearma las pantallas; Plan no se toca"],
+    ["automático", "Bots de banco + token de Tango Live en la notebook de NAVAR", "corren cada mañana, dejan los archivos en Drive y disparan los importadores", "nadie sube nada; el cash amanece al día"],
+  ]);
+
+  seccion("6 · Reglas que no se rompen");
+  tabla(["Regla", "Por qué"], [
+    ["Nadie tipea números en las pantallas", "si un número está mal, está mal en la lista: se corrige ahí y las pantallas cambian solas"],
+    ["Real y estimado no se mezclan en una celda", "salvo en la columna del último extracto, que lo dice"],
+    ["Las filas 'REVISAR:' y las 'Manual' del cash viejo no suman", "están para no perder información, no para el cash"],
+    ["Lo vencido es un stock, no un movimiento", "no arranca la curva en rojo; se paga por decisión"],
+    ["Ningún número sale a NAVAR sin validar", "la caja la confirma el extracto; lo vencido, Tango; la deuda, el banco"],
+  ]);
+  h.setColumnWidth(1, 260); h.setColumnWidth(2, 420); h.setColumnWidth(3, 420); h.setColumnWidth(4, 300);
 }
 
 
