@@ -4,16 +4,27 @@ vigilante — mira la carpeta de Drive "NAVAR - Datos" y, cuando aparece algo nu
 lector que corresponde. El lector deja su para_pegar_*.xlsx en la misma carpeta de Drive; el
 disparador horario de la Sheet (importarLoNuevo) lo levanta solo. Nadie aprieta nada.
 
-QUÉ MIRA (dentro de "NAVAR - Datos", en el Drive montado en la Mac)
+QUÉ MIRA (dentro de "NAVAR - Datos", en el Drive montado en la Mac): UNA CARPETA POR EXPORT.
+Cada bot / persona deja su archivo en su carpeta y nada más; el vigilante sabe qué hacer con cada una.
+
     Bancos/<banco>/          extractos (PDF o Excel del home banking). Se ACUMULAN: cada mes
                              se agrega el nuevo; el lector relee todo y no duplica.
-                             → lector/extractos.py → Bancos/para_pegar_bancos_<hoy>.xlsx
-    Tango/<AAAA-MM-DD>/      los exports de Tango Live de ese día (la carpeta más nueva manda)
-                             → lector/tango.py → Tango/<fecha>/para_pegar_en_la_sheet_<hoy>.xlsx
-    Deuda/Bancos_Navar.xlsx  el mapa de deuda bancaria
-                             → lector/deuda_bancaria.py (cruza con el último para_pegar_bancos)
-    Impuestos/*.xlsx         la planilla de Celia (el archivo más nuevo manda)
+                             → lector/extractos.py → Saldos Bancarios + Movimientos
+    Cuentas a cobrar/        Tango: composición de saldos de clientes. Un archivo por día:
+                             "A cobranzas 2026-09-22.xlsx", "AA cobranzas 2026-09-22.xlsx".
+    Cuentas a pagar/         Tango: composición de saldos de proveedores: "A pagos <fecha>.xlsx".
+    Cheques/                 Tango: "A cheques terceros <fecha>.xlsx" (cartera) y
+                             "A cheques propios <fecha>.xlsx" (emitidos pendientes).
+                             Las tres carpetas de Tango → lector/tango.py → Cuentas a Cobrar,
+                             Cuentas a Pagar, Cartera de Cheques. Cada archivo es la FOTO
+                             completa de ese día (no un delta): se carga el más nuevo de cada
+                             (empresa, lista); los viejos quedan como historia.
+    Deuda bancaria/          Bancos_Navar.xlsx, el mapa de deuda
+                             → lector/deuda_bancaria.py (cruza cuotas con el último extracto)
+    Impuestos/               la planilla de Celia (el archivo más nuevo manda)
                              → lector/deuda_impositiva.py
+    _para la Sheet/          lo que generan los lectores (para_pegar_*.xlsx y resumen_*.md).
+                             De acá los levanta el disparador de la Sheet. Nadie toca esta carpeta.
 
 CÓMO SABE QUE HAY ALGO NUEVO
     Guarda en clientes/navar/.run/vigilante.json una firma de cada fuente (archivos + fecha de
@@ -43,6 +54,12 @@ ESTADO = os.path.join(BASE_REPO, "clientes", "navar", ".run", "vigilante.json")
 LOG = os.path.join(BASE_REPO, "clientes", "navar", "privado", "vigilante.log")
 ESPERA_SEG = 120          # un archivo recién bajado por Drive puede estar a medias
 IGNORAR = ("para_pegar", "resumen_", "~$", ".DS_Store")
+SALIDA = os.path.join(DRIVE, "_para la Sheet")
+CARPETAS_TANGO = ("Cuentas a cobrar", "Cuentas a pagar", "Cheques")
+STAGING_TANGO = os.path.join(BASE_REPO, "clientes", "navar", ".run", "tango_ultimo")
+
+sys.path.insert(0, BASE_REPO)
+from lector.tango import LISTAS as LISTAS_TANGO, _norm as _norm_tango      # las mismas reglas de nombre que el lector
 
 
 def log(msg):
@@ -76,9 +93,47 @@ def firma(archivos):
     return "|".join("%s@%d" % (os.path.relpath(r, DRIVE), os.path.getsize(r)) for r, m in archivos)
 
 
-def carpeta_mas_nueva(base):
-    subs = [d for d in glob.glob(os.path.join(base, "*")) if os.path.isdir(d)]
-    return max(subs, key=os.path.basename) if subs else None      # AAAA-MM-DD ordena solo
+def lista_tango(ruta):
+    """(empresa, lista) de un export de Tango por su nombre, con las mismas reglas que lector/tango.py."""
+    nombre = _norm_tango(os.path.splitext(os.path.basename(ruta))[0])
+    partes = nombre.split()
+    if not partes or nombre.startswith(("para pegar", "~$")):
+        return None
+    resto = " ".join(partes[1:])
+    for clave, palabras in LISTAS_TANGO:
+        if any(p in resto for p in palabras):
+            return (partes[0].upper(), clave)
+    return None
+
+
+def tango_ultimos():
+    """El archivo más nuevo de cada (empresa, lista) en las tres carpetas de Tango: [(ruta, mtime)]."""
+    mejor = {}
+    for c in CARPETAS_TANGO:
+        for r in glob.glob(os.path.join(DRIVE, c, "*.xlsx")):
+            k = lista_tango(r)
+            if k and (k not in mejor or os.path.getmtime(r) > mejor[k][1]):
+                mejor[k] = (r, os.path.getmtime(r))
+    return sorted(mejor.values())
+
+
+def preparar_staging_tango(archivos):
+    """Copia el último de cada lista a una carpeta limpia y devuelve esa carpeta (tango.py lee una carpeta)."""
+    import shutil
+    if os.path.isdir(STAGING_TANGO):
+        shutil.rmtree(STAGING_TANGO)
+    os.makedirs(STAGING_TANGO)
+    for r, _ in archivos:
+        shutil.copy2(r, os.path.join(STAGING_TANGO, os.path.basename(r)))
+    return STAGING_TANGO
+
+
+def mover_salidas(desde):
+    """Lleva lo que generó un lector (para_pegar_*, resumen_*) a _para la Sheet."""
+    import shutil
+    os.makedirs(SALIDA, exist_ok=True)
+    for r in glob.glob(os.path.join(desde, "para_pegar_*")) + glob.glob(os.path.join(desde, "resumen_*")):
+        shutil.move(r, os.path.join(SALIDA, os.path.basename(r)))
 
 
 def ultimo_con_prefijo(prefijo):
@@ -92,21 +147,26 @@ def fuentes(hoy):
     F = []
     bancos = os.path.join(DRIVE, "Bancos")
     F.append({"nombre": "bancos", "archivos": archivos_de(bancos),
-              "cmd": lambda: [PYTHON, os.path.join(BASE_REPO, "lector", "extractos.py"), "--carpeta", bancos] + H})
-    tango = carpeta_mas_nueva(os.path.join(DRIVE, "Tango"))
-    # Solo vale una carpeta de Tango que tenga cobranzas Y pagos: si faltan, el lector
-    # dejaría las listas vacías y el importador borraría lo que hay en la Sheet.
-    tango_ok = tango and all(any(k in os.path.basename(r).lower() for r, _ in archivos_de(tango, recursivo=False)) for k in ("cobranzas", "pagos"))
-    F.append({"nombre": "tango", "archivos": archivos_de(tango, recursivo=False) if tango_ok else [],
-              "cmd": lambda: [PYTHON, os.path.join(BASE_REPO, "lector", "tango.py"), "--carpeta", tango] + H})
-    mapa = os.path.join(DRIVE, "Deuda", "Bancos_Navar.xlsx")
+              "cmd": lambda: [PYTHON, os.path.join(BASE_REPO, "lector", "extractos.py"), "--carpeta", bancos] + H,
+              "salidas": lambda: bancos})
+    tango = tango_ultimos()
+    # Solo vale si hay cobranzas Y pagos: si falta una, el lector dejaría esa lista vacía
+    # y el importador borraría lo que hay en la Sheet.
+    listas = {lista_tango(r)[1] for r, _ in tango}
+    tango_ok = {"cobranzas", "pagos"} <= listas
+    F.append({"nombre": "tango", "archivos": tango if tango_ok else [],
+              "cmd": lambda: [PYTHON, os.path.join(BASE_REPO, "lector", "tango.py"), "--carpeta", preparar_staging_tango(tango)] + H,
+              "salidas": lambda: STAGING_TANGO})
+    mapa = os.path.join(DRIVE, "Deuda bancaria", "Bancos_Navar.xlsx")
     F.append({"nombre": "deuda", "archivos": [(mapa, os.path.getmtime(mapa))] if os.path.exists(mapa) else [],
               "cmd": lambda: [PYTHON, os.path.join(BASE_REPO, "lector", "deuda_bancaria.py"), "--archivo", mapa] + H
-                             + (["--bancos", ultimo_con_prefijo("para_pegar_bancos_")] if ultimo_con_prefijo("para_pegar_bancos_") else [])})
+                             + (["--bancos", ultimo_con_prefijo("para_pegar_bancos_")] if ultimo_con_prefijo("para_pegar_bancos_") else []),
+              "salidas": lambda: os.path.dirname(mapa)})
     imp = archivos_de(os.path.join(DRIVE, "Impuestos"), recursivo=False)
     imp_nuevo = max(imp, key=lambda x: x[1])[0] if imp else None
     F.append({"nombre": "impuestos", "archivos": imp,
-              "cmd": lambda: [PYTHON, os.path.join(BASE_REPO, "lector", "deuda_impositiva.py"), "--archivo", imp_nuevo] + H})
+              "cmd": lambda: [PYTHON, os.path.join(BASE_REPO, "lector", "deuda_impositiva.py"), "--archivo", imp_nuevo] + H,
+              "salidas": lambda: os.path.dirname(imp_nuevo)})
     return F
 
 
@@ -144,6 +204,7 @@ def main():
         log("%s: %d archivo(s) nuevos o cambiados → %s" % (n, len(f["archivos"]), os.path.basename(cmd[1])))
         r = subprocess.run(cmd, cwd=BASE_REPO, capture_output=True, text=True, timeout=1800)
         if r.returncode == 0:
+            mover_salidas(f["salidas"]())
             estado[n] = fa
             log("%s: OK. %s" % (n, (r.stdout.strip().splitlines() or [""])[-1][:200]))
             corridos += 1
