@@ -61,7 +61,9 @@ la solapa Instrucciones de la Sheet.
 - ✅ **Errores corregidos 19–20/09** (detalle en `manual_cash.md` §7): separador `;`; Excel del home banking en orden inverso (Macro 15/09 daba +$71 M); filas migradas "Manual/Real" sumadas al extracto (julio $1.225 M en vez de $757 M); semanas partidas en hoy; signo de los intereses estimados; AA estimada faltaba en el mensual.
 - ✅ **Informe** `privado/salidas/NAVAR - Situación y plan 2026-09-19.pdf` (`herramientas/informe_situacion.py`): sin plan −$348 M en marzo; con la propuesta +$145 M. Prioridades de pago y preguntas para Priscilla.
 - ⬜ **Pendiente de Thomas**: borrar las solapas viejas "Semanal" y "Mensual" (las nuevas son "Cash Semanal" / "Cash Mensual"); no agregar columnas a mano en las listas (Importar Tango las pisa); cargar la caja AA a mano en Saldos Bancarios ("(varios)"); revisar/decidir en Plan con Priscilla.
-- ⬜ **Falta**: costo de cosecha (no está en ninguna lista); cruce banco ↔ Tango (`lector/cruce.py`); tablero web con los mismos bloques; automatizar (bots + token Tango + disparador horario de los importadores).
+- ✅ **Actualización automática (20/09)**: la Sheet tiene un disparador horario (`importarLoNuevo`: importa solo lo nuevo de Drive, anota en la solapa Registro) y en la Mac de Thomas corre el **vigilante** (`herramientas/vigilante.py`, launchd cada 15 min, `instalar_vigilante.sh`): mira `NAVAR - Datos/{Bancos/<banco>, Tango/<fecha>, Deuda, Impuestos}` en el Drive montado y corre el lector que corresponde. Cadena probada de punta a punta el 20/09. Log: `privado/vigilante.log`.
+- ✅ **Informe v2** (`herramientas/informe_situacion.py`): lee el export de la Sheet; tres escenarios (A sin tocar nada −$501 M, B plan propuesto −$168 M, C lo que haría falta +$115 M en marzo); banco por banco con "si dicen que no". Se regenera bajando la Sheet como Excel a `privado/`.
+- ⬜ **Falta**: costo de cosecha (no está en ninguna lista); cruce banco ↔ Tango (`lector/cruce.py`); tablero web con los mismos bloques; bots de banco + token de Tango Live (dependen de NAVAR).
 
 ## Dónde estábamos (18/09/2026)
 

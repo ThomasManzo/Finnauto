@@ -601,14 +601,17 @@ function armarInstrucciones() {
     ["Transferencia entre cuentas propias", "Movimientos, marcada INTERNO", "no cambia nada: sale de una cuenta y entra en otra"],
   ]);
 
-  seccion("5 · Cómo se actualiza (hoy a mano, mañana solo)");
-  tabla(["Paso", "Qué", "Con qué", "Resultado"], [
-    ["1", "Extractos de los bancos (PDF / Excel del home banking)", "lector/extractos.py → para_pegar_bancos_<fecha>.xlsx en Drive → finauto → Importar Bancos", "Movimientos y Saldos Bancarios al día; B3 avanza; todo lo real se mueve solo"],
-    ["2", "Tango: cobranzas, pagos, cheques", "lector/tango.py → para_pegar_en_la_sheet_<fecha>.xlsx → Importar Tango", "lo estimado al día: qué vence y cuándo"],
-    ["3", "Deuda bancaria", "lector/deuda_bancaria.py (cruza cuotas con el extracto: la debitada pasa a Pagado) → Importar Deuda", "cuotas y capital al día"],
-    ["4", "Impuestos", "planilla de Celia → lector/deuda_impositiva.py → Importar Impuestos", "vencimientos y planes al día"],
-    ["5", "Si cambió la estructura", "finauto → Armar solapa Cash", "rearma las pantallas; Plan no se toca"],
-    ["automático", "Bots de banco + token de Tango Live en la notebook de NAVAR", "corren cada mañana, dejan los archivos en Drive y disparan los importadores", "nadie sube nada; el cash amanece al día"],
+  seccion("5 · Cómo se actualiza (desde el 20/09: sola)");
+  tabla(["Paso", "Quién", "Qué hace", "Dónde"], [
+    ["1", "NAVAR (Karina / Priscilla)", "deja el archivo nuevo en Drive: extracto del banco (PDF o Excel del home banking), exports de Tango Live (cobranzas, pagos, cheques), la planilla de impuestos de Celia o el mapa de deuda", "Drive · NAVAR - Datos · Bancos/<banco> · Tango/<fecha> · Impuestos · Deuda"],
+    ["2", "la Mac de Thomas (vigilante, cada 15 min)", "ve el archivo nuevo y corre el lector que corresponde; el lector deja el para_pegar_*.xlsx al lado", "clientes/navar/herramientas/vigilante.py · log en privado/vigilante.log"],
+    ["3", "esta Sheet (disparador, cada hora)", "ve el para_pegar nuevo y lo importa: pisa lo que ese lector cargó antes, no toca fórmulas ni lo cargado a mano", "solapa Registro: una fila por importación (o el error)"],
+    ["4", "las pantallas", "recalculan solas: B3 (último extracto) avanza, lo real reemplaza lo estimado, la cobranza que entró sale del 'a cobrar'", "Cash · Cash Semanal · Cash Mensual"],
+    ["a mano", "quien cierra la caja AA", "una fila por día en Saldos Bancarios: fecha, (varios), saldo", "Saldos Bancarios"],
+    ["a mano", "Priscilla + Thomas", "las decisiones: pagar / refinanciar / posponer, gracia, cuotas, tasa", "Plan"],
+    ["si hace falta", "finauto → Importar lo nuevo ahora", "lo mismo que el disparador, sin esperar la hora", "menú finauto"],
+    ["si cambió la estructura", "finauto → Armar solapa Cash", "rearma las pantallas; Plan no se toca", "menú finauto"],
+    ["después", "bots de banco + token de Tango Live en la notebook de NAVAR", "hacen el paso 1 solos cada mañana", "nadie sube nada: el cash amanece al día"],
   ]);
 
   seccion("6 · Reglas que no se rompen");

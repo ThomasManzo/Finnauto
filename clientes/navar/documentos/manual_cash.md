@@ -78,19 +78,29 @@ Saldo disponible                     ← cierre + descubiertos; negativo = hay q
 | Se usa más descubierto | el saldo del banco queda más negativo | baja el saldo y el disponible |
 | Transferencia entre cuentas propias | Movimientos, INTERNO | no cambia nada |
 
-## 6. Cómo se actualiza
+## 6. Cómo se actualiza (desde el 20/09: sola)
 
-| Paso | Qué | Cómo | Resultado |
+| Paso | Quién | Qué hace | Dónde |
 |---|---|---|---|
-| 1 | Extractos de banco | `lector/extractos.py` → `para_pegar_bancos_<fecha>.xlsx` en Drive → finauto → Importar Bancos | Movimientos y Saldos al día; todo lo real se mueve solo |
-| 2 | Tango (cobranzas, pagos, cheques) | `lector/tango.py` → `para_pegar_en_la_sheet_<fecha>.xlsx` → Importar Tango | lo estimado al día |
-| 3 | Deuda bancaria | `lector/deuda_bancaria.py` (cruza cuotas con el extracto) → Importar Deuda | cuotas pagadas marcadas, capital al día |
-| 4 | Impuestos | planilla de Celia → `lector/deuda_impositiva.py` → Importar Impuestos | vencimientos y planes al día |
-| 5 | Estructura nueva | finauto → Armar solapa Cash | rearma las pantallas; Plan no se toca |
+| 1 | NAVAR (Karina / Priscilla) | deja el archivo nuevo en Drive: extracto del banco, exports de Tango Live (cobranzas, pagos, cheques), planilla de impuestos de Celia, mapa de deuda | `NAVAR - Datos / Bancos/<banco>` · `Tango/<fecha>` · `Impuestos` · `Deuda` |
+| 2 | la Mac de Thomas (**vigilante**, cada 15 min, launchd) | ve el archivo nuevo y corre el lector que corresponde; el lector deja el `para_pegar_*.xlsx` al lado | `herramientas/vigilante.py` · log en `privado/vigilante.log` |
+| 3 | la Sheet (**disparador**, cada hora, Apps Script) | ve el `para_pegar` nuevo y lo importa; pisa lo que ese lector cargó antes, no toca fórmulas ni lo cargado a mano | solapa **Registro**: una fila por importación (o el error) |
+| 4 | las pantallas | recalculan solas: B3 avanza, lo real reemplaza lo estimado, la cobranza que entró sale del "a cobrar" | Cash · Cash Semanal · Cash Mensual |
+| a mano | quien cierra la caja AA | una fila por día en Saldos Bancarios: fecha, (varios), saldo | Saldos Bancarios |
+| a mano | Priscilla + Thomas | las decisiones: pagar / refinanciar / posponer, gracia, cuotas, tasa | Plan |
 
-**Hoy** los pasos 1–4 los corre Thomas cuando llegan los archivos. **Después**: bots de banco
-+ token de Tango Live en la notebook de NAVAR corren cada mañana, dejan los archivos en Drive
-y un disparador horario ejecuta los importadores. Nadie sube nada: el cash amanece al día.
+Reglas de las carpetas de Drive: **Bancos/<banco>** acumula (cada mes se agrega el extracto nuevo; el
+lector relee todo y no duplica). **Tango/<fecha>** es una carpeta por export, con el juego completo
+(el vigilante solo toma una carpeta que tenga cobranzas Y pagos; si no, no toca nada). **Impuestos**
+y **Deuda**: el archivo más nuevo manda.
+
+Atajos del menú finauto: "Importar lo nuevo ahora" (lo mismo que el disparador, sin esperar),
+"Armar solapa Cash" (solo si cambió la estructura; Plan no se toca). Para el PDF: bajar la Sheet
+como Excel a `privado/NAVAR - Cash Flow (export Sheets <fecha>).xlsx` y correr
+`python clientes/navar/herramientas/informe_situacion.py`.
+
+**Después**: bots de banco + token de Tango Live en la notebook de NAVAR hacen el paso 1 solos
+cada mañana. Nadie sube nada: el cash amanece al día.
 
 ## 7. Qué se corrigió el 19–20/09
 
