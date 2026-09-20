@@ -38,8 +38,16 @@
  * -------------------
  * Correr el lector en la Mac, subir el para_pegar a Drive (en cualquier subcarpeta
  * de "NAVAR - Datos"), y en la Sheet: menú "finauto" → el botón que corresponda.
- * Cuando la notebook de NAVAR deje los archivos sola, un disparador horario
- * (Activadores → la función → cada día 7:30) hace lo mismo sin que nadie toque.
+ *
+ * ACTUALIZACIÓN AUTOMÁTICA (desde el 20/09)
+ * -----------------------------------------
+ * "finauto → Instalar actualización automática" crea un disparador que corre
+ * importarLoNuevo() cada hora. Esa función mira, para cada lector, cuál es el
+ * para_pegar_* más nuevo en Drive; si es distinto del último que importó (se acuerda
+ * por id + fecha de modificación), lo importa. Si no hay nada nuevo, no toca nada.
+ * Cada importación queda anotada en la solapa "Registro" (cuándo, qué archivo, qué
+ * cargó, o el error si falló). Así nadie tiene que apretar botones: el lector deja el
+ * archivo en Drive y a lo sumo una hora después la Sheet está al día.
  */
 
 var CARPETA_RAIZ = "NAVAR - Datos";
@@ -95,9 +103,69 @@ function onOpen() {
     .addItem("Importar Deuda (deuda bancaria)", "importarDeuda")
     .addItem("Importar Impuestos (deuda impositiva)", "importarImpuestos")
     .addSeparator()
+    .addItem("Importar lo nuevo ahora (lo que haría el disparador)", "importarLoNuevo")
+    .addItem("Instalar actualización automática (cada hora)", "instalarDisparador")
+    .addItem("Quitar actualización automática", "quitarDisparador")
+    .addSeparator()
     .addItem("Armar solapa Cash (Cash, Semanal, Mensual)", "armarCash")
     .addItem("Armar solapa Plan (pisa las decisiones cargadas)", "armarPlan")
     .addToUi();
+}
+
+
+// ---- actualización automática ------------------------------------------------------
+// Orden: deuda e impuestos antes que bancos y Tango, porque las pantallas leen todo junto
+// y da igual; pero si un import falla, los demás siguen (cada uno con su try).
+var ORDEN_AUTO = ["deuda", "impuestos", "bancos", "tango"];
+
+function importarLoNuevo() {
+  var props = PropertiesService.getDocumentProperties();
+  var hubo = 0;
+  ORDEN_AUTO.forEach(function (cual) {
+    var cfg = IMPORTS[cual];
+    var archivo = _ultimoConPrefijo_(cfg.prefijo);
+    if (!archivo) return;
+    var firma = archivo.getId() + "@" + archivo.getLastUpdated().getTime();
+    if (props.getProperty("importado_" + cual) === firma) return;     // ya se importó ese mismo archivo
+    try {
+      var resumen = _importar_(cual, archivo);
+      props.setProperty("importado_" + cual, firma);
+      _registrar_(cual, archivo.getName(), "ok", resumen);
+      hubo++;
+    } catch (e) {
+      _registrar_(cual, archivo.getName(), "ERROR", String(e && e.message || e));
+    }
+  });
+  if (!hubo) Logger.log("importarLoNuevo: nada nuevo");
+  return hubo;
+}
+
+function instalarDisparador() {
+  quitarDisparador();
+  ScriptApp.newTrigger("importarLoNuevo").timeBased().everyHours(1).create();
+  _registrar_("sistema", "", "ok", "disparador instalado: importarLoNuevo cada hora");
+  try { SpreadsheetApp.getActiveSpreadsheet().toast("Listo: la Sheet se actualiza sola cada hora con lo nuevo de Drive.", "finauto", 10); } catch (e) {}
+}
+
+function quitarDisparador() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === "importarLoNuevo") ScriptApp.deleteTrigger(t);
+  });
+}
+
+// La solapa "Registro": una fila por importación. Se crea sola la primera vez.
+function _registrar_(cual, archivo, estado, detalle) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var h = ss.getSheetByName("Registro");
+  if (!h) {
+    h = ss.insertSheet("Registro", ss.getNumSheets());
+    h.getRange(1, 1, 1, 5).setValues([["Cuándo", "Qué", "Archivo", "Estado", "Detalle"]]).setFontWeight("bold");
+    h.setFrozenRows(1);
+    h.setColumnWidths(1, 5, 140); h.setColumnWidth(3, 260); h.setColumnWidth(5, 520);
+  }
+  h.insertRowAfter(1);
+  h.getRange(2, 1, 1, 5).setValues([[new Date(), cual, archivo, estado, detalle]]);
+  h.getRange(2, 1).setNumberFormat("dd/mm/yyyy hh:mm");
 }
 
 function importarTango()     { _importar_("tango"); }
@@ -106,9 +174,9 @@ function importarDeuda()     { _importar_("deuda"); }
 function importarImpuestos() { _importar_("impuestos"); }
 
 
-function _importar_(cual) {
+function _importar_(cual, archivo) {
   var cfg = IMPORTS[cual];
-  var archivo = _ultimoConPrefijo_(cfg.prefijo);
+  archivo = archivo || _ultimoConPrefijo_(cfg.prefijo);
   if (!archivo) throw new Error("No encontré ningún " + cfg.prefijo + "*.xlsx dentro de " + CARPETA_RAIZ);
   Logger.log("Importando " + archivo.getName() + " (" + archivo.getLastUpdated() + ")");
 
@@ -150,6 +218,7 @@ function _importar_(cual) {
   // Un aviso que NO bloquea (alert() espera un click que, corriendo desde el editor,
   // nadie da, y a los 6 minutos Google corta con "Exceeded maximum execution time").
   try { destino.toast(resumen.join(" · "), "Importar " + cual + ": listo", 20); } catch (e) { /* sin UI por disparador */ }
+  return resumen.join(" · ");
 }
 
 
