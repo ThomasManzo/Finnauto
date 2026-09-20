@@ -772,6 +772,14 @@ def clasificar(mov, cuit_propio):
 
 
 # ================================================================== armado
+def _ordenar_cronologico(movs):
+    """Si la lista viene del más nuevo al más viejo, la da vuelta (en el lugar).
+    Dentro de un mismo día se respeta el orden del archivo, invertido."""
+    fechas = [m["fecha"] for m in movs]
+    if len(fechas) > 1 and fechas != sorted(fechas) and fechas == sorted(fechas, reverse=True):
+        movs.reverse()
+
+
 def procesar(carpeta, empresa="A"):
     bancos, cuit = [], None
     for clave, cfg in BANCOS.items():
@@ -798,6 +806,11 @@ def procesar(carpeta, empresa="A"):
         # aparece cada combinación: si el mismo día hay tres sueldos iguales, son tres
         # (antes se quedaba con uno solo y se perdían los otros dos).
         for l in sorted(b["lecturas"], key=lambda l: 0 if l["movimientos"] and l["movimientos"][0]["fuente"] == "pdf" else 1):
+            # Los Excel del home banking (BBVA, Macro) vienen del más nuevo al más viejo.
+            # Se dan vuelta para que "el último movimiento del día" sea el último de
+            # verdad: si no, el saldo al cierre del día era el de la PRIMERA operación
+            # (el 15/09 el Macro daba +$71 M en vez de -$40 M).
+            _ordenar_cronologico(l["movimientos"])
             n_nuevos, en_esta = 0, defaultdict(int)
             for m in l["movimientos"]:
                 k = (m["cuenta"], m["fecha"], round(m["importe"], 2))
