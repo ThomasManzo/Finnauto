@@ -84,5 +84,20 @@
       "lo_lee": "bots/ (fase 2)"
     }
   },
-  "_ayuda_modos_de_prueba": "Para probar un bot: en el banco que quieras, poner 'solo_empresa_activa': true o 'solo_estas_empresas': ['Nombre Tal Cual']. Vacio + solo_empresa_activa false = PRODUCCION (todas)."
+  "_ayuda_modos_de_prueba": "Para probar un bot: en el banco que quieras, poner 'solo_empresa_activa': true o 'solo_estas_empresas': ['Nombre Tal Cual']. Vacio + solo_empresa_activa false = PRODUCCION (todas).",
+  "tango_live": {
+    "_ayuda": "Bajada automatica de las consultas de Tango Live por API (ingestas/tango_live.py). 'url' es donde corre Live en la red de NAVAR. Los numeros de 'consultas' son el {process} de cada consulta (se ven en la URL de la consulta en Live o en Apertura -> API). Los de 'empresas' son el header Company. Lo que esta en null falta: se completa cuando este el usuario finauto. El token NO va aca: va al llavero (setup_credenciales.py --banco tango_live).",
+    "url": "http://servidor:17000",
+    "empresas": {
+      "A": 13,
+      "AA": null
+    },
+    "consultas": {
+      "cobranzas": 17952,
+      "pagos": null,
+      "cheques_terceros": null,
+      "cheques_propios": null
+    },
+    "custom_query": "-"
+  }
 }
