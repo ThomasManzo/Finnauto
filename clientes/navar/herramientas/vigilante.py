@@ -124,16 +124,53 @@ def preparar_staging_tango(archivos):
         shutil.rmtree(STAGING_TANGO)
     os.makedirs(STAGING_TANGO)
     for r, _ in archivos:
-        shutil.copy2(r, os.path.join(STAGING_TANGO, os.path.basename(r)))
+        # No usar shutil.copy2: en la carpeta de Drive un archivo que todavía no terminó de
+        # bajar da "Resource deadlock avoided". Leerlo a mano lo fuerza a bajar o falla claro.
+        with open(r, "rb") as fi, open(os.path.join(STAGING_TANGO, os.path.basename(r)), "wb") as fo:
+            shutil.copyfileobj(fi, fo)
     return STAGING_TANGO
 
 
+def _filas_por_solapa(ruta):
+    import openpyxl
+    wb = openpyxl.load_workbook(ruta, read_only=False)
+    return {ws.title: sum(1 for r in ws.iter_rows(min_row=2, values_only=True) if any(v is not None for v in r)) for ws in wb.worksheets}
+
+
+def control_contra_anterior(nuevo):
+    """Compara el para_pegar nuevo con el último publicado del mismo tipo. Si alguna solapa
+    perdió más de la mitad de las filas, algo cambió en el export (un filtro, una consulta mal
+    guardada) y NO se publica: el importador borraría de la Sheet lo que el archivo no trae.
+    Devuelve None si está bien, o el texto del problema."""
+    prefijo = os.path.basename(nuevo).rsplit("_", 1)[0] + "_"          # para_pegar_bancos_
+    previos = sorted(r for r in glob.glob(os.path.join(SALIDA, prefijo + "*.xlsx")) if r != nuevo)
+    if not previos:
+        return None
+    antes, ahora = _filas_por_solapa(previos[-1]), _filas_por_solapa(nuevo)
+    problemas = []
+    for solapa, n_antes in antes.items():
+        n_ahora = ahora.get(solapa, 0)
+        if n_antes >= 20 and n_ahora < n_antes * 0.5:
+            problemas.append("%s: %d filas antes, %d ahora" % (solapa, n_antes, n_ahora))
+    return "; ".join(problemas) or None
+
+
 def mover_salidas(desde):
-    """Lleva lo que generó un lector (para_pegar_*, resumen_*) a _para la Sheet."""
+    """Lleva lo que generó un lector (para_pegar_*, resumen_*) a _para la Sheet, salvo que el
+    control contra el anterior diga que algo se achicó de golpe: entonces va a _retenido."""
     import shutil
     os.makedirs(SALIDA, exist_ok=True)
+    retenido = None
+    for r in glob.glob(os.path.join(desde, "para_pegar_*.xlsx")):
+        retenido = control_contra_anterior(r)
+    destino = SALIDA
+    if retenido:
+        destino = os.path.join(SALIDA, "_retenido")
+        os.makedirs(destino, exist_ok=True)
+        log("RETENIDO (no se publica): %s. Revisar el export; el archivo quedó en _retenido" % retenido)
     for r in glob.glob(os.path.join(desde, "para_pegar_*")) + glob.glob(os.path.join(desde, "resumen_*")):
-        shutil.move(r, os.path.join(SALIDA, os.path.basename(r)))
+        shutil.move(r, os.path.join(destino, os.path.basename(r)))
+    return retenido
 
 
 def ultimo_con_prefijo(prefijo):
@@ -197,16 +234,20 @@ def main():
         if ahora - mas_nuevo < ESPERA_SEG and a.forzar != n:
             log("%s: hay algo nuevo pero tiene menos de 2 min; espero a la próxima pasada" % n)
             continue
-        cmd = f["cmd"]()
+        try:
+            cmd = f["cmd"]()
+        except OSError as e:
+            log("%s: Drive todavía no terminó de bajar un archivo (%s); próxima pasada" % (n, e.strerror))
+            continue
         if a.simular:
             log("%s: correría  %s" % (n, " ".join(cmd)))
             continue
         log("%s: %d archivo(s) nuevos o cambiados → %s" % (n, len(f["archivos"]), os.path.basename(cmd[1])))
         r = subprocess.run(cmd, cwd=BASE_REPO, capture_output=True, text=True, timeout=1800)
         if r.returncode == 0:
-            mover_salidas(f["salidas"]())
-            estado[n] = fa
-            log("%s: OK. %s" % (n, (r.stdout.strip().splitlines() or [""])[-1][:200]))
+            ret = mover_salidas(f["salidas"]())
+            estado[n] = fa            # no se reintenta el mismo archivo; cuando suban uno nuevo, se vuelve a mirar
+            log("%s: %s. %s" % (n, "RETENIDO" if ret else "OK", (r.stdout.strip().splitlines() or [""])[-1][:200]))
             corridos += 1
         else:
             log("%s: FALLÓ (código %d): %s" % (n, r.returncode, (r.stderr.strip().splitlines() or [""])[-1][:300]))
