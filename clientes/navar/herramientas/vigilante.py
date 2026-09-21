@@ -33,8 +33,10 @@ CÓMO SABE QUE HAY ALGO NUEVO
     intentar en la próxima pasada. Todo queda en clientes/navar/privado/vigilante.log.
 
 CÓMO CORRE
-    Cada 15 minutos por launchd (ver instalar_vigilante.sh). A mano: python vigilante.py
-    [--forzar bancos|tango|deuda|impuestos] [--simular]
+    Cada 15 minutos: en la Mac por launchd (instalar_vigilante.sh); en la notebook de NAVAR por
+    el Programador de tareas de Windows (instalar_vigilante.ps1). Una sola máquina a la vez lo
+    tiene que correr: cuando pase a la notebook, en la Mac se desinstala. A mano:
+    python vigilante.py [--forzar bancos|tango|deuda|impuestos] [--simular]
 """
 
 import os
@@ -48,17 +50,19 @@ import subprocess
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 BASE_REPO = os.path.abspath(os.path.join(AQUI, "..", "..", ".."))
-PYTHON = os.path.join(BASE_REPO, ".venv", "bin", "python")
-DRIVE = os.path.join(os.path.expanduser("~"), "Library", "CloudStorage", "GoogleDrive-thomasezequielmanzo@gmail.com", "Mi unidad", "NAVAR - Datos")
+sys.path.insert(0, BASE_REPO)
+from ingestas.drive_local import carpeta_datos
+
+PYTHON = sys.executable                       # el mismo Python con el que corre esto (Mac o Windows)
+DRIVE = carpeta_datos("NAVAR - Datos")        # el Drive montado en esta máquina (o FINAUTO_DRIVE)
 ESTADO = os.path.join(BASE_REPO, "clientes", "navar", ".run", "vigilante.json")
 LOG = os.path.join(BASE_REPO, "clientes", "navar", "privado", "vigilante.log")
 ESPERA_SEG = 120          # un archivo recién bajado por Drive puede estar a medias
 IGNORAR = ("para_pegar", "resumen_", "~$", ".DS_Store")
-SALIDA = os.path.join(DRIVE, "_para la Sheet")
+SALIDA = os.path.join(DRIVE or "", "_para la Sheet")
 CARPETAS_TANGO = ("Cuentas a cobrar", "Cuentas a pagar", "Cheques")
 STAGING_TANGO = os.path.join(BASE_REPO, "clientes", "navar", ".run", "tango_ultimo")
 
-sys.path.insert(0, BASE_REPO)
 from lector.tango import LISTAS as LISTAS_TANGO, _norm as _norm_tango      # las mismas reglas de nombre que el lector
 
 
@@ -215,8 +219,8 @@ def main():
     a = ap.parse_args()
     hoy = datetime.date.fromisoformat(a.hoy) if a.hoy else datetime.date.today()
 
-    if not os.path.isdir(DRIVE):
-        log("no encuentro el Drive montado en %s (¿Google Drive está corriendo?)" % DRIVE)
+    if not DRIVE or not os.path.isdir(DRIVE):
+        log("no encuentro 'NAVAR - Datos' en el Drive montado (¿Google Drive para escritorio está corriendo? ¿o fijar FINAUTO_DRIVE?)")
         return 1
     estado = {}
     if os.path.exists(ESTADO):
