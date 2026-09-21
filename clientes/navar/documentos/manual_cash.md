@@ -56,7 +56,7 @@ Saldo disponible                     ← cierre + descubiertos; negativo = hay q
 | Impuestos corrientes | IVA, cargas, retenciones pagadas | mensual: promedio |
 | Cheques propios | debitados | en cartera por fecha de pago |
 | Intereses y gastos bancarios | extracto | promedio 90 días |
-| Otros (tarjeta, honorarios, cosecha) | extracto | proyectado con fecha |
+| Otros (tarjeta, honorarios) | extracto | proyectado con fecha · la cosecha no se proyecta: en 2027 compran canchada (va por Proveedores) |
 | Cuotas bancarias y tarjeta | cuotas debitadas | cronograma · mensual: Plan |
 | Impuestos: deuda y planes | — | Deuda Impositiva · mensual: Plan |
 | Regularización de atrasado | — | mensual: Plan |

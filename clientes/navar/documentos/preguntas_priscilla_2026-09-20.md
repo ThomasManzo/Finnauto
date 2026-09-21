@@ -5,9 +5,9 @@ está dónde impacta. Las de la sección 1 son las que cambian el cash esta sema
 
 ## 1 · Lo que le falta al cash (urgente)
 
-1. **Cosecha 2027**: ¿cuándo arranca, cuánto cuesta por mes (jornales, transporte, secado) y a quién se le paga? Hoy no está en ninguna proyección. *(→ Movimientos proyectados, renglón Otros / Cosecha)*
+1. ~~**Cosecha 2027**~~ (respondido 21/09: la cosecha va de abril a septiembre; para 2027 planean comprar canchada y vender molida, sin cosecha ni secanza propias. Queda: **compra de canchada**: a quién, cuánto por mes, plazo) — original: ¿cuándo arranca, cuánto cuesta por mes (jornales, transporte, secado) y a quién se le paga? Hoy no está en ninguna proyección. *(→ Movimientos proyectados, renglón Otros / Cosecha)*
 2. **Proveedores de hoja**: ¿quiénes son, cuánto se les debe hoy y cuánto se les paga por mes? ¿Con qué plazo aguantan? *(→ Cuentas a Pagar, prioridad 5 del Plan)*
-3. **Caja AA (efectivo)**: ¿cuánto hay hoy en la caja fuerte? ¿Quién la cierra y podría cargar el saldo una vez por día en la Sheet (fecha + saldo)? *(→ Saldos Bancarios, banco "(varios)")*
+3. ~~**Caja AA (efectivo)**~~ (respondido 21/09: $12,8 M; se registra en Tango; arqueo semanal los lunes con Charles. Cargado en Saldos Bancarios) — original: ¿cuánto hay hoy en la caja fuerte? ¿Quién la cierra y podría cargar el saldo una vez por día en la Sheet (fecha + saldo)? *(→ Saldos Bancarios, banco "(varios)")*
 4. **Sueldos**: ¿cuánta gente, total mensual con cargas, y qué parte va por AA? ¿Hay atraso con obra social o ART? *(→ Sueldos y cargas, hoy ~$100 M/mes por Macro)*
 5. **ARCA antes del 25/09**: ¿están los $49,7 M o hay que elegir qué VEP se paga? ¿Quién decide, Celia o Charles? *(→ Deuda Impositiva, Plan)*
 
