@@ -387,7 +387,10 @@ def armar(D, out):
     cap_min, cap_max = min(res_op_fut), max(res_op_fut)
     cuotas_A_fut = [A["cuotas"][i] + A["imp"][i] for i in range(i0 + 1, len(cols))]
     cuotas_B_fut = [B["cuotas"][i] + B["imp"][i] for i in range(i0 + 1, len(cols))]
-    ing_base = sum(M["Total ingresos"][i] - M["Préstamos nuevos"][i] for i in range(3)) / 3
+    ing_base = sum(M["Total ingresos"][:3]) / 3          # los préstamos ya no están en ingresos (van en Deuda)
+    PREST = M.get("Préstamos tomados (entra plata: resta)", [0.0] * len(cols))
+    NOPAG = M.get("Venció en el período y no se pagó (proveedores + impuestos)", [0.0] * len(cols))
+    HONESTO = M.get("Resultado de la operación pagando lo que vencía", [0.0] * len(cols))
     egr_base = sum(M["Total egresos de la operación"][:3]) / 3
 
     doc = SimpleDocTemplate(out, pagesize=A4, leftMargin=20 * mm, rightMargin=20 * mm, topMargin=18 * mm, bottomMargin=20 * mm,
@@ -403,7 +406,7 @@ def armar(D, out):
                 (m(deuda_imp, True), "deuda impositiva", TINTA)]),
           Spacer(1, 8),
           P("En una página", "h1"),
-          P("<b>La operación, sola, da.</b> En los tres meses cerrados entraron en promedio %s por mes de la operación (cobranzas, cheques depositados y descontados; sin préstamos) y la operación costó %s (proveedores, sueldos, impuestos corrientes, banco). Proyectado, la operación deja entre %s y %s por mes. Ese número es la <b>capacidad de pago</b>: lo único que se le puede prometer a un banco o a ARCA." % (m(ing_base, True), m(egr_base, True), m(cap_min, True), m(cap_max, True)), "grande"),
+          P("<b>La operación, por banco, da; pagando todo lo que vence, no.</b> En los tres meses cerrados entraron en promedio %s por mes (cobranzas, cheques depositados y descontados; sin préstamos) y salieron %s (proveedores, sueldos, impuestos corrientes, banco): quedaron entre %s y %s por mes. Pero en esos mismos meses vencieron y no se pagaron %s, %s y %s de facturas e impuestos. <b>Pagando lo que vencía, la operación queda alrededor de cero.</b> Proyectado a seis meses, con lo que vence según Tango, deja entre %s y %s por mes: esa es la <b>capacidad de pago</b> para toda la deuda, y solo existe si el atrasado deja de crecer." % (m(ing_base, True), m(egr_base, True), m(min(M["Resultado de la operación (antes de la deuda)"][:3]), True), m(max(M["Resultado de la operación (antes de la deuda)"][:3]), True), m(NOPAG[0], True), m(NOPAG[1], True), m(NOPAG[2], True), m(cap_min, True), m(cap_max, True)), "grande"),
           P("<b>La deuda pide el doble.</b> Sin tocar nada, entre octubre y marzo las cuotas de bancos, tarjeta e impuestos piden entre %s y %s por mes. Con el plan propuesto bajan a %s–%s, y todavía quedan por encima de lo que la operación deja en la mitad de los meses." % (m(min(cuotas_A_fut), True), m(max(cuotas_A_fut), True), m(min(cuotas_B_fut), True), m(max(cuotas_B_fut), True)), "grande"),
           P("<b>Ya no hay colchón.</b> Los descubiertos están usados (%s sobre %s acordados), hay %s atrasados y Corrientes informa situación 3. Septiembre cierra en %s en bancos porque en lo que queda del mes vencen, según Tango, más pagos de los que entran." % (m(desc_usado, True), m(acuerdos, True), m(atrasado, True), m(B["saldos"][i0], True)), "grande"),
           caja([P("No es un problema de caja: es una estructura de deuda que se está pagando con caja, y la caja no alcanza. La salida tiene tres partes que van juntas: (1) refinanciar a un número que la operación pueda pagar, (2) proteger lo que no puede cortarse (ARCA, sueldos, los bancos que descuentan los cheques) y (3) decidir cada semana, con el cash a la vista, qué se paga y qué no. <b>El plan de este documento es una propuesta: que cada banco la acepte es otra negociación, y por eso se muestra también qué pasa si dicen que no.</b>", "p")], borde=ROJO),
@@ -463,7 +466,7 @@ def armar(D, out):
     # ---------------------------------------------------------------- 3 · tres meses reales
     S += [PageBreak(), P("3 · Los tres meses reales: qué entra y qué sale", "h1"),
           P("Junio, julio y agosto según el extracto (no según Tango ni la planilla vieja). Es la base de toda la proyección.", "p")]
-    ren_ing = ["Cobranza acreditada", "Cheques de clientes (depositados y descontados)", "Préstamos nuevos"]
+    ren_ing = ["Cobranza acreditada", "Cheques de clientes (depositados y descontados)"]
     ren_egr = ["Proveedores A", "Sueldos y cargas", "Impuestos corrientes", "Cheques propios", "Intereses y gastos bancarios", "Otros (tarjeta, honorarios, cosecha)"]
     fr = [["", lab(cols[0]), lab(cols[1]), lab(cols[2]), "promedio"]]
     def f3(nombre, vals, bold=False):
@@ -474,13 +477,21 @@ def armar(D, out):
     for r in ren_egr:
         fr.append(f3(r, M[r]))
     fr.append(f3("Total egresos de la operación", M["Total egresos de la operación"], True))
-    fr.append(f3("Resultado de la operación", M["Resultado de la operación (antes de la deuda)"], True))
+    fr.append(f3("Resultado de la operación por banco (sin préstamos)", M["Resultado de la operación (antes de la deuda)"], True))
+    fr.append(f3("Venció en el mes y no se pagó (proveedores + impuestos)", NOPAG))
+    fr.append(f3("Resultado de la operación pagando lo que vencía", HONESTO, True))
     fr.append(f3("Cuotas bancarias y tarjeta pagadas", M["Cuotas bancarias y tarjeta"]))
-    fr.append(f3("Resultado después de la deuda", M["Resultado después de la deuda"], True))
+    fr.append(f3("Préstamos tomados", [-v for v in PREST]))
+    fr.append(f3("Resultado después de la deuda (por banco)", M["Resultado después de la deuda"], True))
     t = tabla(fr, [70 * mm, 25 * mm, 25 * mm, 25 * mm, 25 * mm], chico=True)
-    t.setStyle(TableStyle([("LINEABOVE", (0, 4), (-1, 4), 0.8, TENUE), ("LINEABOVE", (0, 11), (-1, 11), 0.8, TENUE), ("BACKGROUND", (0, 12), (-1, 12), colors.HexColor("#FFF8E1"))]))
-    S += [t, P("en millones de $ · «Proveedores A» es lo que salió del banco a proveedores: menos de lo que Tango dice que vencía; la diferencia es el atrasado · julio incluye %s de préstamos nuevos que después se fueron en cuotas" % m(M["Préstamos nuevos"][1], True), "nota"),
-          caja([P("Lo que muestra: <b>la operación deja entre %s y %s por mes</b> antes de la deuda (con la variación normal de una yerbatera). Ese margen ya se está usando para pagar cuotas: en junio se pagaron %s de cuotas y el mes cerró en %s; en julio entraron préstamos nuevos para pagar cuotas viejas." % (m(min(M["Resultado de la operación (antes de la deuda)"][:3]), True), m(max(M["Resultado de la operación (antes de la deuda)"][:3]), True), m(M["Cuotas bancarias y tarjeta"][0], True), m(M["Resultado después de la deuda"][0], True)), "p")], borde=AMBAR)]
+    t.setStyle(TableStyle([("LINEABOVE", (0, 3), (-1, 3), 0.8, TENUE), ("LINEABOVE", (0, 10), (-1, 10), 0.8, TENUE),
+                           ("BACKGROUND", (0, 11), (-1, 11), colors.HexColor("#FFF8E1")), ("BACKGROUND", (0, 13), (-1, 13), ROJO_FONDO),
+                           ("TEXTCOLOR", (0, 12), (0, 12), ROJO)]))
+    S += [t, P("en millones de $ · «Proveedores A» es lo que salió del banco a proveedores · «Venció y no se pagó» son las facturas de proveedores e impuestos con vencimiento en ese mes que siguen impagos hoy (Tango y planilla de impuestos) · los préstamos entran en el bloque de deuda, no en la operación", "nota"),
+          caja([P("<b>Por banco, la operación da positiva: entre %s y %s por mes.</b> Pero da positiva porque no se pagó todo lo que venció: en julio quedaron sin pagar %s de facturas e impuestos, en agosto %s. <b>Pagando lo que vencía, la operación queda entre %s y %s por mes: alrededor de cero.</b> Ese es el número real de la operación, y es el que explica por qué el atrasado crece cada mes. Lo que no está acá, porque no pasa por el banco: la operación de AA en efectivo (a cobrar %s, a pagar %s pendientes) y los cheques de clientes que se endosan directamente a proveedores (unos %s por mes según Tango: entran y salen sin tocar la cuenta)." % (
+              m(min(M["Resultado de la operación (antes de la deuda)"][:3]), True), m(max(M["Resultado de la operación (antes de la deuda)"][:3]), True),
+              m(NOPAG[1], True), m(NOPAG[2], True), m(min(HONESTO[:3]), True), m(max(HONESTO[:3]), True),
+              m(96e6, True), m(170e6, True), m(150e6, True)), "p")], borde=ROJO)]
 
     # ---------------------------------------------------------------- 4 · seis meses
     S += [PageBreak(), P("4 · Los próximos seis meses, en tres escenarios", "h1"),

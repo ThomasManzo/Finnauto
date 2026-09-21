@@ -170,7 +170,6 @@ function _renglones_(periodo) {
       f: "AA cobra en efectivo, no hay extracto · estimado: facturas AA que vencen en Tango" },
     { n: "Cheques de clientes (depositados y descontados)", real: _real_("Ingreso", "Cheques") + "+" + _real_("Ingreso", "Descuento de Cheques"), est: mensual ? "" : chqT, como: "prom",
       f: "real: cheques depositados + venta de valores / descuento (extracto) · estimado: " + (mensual ? "promedio × inflación" : "cheques en cartera por fecha de cobro") },
-    { n: "Préstamos nuevos", real: _real_("Ingreso", "Prestamo"), est: "", como: "cero", f: "real: préstamos acreditados · no se proyecta: es una decisión" },
     { n: "Sin identificar (tiene que ser 0)", real: _real_("Ingreso", "Otros"), est: "", como: "cero", f: "lo que el banco acreditó sin decir qué es" },
   ];
   var egresos = [
@@ -191,9 +190,11 @@ function _renglones_(periodo) {
     { n: "Cuotas bancarias y tarjeta", real: _real_("Egreso", "Prestamo"), est: "", como: "plan", plan: "Banco", f: "real: cuotas debitadas (extracto) · estimado: solapa Plan (cronograma o refinanciación, según la decisión)" },
     { n: "Impuestos: deuda y planes", real: "", est: "", como: "plan", plan: "Impuesto", f: "solapa Plan: vencimientos de la deuda impositiva o plan de pagos, según la decisión" },
     { n: "Regularización de atrasado", real: "", est: "", como: "plan", plan: "Atrasado", f: "solapa Plan: lo vencido con proveedores y cheques que se decide pagar en cuotas" },
+    { n: "Préstamos tomados (entra plata: resta)", real: _real_("Ingreso", "Prestamo"), est: "", como: "cero", f: "real: préstamos acreditados (extracto), con signo negativo porque entran · no se proyecta: es una decisión" },
   ] : [
     { n: "Cuotas bancarias y tarjeta", real: _real_("Egreso", "Prestamo"), est: cuotas, como: "lista", f: "real: cuotas debitadas (extracto) · estimado: cronograma de Deuda Bancaria" },
     { n: "Impuestos: deuda y planes", real: "", est: impDeuda, como: "lista", f: "estimado: Deuda Impositiva (planilla de Celia / contador) por fecha de vencimiento" },
+    { n: "Préstamos tomados (entra plata: resta)", real: _real_("Ingreso", "Prestamo"), est: "", como: "cero", f: "real: préstamos acreditados, con signo negativo porque entran · no se proyecta" },
   ];
   var atrasado = [
     { n: "Proveedores A vencidos", est: "SUMIFS(" + R.pagPend + "," + R.pagEmp + ",\"A\"," + R.pagVto + ",\"<\"&$B$2," + R.pagEstado + ",\"<>Pagado\"," + R.pagObs + ",\"<>REVISAR*\")", f: "Cuentas a Pagar · vencimiento < hoy · sin la deuda vieja (REVISAR)" },
@@ -265,7 +266,8 @@ function _armarPeriodica_(ss, nombre, periodo) {
   bancos.forEach(function (b) {
     h.getRange(fila, 1).setValue(b.etiqueta);
     for (var c = 0; c < nCols; c++) {
-      var corte = "MIN(" + F(c) + "-1,$B$3)";
+      // la caja AA se carga a mano y puede ser más nueva que el último extracto: llega hasta hoy
+      var corte = "MIN(" + F(c) + "-1," + (b.manual ? "$B$2" : "$B$3") + ")";
       var cond = R.salBanco + ",\"" + b.nombre + "\"";
       var ult = "MAXIFS(" + R.salFecha + "," + cond + "," + R.salFecha + ",\"<=\"&" + corte + ")";
       var primero = "MINIFS(" + R.salFecha + "," + cond + ")";
@@ -289,7 +291,9 @@ function _armarPeriodica_(ss, nombre, periodo) {
       var promRef = mensual ? "$" + _colLetra_(colProm) + fila : "";
       for (var c = 0; c < nCols; c++) {
         var partes = [];
-        if (r.real) partes.push("(" + (r.n.indexOf("Cobranza") === 0 || r.n.indexOf("Cheques de clientes") === 0 || r.n.indexOf("Préstamos") === 0 || r.n.indexOf("Sin identificar") === 0 ? "" : "-") + fx(r.real, c) + ")");
+        // ingresos van en positivo; egresos y deuda en negativo. "Préstamos tomados" está en
+        // Deuda y son ingresos del extracto: con el "-" quedan negativos (restan de la deuda).
+        if (r.real) partes.push("(" + (r.n.indexOf("Cobranza") === 0 || r.n.indexOf("Cheques de clientes") === 0 || r.n.indexOf("Sin identificar") === 0 ? "" : "-") + fx(r.real, c) + ")");
         var est = "";
         if (mensual && c >= atras) {
           var n = "((YEAR(" + D(c) + ")-YEAR($" + _colLetra_(1 + atras) + "$" + filaFechas + "))*12+MONTH(" + D(c) + ")-MONTH($" + _colLetra_(1 + atras) + "$" + filaFechas + "))";
@@ -328,6 +332,21 @@ function _armarPeriodica_(ss, nombre, periodo) {
   h.getRange(fila, 1).setValue("Resultado después de la deuda").setFontWeight("bold");
   for (var c4 = 0; c4 < nCols; c4++) h.getRange(fila, 2 + c4).setFormula("=" + L(c4) + filaResOpe + "-" + L(c4) + totDeu).setFontWeight("bold");
   var filaRes = fila++;
+  // ---- lo que venció en el período y NO se pagó (solo en lo real): es lo que hace que la
+  // operación "dé positiva" por banco. Facturas a pagar con vencimiento en el período que siguen
+  // pendientes + impuestos ídem. Hacia adelante queda vacío: lo estimado ya cuenta lo que vence.
+  h.getRange(fila, 1).setValue("Venció en el período y no se pagó (proveedores + impuestos)").setFontColor("#b3261e");
+  for (var c6 = 0; c6 < nCols; c6++) {
+    var hasta6 = "MIN(" + F(c6) + ",$B$3+1)";
+    var prov6 = "SUMIFS(" + R.pagPend + "," + R.pagVto + ",\">=\"&" + D(c6) + "," + R.pagVto + ",\"<\"&" + hasta6 + "," + R.pagEstado + ",\"<>Pagado\"," + R.pagObs + ",\"<>REVISAR*\")";
+    var imp6 = "SUMIFS(" + R.diImp + "," + R.diVto + ",\">=\"&" + D(c6) + "," + R.diVto + ",\"<\"&" + hasta6 + "," + R.diEstado + ",\"<>Pagado\")";
+    h.getRange(fila, 2 + c6).setFormula("=IF(" + D(c6) + ">$B$3,\"\"," + prov6 + "+" + imp6 + ")").setFontColor("#b3261e");
+  }
+  var filaNoPag = fila++;
+  h.getRange(fila, 1).setValue("Resultado de la operación pagando lo que vencía").setFontWeight("bold");
+  for (var c7 = 0; c7 < nCols; c7++) h.getRange(fila, 2 + c7).setFormula("=IF(" + D(c7) + ">$B$3,\"\"," + L(c7) + filaResOpe + "-" + L(c7) + filaNoPag + ")").setFontWeight("bold");
+  h.getRange(fila, 1, 1, colFuente).setBackground("#fce8e6");
+  fila++;
   fila++;
 
   // ---- lo real del período que tiene al último extracto adentro (para no contarlo dos veces en el saldo)
@@ -560,8 +579,10 @@ function armarInstrucciones() {
     ["1 · Bancos", "Saldo de cada banco al cierre de la columna, del extracto. Si un banco no tiene extracto hasta ahí, arrastra el último conocido. Hacia adelante queda vacío: no se sabe por banco."],
     ["2 · Ingresos · 3 · Egresos de la operación", "Un renglón por concepto: en las columnas reales, lo que pasó por el banco; en las estimadas, lo que dicen las listas con fecha (tabla 3)."],
     ["4 · Deuda", "Cuotas de bancos y tarjeta, vencimientos de impuestos y (mensual) regularización del atrasado. En el mensual salen de la solapa Plan."],
-    ["Resultado de la operación", "Ingresos − egresos de la operación = lo que la operación deja ANTES de la deuda. Es la capacidad de pago (hoy, $100–150 M por mes)."],
-    ["Resultado después de la deuda", "Lo anterior menos la deuda. Negativo = la deuda se come más de lo que la operación deja."],
+    ["Resultado de la operación", "Ingresos − egresos de la operación, SIN préstamos (los préstamos entran en el bloque Deuda, con signo negativo). Es lo que la operación deja por banco antes de la deuda."],
+    ["Resultado después de la deuda", "Lo anterior menos cuotas, impuestos atrasados y regularización, más los préstamos que entraron. Negativo = la deuda se come más de lo que la operación deja."],
+    ["Venció en el período y no se pagó", "Facturas de proveedores e impuestos con vencimiento en ese período que siguen impagos (Cuentas a Pagar + Deuda Impositiva). Solo en lo real. Es la parte de la operación que se financió NO pagando."],
+    ["Resultado de la operación pagando lo que vencía", "Lo que hubiera quedado si se pagaba todo lo que venció. Es el número honesto de la operación: cerca de cero o negativo."],
     ["Saldo de bancos al cierre", "Real hasta el último extracto; después, cierre anterior + ingresos − egresos."],
     ["Saldo disponible", "Cierre + descubiertos acordados ($160 M). Negativo = no se cubre lo comprometido ni con todo el descubierto: hay que elegir."],
     ["5 · Atrasado hoy", "Lo vencido, por concepto. NO está en ninguna columna (no arranca la curva en rojo). Se paga por decisión, en Plan."],
@@ -572,7 +593,7 @@ function armarInstrucciones() {
     ["Cobranza acreditada", "transferencias y depósitos de clientes (Movimientos · Cobranza Facturas)", "diario/semanal: facturas A que vencen (Cuentas a Cobrar) · mensual: promedio × inflación"],
     ["Cobranza AA (efectivo)", "nada: AA cobra en efectivo, no pasa por banco", "facturas AA que vencen (Cuentas a Cobrar)"],
     ["Cheques de clientes", "cheques depositados + venta de valores / descuento (Movimientos · Cheques + Descuento de Cheques)", "diario/semanal: cheques en cartera por fecha de cobro · mensual: promedio × inflación"],
-    ["Préstamos nuevos", "préstamos acreditados (Movimientos · Prestamo, ingreso)", "no se proyecta: es una decisión"],
+    ["Préstamos tomados (bloque Deuda, resta)", "préstamos acreditados (Movimientos · Prestamo, ingreso)", "no se proyecta: es una decisión"],
     ["Sin identificar", "lo que el banco acreditó sin decir qué es (Movimientos · Otros)", "tiene que ser 0"],
     ["Proveedores A", "pagos a proveedores (Movimientos · Proveedores)", "diario/semanal: facturas A que vencen (Cuentas a Pagar) · mensual: el mayor entre eso y el promedio × inflación"],
     ["Proveedores AA", "nada: AA paga en efectivo", "facturas AA que vencen (Cuentas a Pagar)"],
@@ -649,7 +670,7 @@ function _bancos_(ss) {
     if (!banco || vistos[banco]) return;
     vistos[banco] = true;
     var manual = String(r[5] || "").toLowerCase().indexOf("manual") !== -1;
-    out.push({ nombre: banco, etiqueta: banco === "(varios)" ? "AA · caja en efectivo (carga manual)" : banco,
+    out.push({ nombre: banco, manual: manual, etiqueta: banco.toLowerCase().indexOf("vario") !== -1 ? "AA · caja en efectivo (carga manual)" : banco,
                fuente: manual ? "Saldos Bancarios · carga manual: se arrastra hasta que se cargue otro" : "Saldos Bancarios · extracto · se arrastra el último saldo conocido" });
   });
   return out;
