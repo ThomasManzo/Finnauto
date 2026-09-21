@@ -299,6 +299,17 @@ function _volcar_(hOrigen, hDestino, filaEnc, filaFin, s) {
     if (total > 0) hDestino.getRange(filaEnc + 1, c + 1, total, 1).setValues(finales.map(function (r) { return [r[c]]; }));
     if (antes > total) hDestino.getRange(filaEnc + 1 + total, c + 1, antes - total, 1).clearContent();
   }
+  // 4. Las columnas con fórmula tienen que llegar hasta la última fila cargada: si hay más
+  // filas que antes, se estira la fórmula de la primera fila (el 21/09, 83 facturas de AA
+  // quedaron sin Saldo Pendiente ni Estado y el vencido de AA daba 0).
+  if (total > 0) s.formulas.forEach(function (nombre) {
+    var c = encD.indexOf(nombre);
+    if (c < 0) return;
+    var primera = hDestino.getRange(filaEnc + 1, c + 1);
+    if (!primera.getFormula()) return;
+    primera.copyTo(hDestino.getRange(filaEnc + 1, c + 1, total, 1), SpreadsheetApp.CopyPasteType.PASTE_FORMULA, false);
+    if (antes > total) hDestino.getRange(filaEnc + 1 + total, c + 1, antes - total, 1).clearContent();
+  });
   return { borradas: borradas, cargadas: cargadas };
 }
 
