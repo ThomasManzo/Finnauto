@@ -529,6 +529,7 @@ function armarInstrucciones() {
   function titulo(t) { h.getRange(fila, 1).setValue(t).setFontSize(16).setFontWeight("bold").setFontColor("#174ea6"); fila += 1; }
   function sub(t) { h.getRange(fila, 1).setValue(t).setFontStyle("italic").setFontColor("#5f6368"); fila += 2; }
   function seccion(t) { h.getRange(fila, 1).setValue(t).setFontWeight("bold").setFontSize(12).setFontColor("#174ea6"); h.getRange(fila, 1, 1, 4).setBackground("#e8f0fe"); fila += 1; }
+  function parrafo(t) { h.getRange(fila, 1, 1, 4).merge().setValue(t).setWrap(true).setFontColor("#5f6368"); fila += 2; }
   function tabla(enc, filas) {
     enc.forEach(function (e, i) { h.getRange(fila, 1 + i).setValue(e).setFontWeight("bold").setBackground("#f1f3f4"); });
     fila++;
@@ -603,7 +604,7 @@ function armarInstrucciones() {
 
   seccion("5 · Cómo se actualiza (desde el 20/09: sola)");
   tabla(["Paso", "Quién", "Qué hace", "Dónde"], [
-    ["1", "NAVAR (Karina / Priscilla)", "deja el archivo nuevo en Drive: extracto del banco (PDF o Excel del home banking), exports de Tango Live (cobranzas, pagos, cheques), la planilla de impuestos de Celia o el mapa de deuda", "Drive · NAVAR - Datos · Bancos/<banco> · Tango/<fecha> · Impuestos · Deuda"],
+    ["1", "NAVAR (Karina / Priscilla) o el bot", "deja el archivo nuevo en SU carpeta de Drive (una carpeta por export, ver tabla de abajo)", "Drive · NAVAR - Datos"],
     ["2", "la Mac de Thomas (vigilante, cada 15 min)", "ve el archivo nuevo y corre el lector que corresponde; el lector deja el para_pegar_*.xlsx al lado", "clientes/navar/herramientas/vigilante.py · log en privado/vigilante.log"],
     ["3", "esta Sheet (disparador, cada hora)", "ve el para_pegar nuevo y lo importa: pisa lo que ese lector cargó antes, no toca fórmulas ni lo cargado a mano", "solapa Registro: una fila por importación (o el error)"],
     ["4", "las pantallas", "recalculan solas: B3 (último extracto) avanza, lo real reemplaza lo estimado, la cobranza que entró sale del 'a cobrar'", "Cash · Cash Semanal · Cash Mensual"],
@@ -613,6 +614,18 @@ function armarInstrucciones() {
     ["si cambió la estructura", "finauto → Armar solapa Cash", "rearma las pantallas; Plan no se toca", "menú finauto"],
     ["después", "bots de banco + token de Tango Live en la notebook de NAVAR", "hacen el paso 1 solos cada mañana", "nadie sube nada: el cash amanece al día"],
   ]);
+
+  seccion("5b · Las carpetas de Drive (NAVAR - Datos): una por export");
+  tabla(["Carpeta", "Qué se deja", "Nombre del archivo", "A qué solapa va"], [
+    ["Bancos/<banco>", "el extracto (PDF) o el Excel de movimientos del home banking. Se acumulan: cada mes se agrega el nuevo, nada se borra", "como venga del banco", "Saldos Bancarios · Movimientos"],
+    ["Cuentas a cobrar", "Tango Live: composición de saldos de clientes, de cada empresa, un archivo por día", "A cobranzas 2026-09-22.xlsx · AA cobranzas 2026-09-22.xlsx", "Cuentas a Cobrar"],
+    ["Cuentas a pagar", "Tango Live: composición de saldos de proveedores", "A pagos 2026-09-22.xlsx · AA pagos 2026-09-22.xlsx", "Cuentas a Pagar"],
+    ["Cheques", "Tango Live: cheques de terceros en cartera y cheques propios emitidos", "A cheques terceros 2026-09-22.xlsx · A cheques propios 2026-09-22.xlsx · AA cheques terceros ...", "Cartera de Cheques"],
+    ["Deuda bancaria", "el mapa de deuda (Bancos_Navar.xlsx) cuando cambie", "Bancos_Navar.xlsx", "Deuda Bancaria"],
+    ["Impuestos", "la planilla de Celia cuando cambie", "Control Vencimiento Impuestos.xlsx", "Deuda Impositiva"],
+    ["_para la Sheet", "NO TOCAR: lo que generan los lectores; de acá lo levanta el disparador", "para_pegar_*.xlsx", "—"],
+  ]);
+  parrafo("Cada export de Tango es la FOTO completa de ese día (no lo nuevo desde ayer): se carga el más nuevo de cada lista; los anteriores quedan como historia. El nombre importa: primera palabra = empresa (A / AA), después qué es (cobranzas / pagos / cheques terceros / cheques propios), después la fecha.");
 
   seccion("6 · Reglas que no se rompen");
   tabla(["Regla", "Por qué"], [

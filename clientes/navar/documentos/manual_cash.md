@@ -89,10 +89,26 @@ Saldo disponible                     ← cierre + descubiertos; negativo = hay q
 | a mano | quien cierra la caja AA | una fila por día en Saldos Bancarios: fecha, (varios), saldo | Saldos Bancarios |
 | a mano | Priscilla + Thomas | las decisiones: pagar / refinanciar / posponer, gracia, cuotas, tasa | Plan |
 
-Reglas de las carpetas de Drive: **Bancos/<banco>** acumula (cada mes se agrega el extracto nuevo; el
-lector relee todo y no duplica). **Tango/<fecha>** es una carpeta por export, con el juego completo
-(el vigilante solo toma una carpeta que tenga cobranzas Y pagos; si no, no toca nada). **Impuestos**
-y **Deuda**: el archivo más nuevo manda.
+### Las carpetas de Drive (`NAVAR - Datos`): una por export
+
+Cada bot o persona deja su archivo en SU carpeta y nada más; el vigilante sabe qué hacer con cada una.
+
+| Carpeta | Qué se deja | Nombre del archivo | A qué solapa va |
+|---|---|---|---|
+| `Bancos/<banco>` | el extracto (PDF) o el Excel del home banking. Se acumulan: cada mes se agrega el nuevo, nada se borra | como venga del banco | Saldos Bancarios · Movimientos |
+| `Cuentas a cobrar` | Tango Live: composición de saldos de clientes, por empresa, un archivo por día | `A cobranzas 2026-09-22.xlsx` · `AA cobranzas 2026-09-22.xlsx` | Cuentas a Cobrar |
+| `Cuentas a pagar` | Tango Live: composición de saldos de proveedores | `A pagos 2026-09-22.xlsx` · `AA pagos ...` | Cuentas a Pagar |
+| `Cheques` | Tango Live: cheques de terceros en cartera y cheques propios emitidos | `A cheques terceros 2026-09-22.xlsx` · `A cheques propios 2026-09-22.xlsx` · `AA cheques terceros ...` | Cartera de Cheques |
+| `Deuda bancaria` | el mapa de deuda cuando cambie | `Bancos_Navar.xlsx` | Deuda Bancaria |
+| `Impuestos` | la planilla de Celia cuando cambie | `Control Vencimiento Impuestos.xlsx` | Deuda Impositiva |
+| `_para la Sheet` | NO TOCAR: lo que generan los lectores; de acá lo levanta el disparador | `para_pegar_*.xlsx` | — |
+
+Cada export de Tango es la **foto completa** de ese día (no "lo nuevo desde ayer"): se carga el más
+nuevo de cada lista; los anteriores quedan como historia (sirven después para la bitácora: qué
+estaba pendiente cada día). El nombre importa: primera palabra = empresa (A / AA), después qué es,
+después la fecha. Los cheques en cartera **no salen del banco** (el banco no sabe qué cheques hay
+en el cajón): salen de Tango. Del banco salen los depositados, descontados y debitados, que ya
+vienen en el extracto.
 
 Atajos del menú finauto: "Importar lo nuevo ahora" (lo mismo que el disparador, sin esperar),
 "Armar solapa Cash" (solo si cambió la estructura; Plan no se toca). Para el PDF: bajar la Sheet
