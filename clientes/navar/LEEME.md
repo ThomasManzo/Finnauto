@@ -52,6 +52,7 @@ lo que cerró. Primer peso cobrado de finauto.
 
 ## Próximos pasos (al 22/09/2026, 3 a.m.) — para retomar en un chat nuevo
 
+0. **(22/09, de noche)** Hoy no llegó nada nuevo a Drive: el 23/09 Thomas pide los extractos de los 5 bancos (18/09 → hoy) y baja de nuevo los exports de Tango; recién ahí corre el circuito y se regenera el PDF. Detalle visto: las horas de la solapa **Registro** están 4 hs atrás (la Sheet quedó en zona horaria del Pacífico); se arregla en la Sheet: Archivo → Configuración → Zona horaria → Buenos Aires. El informe (`informe_situacion.py`) ya sale sin nombres propios. Hay un `AGENTS.md` en la raíz para que Codex u otro agente lea las mismas reglas.
 1. **Extractos de banco del 18/09 en adelante** → `NAVAR - Datos/Bancos/<banco>/` (Thomas los baja hoy). El vigilante en la notebook y el disparador de la Sheet hacen el resto; verificar en la solapa Registro y regenerar el PDF (`herramientas/informe_situacion.py`, bajando antes la Sheet como Excel a `privado/`).
 2. **Tango por API**: cuando Miriam (soporte Tango) habilite el usuario `finauto`, seguir `documentos/instalar_notebook.md` §5 (token al llavero, `ingestas/tango_live.py --probar cobranzas`, ajustar el parser al JSON real). Los 5 procesos y las 2 empresas ya están en `perfil.json`.
 3. **Bots de banco**: esperan el operador de consulta de cada banco (Priscilla, cuando MR esté en Corrientes). Orden Galicia → Macro → BBVA → Nación → Corrientes; guía §6.
