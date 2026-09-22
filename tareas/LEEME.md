@@ -9,9 +9,9 @@ las tareas aisladas lo escribe Codex. Los dos se hablan **por archivos en este r
 2. **Thomas le dice a Codex**: "hacé la tarea `tareas/<nn>-<nombre>.md`".
 3. **Codex la ejecuta en un worktree propio**, rama `tarea/<nombre>`. No toca `main` directo.
    Commitea en su rama y, al terminar, completa la sección **"Qué hice"** de la consigna
-   (qué archivos tocó, cómo lo probó, qué dudas le quedaron) y cambia `Estado:` a `para revisar`.
+   (qué archivos tocó, cómo lo probó, qué dudas le quedaron) y cambia `Estado:` a `lista para revisión`.
 4. **Claude revisa el diff** (`git diff main..tarea/<nombre>`), anota en **"Revisión"** y, con el OK
-   de Thomas, se mergea a `main`. Si hay que corregir, `Estado:` vuelve a `en curso` con las notas.
+   de Thomas, se mergea a `main`. Si hay que corregir, `Estado:` vuelve a `en curso` con las notas; al mergear pasa a `aprobada`.
 
 ## Reglas para el ejecutor
 
@@ -23,28 +23,31 @@ las tareas aisladas lo escribe Codex. Los dos se hablan **por archivos en este r
   Si una prueba necesita datos, se arma un ejemplo chico e inventado dentro de la tarea.
 - No instalar dependencias nuevas sin anotarlo en "Qué hice".
 
-## Plantilla de consigna
+## Plantilla de consigna (secciones fijas; Codex sigue exactamente esta estructura)
 
 ```
 # Tarea <nn> — <nombre corto>
-Estado: pendiente | en curso | para revisar | mergeada
+Estado: pendiente | en curso | lista para revisión | aprobada
 Rama: tarea/<nombre>
 
-## Qué hay que hacer
+## Objetivo
 (en criollo: el resultado que se espera, no el cómo)
 
-## Por qué
-(para qué sirve; qué problema resuelve)
+## Contexto
+(qué existe hoy, por qué hace falta, qué decisiones ya están tomadas)
 
-## Archivos que toca
-(lista; lo que no está acá no se toca)
+## Archivos permitidos
+(lista exacta; lo que no está acá no se toca. Si hace falta tocar otro, se anota en "Qué hice" y se pregunta)
 
-## Cómo se prueba
-(comando o pasos que tienen que salir bien)
+## Resultado esperado
+(qué tiene que existir al terminar: archivos, funciones, textos)
 
-## Listo cuando
-(criterios concretos, verificables)
+## Comprobaciones
+(comandos o pasos que tienen que salir bien; qué se pudo probar y qué no)
 
-## Qué hice          ← lo completa Codex
-## Revisión          ← lo completa Claude
+## Qué hice          ← lo completa Codex (archivos tocados, cómo lo probó, dudas)
+## Revisión          ← lo completa Claude (qué verificó, qué corregir)
 ```
+
+Los estados: **pendiente** (consigna escrita) → **en curso** (Codex trabajando) → **lista para revisión**
+(Codex terminó y completó "Qué hice") → **aprobada** (Claude revisó, Thomas dio el OK, mergeada a main).
