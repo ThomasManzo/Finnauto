@@ -50,6 +50,15 @@ USD 400/mes desde el mes 2, revisable a los 3 meses contra el acierto medido.
 La presentación (PDF de propuesta + vista rápida del tablero + la Sheet) fue
 lo que cerró. Primer peso cobrado de finauto.
 
+## Próximos pasos (al 22/09/2026, 3 a.m.) — para retomar en un chat nuevo
+
+1. **Extractos de banco del 18/09 en adelante** → `NAVAR - Datos/Bancos/<banco>/` (Thomas los baja hoy). El vigilante en la notebook y el disparador de la Sheet hacen el resto; verificar en la solapa Registro y regenerar el PDF (`herramientas/informe_situacion.py`, bajando antes la Sheet como Excel a `privado/`).
+2. **Tango por API**: cuando Miriam (soporte Tango) habilite el usuario `finauto`, seguir `documentos/instalar_notebook.md` §5 (token al llavero, `ingestas/tango_live.py --probar cobranzas`, ajustar el parser al JSON real). Los 5 procesos y las 2 empresas ya están en `perfil.json`.
+3. **Bots de banco**: esperan el operador de consulta de cada banco (Priscilla, cuando MR esté en Corrientes). Orden Galicia → Macro → BBVA → Nación → Corrientes; guía §6.
+4. **Preguntas abiertas a la empresa**: qué son las salidas de caja de AA "débito y gastos bancarios" ($58 M en junio); confirmar la regla de débito automático (`catalogo.json → debito_automatico`); plan de compra de canchada 2027; tesorería AA: cheques endosados.
+5. Pendientes chicos: aviso diario por mail (qué llegó / qué falló); cruce banco ↔ Tango de endosos (`lector/cruce.py`); mudar el tablero web a los mismos bloques.
+6. Regla de trabajo (memoria `feedback-pasada-de-errores-completa`): una pasada de errores = recomputar cada total desde las listas y compararlo con la celda; decir qué se verificó y qué no.
+
 ## Dónde estamos (20/09/2026)
 
 **Leer primero `documentos/manual_cash.md`**: qué es cada solapa, cómo se lee, qué es real y
