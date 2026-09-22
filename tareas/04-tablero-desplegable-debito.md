@@ -1,5 +1,5 @@
 # Tarea 04 — Tablero: desplegar las obligaciones por débito automático y por banco
-Estado: pendiente
+Estado: lista para revisión
 Rama: tarea/tablero-debito
 
 ## Objetivo
@@ -74,7 +74,57 @@ Al terminar: "Qué hice" y `Estado: lista para revisión`.
 
 ## Qué hice
 
-(lo completa Codex)
+- Trabajé en el worktree asignado, rama `tarea/tablero-debito`. Toqué solamente
+  `dashboard/app.py`, `dashboard/datos.py` y esta consigna. No cambié lectores,
+  planillas, manual ni datos de origen. Sin dependencias nuevas.
+- Agregué tres grupos excluyentes: **Sale sí o sí**, **Se paga por decisión** y
+  **Sin definir**. Aceptan booleanos y textos Sí/Si/No; vacío o desconocido queda
+  sin definir. No se deduce el débito por producto ni se hereda una marca ausente.
+- Conservé la tarjeta bancaria en Proyección y su tabla actual. Los grupos reparten
+  el **capital vigente sin descubiertos**; el cronograma se muestra aparte, por banco,
+  con importe y fecha de cada cuota, vencido y próximos 30 días. No sumé cuotas al
+  capital. Conservé el criterio de fechas existente: hoy inclusive y día 30 exclusivo.
+- Los impuestos tienen tarjeta propia y los mismos grupos: así los planes con débito
+  en CBU no alteran el total bancario. Si no viene el banco, dice **Banco/CBU sin informar**.
+- El detalle se genera en Python dentro del HTML, con `details/summary` nativos,
+  foco visible y caracteres escapados. Sin JavaScript quedan los detalles de todas
+  las unidades a la vista; con JavaScript se copia el correspondiente a la empresa.
+  No se calcula plata en el navegador. Las sumas nuevas usan aritmética decimal.
+- **Cuadre real, GRUPO y A:** $0,00 (automático) + $0,00 (decisión) +
+  $2.739.983.590,31 (sin definir) = **$2.739.983.590,31**, exactamente el capital
+  bancario anterior. Vencido: **$379.505.910,33**; próximos 30 días:
+  **$247.039.549,72**. También cuadran por grupo y por banco, al centavo.
+- **Bancos:** 0 con automático informado, 0 con pago por decisión informado y
+  **5 bancos sin definir**: BBVA, CORRIENTES, GALICIA, MACRO y NACION. En GRUPO el
+  contrato trae además un encabezado convertido en banco:
+  `B) Cronograma de Vencimientos (cuotas)`, sin unidad/producto y con $0. La vista
+  conserva esa sexta entrada tal como la tabla anterior; no es un sexto banco real.
+  AA no tiene deuda bancaria ni impositiva en el contrato.
+- **Impuestos, aparte:** $0,00 + $0,00 + $604.746.328,81 = **$604.746.328,81**.
+  El contrato indicado no tiene `debito_automatico` en ninguna línea, cuota ni impuesto.
+  Por eso todo queda sin definir: para presentar una separación real hay que hacer
+  llegar la columna al contrato desde el lector. No modifiqué ese lector porque está
+  fuera de alcance. Tampoco inventé el banco/CBU de los impuestos.
+- **Verificado:** compilación de ambos módulos; corrida completa de `finauto.py` con
+  el contrato indicado y `--salidas /tmp/tarea04-tablero --sin-memoria` (para no escribir
+  fuera de los archivos autorizados); cuadres reales; comparación de todos los campos
+  bancarios previos contra `HEAD`, sin cambios para GRUPO/A/AA. Pruebas inventadas en
+  `/tmp/tarea04_verificar.py`: grupos mezclados en un banco, booleanos/textos/vacíos,
+  capital separado de cuotas, descubiertos excluidos, ayer/hoy/días 29 y 30, unidades,
+  ausencia de deuda, impuesto automático sin banco y escape HTML. Inspección del HTML:
+  12 desplegables con detalle, fechas e importes ya presentes e identificadores únicos.
+- **No verificado visualmente:** Chromium no pudo arrancar por restricciones del
+  sandbox (`bootstrap_check_in: Permission denied`); la herramienta de interfaz no
+  tiene navegadores disponibles. Quedan pendientes abrir/cerrar por teclado, cambio
+  de empresa y revisión visual con/sin JavaScript y en móvil. Tampoco pude ejecutar
+  el chequeo de sintaxis con Node porque no está instalado. No presento estas pruebas
+  como realizadas. El HTML regenerado está en `/tmp/tarea04-tablero/finauto.html`.
+- Búsqueda de nombres: vacía en ambos archivos de código; reemplacé también las
+  menciones anteriores de comentarios por roles. Esta consigna conserva las menciones
+  y rutas originales de sus instrucciones; no agregué nombres propios en «Qué hice».
+- **Commit pendiente por sandbox:** `git add` falló al crear `index.lock` en el
+  directorio git del worktree (`Operation not permitted`). No pude crear el commit;
+  los tres archivos quedan modificados en esta rama para que el revisor los commitee.
 
 ## Revisión
 
