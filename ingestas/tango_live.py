@@ -51,7 +51,9 @@ DESTINO = {
     "pagos":            ("Cuentas a pagar",  "%s pagos %s.xlsx"),
     "cheques_terceros": ("Cheques",          "%s cheques terceros %s.xlsx"),
     "cheques_propios":  ("Cheques",          "%s cheques propios %s.xlsx"),
+    "movimientos_tesoreria": ("Tesorería AA", "%s movimientos tesoreria %s.xlsx"),   # solo AA: la operación en efectivo
 }
+SOLO_EMPRESA = {"movimientos_tesoreria": "AA"}      # consultas que se bajan para una sola empresa
 FORMATO_FECHA = "%Y%m%d"          # a confirmar con --probar
 DESDE, HASTA = "20000101", "20301231"
 PAGINA = 5000
@@ -184,7 +186,8 @@ def main():
         return
 
     pendientes = [(e, c, p) for e, eid in cfg["empresas"].items() if eid
-                  for c, p in cfg["consultas"].items() if p and not (e == "AA" and c == "cheques_propios")]
+                  for c, p in cfg["consultas"].items() if p and not (e == "AA" and c == "cheques_propios")
+                  and (c not in SOLO_EMPRESA or SOLO_EMPRESA[c] == e)]
     faltan = [c for c, p in cfg["consultas"].items() if not p] + [e for e, eid in cfg["empresas"].items() if not eid]
     if faltan:
         log("sin número todavía (se saltean): %s" % ", ".join(faltan))

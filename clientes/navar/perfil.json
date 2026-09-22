@@ -96,9 +96,11 @@
       "cobranzas": 17952,
       "pagos": 17696,
       "cheques_terceros": 11583,
-      "cheques_propios": 11584
+      "cheques_propios": 11584,
+      "movimientos_tesoreria": 11591
     },
     "custom_query": "-",
-    "_origen": "Números tomados de las URL de Live el 22/09/2026: http://servidor:17000/company/<empresa>/live/<proceso>. NAVAR SA = 13, NAVAR SA Otros = 56."
+    "_origen": "Números tomados de las URL de Live el 22/09/2026: http://servidor:17000/company/<empresa>/live/<proceso>. NAVAR SA = 13, NAVAR SA Otros = 56.",
+    "_movimientos_tesoreria": "11591 = movimientos de tesorería (un renglón por comprobante: cobros, pagos, otros; con Desc. relacionado). Solo para AA (empresa 56): es la operación en efectivo. Va a la carpeta 'Tesorería AA'. Lector: lector/tesoreria_aa.py (pendiente)."
   }
 }
