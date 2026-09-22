@@ -26,7 +26,8 @@ function avisoDiario() {
 function avisoDiarioPrueba() {
   var aviso = _armarAviso_(new Date());
   Logger.log(aviso.asunto + "\n\n" + aviso.cuerpo);
-  SpreadsheetApp.getUi().alert(aviso.asunto + "\n\n" + aviso.cuerpo);
+  // Desde el editor de Apps Script no hay ventana de la Sheet: ahí alcanza con el Logger.
+  try { SpreadsheetApp.getUi().alert(aviso.asunto + "\n\n" + aviso.cuerpo); } catch (e) {}
 }
 
 // Deja un solo aviso diario para esta cuenta, con horario de Buenos Aires.

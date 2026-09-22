@@ -229,4 +229,34 @@ acceso a los metadatos de Git. No se intentó sortear esa restricción.
 
 ## Revisión
 
+Claude, 22/09/2026 (de noche). Leí el diff completo de los 5 archivos y el informe "Qué hice".
+
+**Verificado (leyendo, no ejecutando: Apps Script no corre acá):**
+- `vigilante.py`: el único cambio es la copia del log en un `finally` con `try/except`; no publica en
+  `--simular`, copia solo si el log cambió, y un fallo de Drive no tapa el resultado de la pasada. ✔
+- `aviso_diario.gs`: reusa `CARPETA_RAIZ`, `IMPORTS` (los tipos coinciden con las claves reales:
+  tango / bancos / tesoreria_aa / impuestos / deuda) y `_registrar_`; no define `onOpen`. Las fechas
+  se comparan como instantes (independiente de la zona de la Sheet) y se muestran en Buenos Aires. Las
+  7 alertas de la consigna están; cada lectura va en su `try`, y si una falla el mail sale igual. Los
+  ejemplos a mano (a)(b)(c) dan lo que la consigna pedía. Sin nombres propios. ✔
+- Manual y LEEME: filas con el formato de sus tablas. ✔
+
+**Corregido por Claude en la rama:**
+- `avisoDiarioPrueba()` llamaba a `SpreadsheetApp.getUi().alert` sin protección: corrido desde el
+  editor de Apps Script (sin la Sheet abierta) tira error. Quedó en `try/catch`; el Logger ya lo muestra.
+- Agregadas las tres líneas del menú `finauto` en `importar_cashflow.gs` (tarea de Claude según la consigna).
+- El commit en la rama lo hizo Claude: el sandbox de Codex no llega al índice de git del worktree
+  (`.git/worktrees/...` vive en el repo principal). Para las próximas tareas, resolverlo o dejar que Claude commitee.
+
+**Observación (no bloquea):** si suben solo `cobranzas` sin `pagos` (o al revés), el vigilante no corre
+Tango a propósito (necesita las dos) y el aviso dirá "El vigilante no procesó ..." sugiriendo revisar la
+notebook, cuando en realidad falta el otro archivo. Se puede afinar después con el texto del log.
+
+**Falta, y lo hace Claude con Thomas mañana:** pegar `aviso_diario.gs` en el proyecto de Apps Script de la
+Sheet (y las tres líneas del menú), correr "Ver el aviso de hoy (sin mandar)", comparar el texto con
+Drive/Registro, y recién ahí "Instalar aviso diario 07:30" (Google pide autorizar mail + Drive: un clic de Thomas).
+En la notebook, `actualizar.ps1` para que el vigilante empiece a copiar su log a Drive.
+
+**Estado**: lista para revisión → falta el OK de Thomas para mergear a `main` (pasa a `aprobada`).
+
 (lo completa Claude)
