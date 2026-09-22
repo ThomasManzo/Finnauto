@@ -29,7 +29,7 @@ cambian solas. Eso es lo que hace que se pueda mantener y automatizar.
 ```
 Hoy · Último día con extracto        ← hasta ahí es REAL; desde el día siguiente, ESTIMADO
 FECHAS                               ← la fila de abajo dice por columna: real · estimado · real + est.
-1 · Bancos                           ← saldo real de cada cuenta al cierre (vacío hacia adelante)
+1 · Bancos                           ← saldo real + descubierto acordado por banco (vacío hacia adelante)
 Saldo inicial                        ← el cierre del período anterior: de acá se parte
 2 · Ingresos                         ← un renglón por concepto: real atrás, estimado adelante (SIN préstamos)
 3 · Egresos de la operación
@@ -47,6 +47,22 @@ Descubierto acordado · usado · disponible   ← disponible = acordado − usad
 Saldo disponible (2 escenarios)      ← positivos + descubierto disponible; negativo = falta aun con todo el descubierto
 6 · Atrasado hoy                     ← lo vencido, por concepto; es un STOCK, no está en la curva; se paga por decisión
 ```
+
+**Bancos (22/09)**: cada banco muestra el saldo real más su descubierto acordado, tomado del
+mismo acuerdo del bloque de descubiertos. Verde si da más de cero; ámbar si da exactamente cero
+(línea agotada, el cero se ve); rojo si da negativo. Un acuerdo vacío vale cero. Por ejemplo,
+saldo −100 M y acuerdo 100 M = 0 ámbar. El **Total saldo real de bancos**, el **Saldo inicial** y
+los **SALDO AL CIERRE** siguen usando solamente los saldos reales. Esos saldos por banco quedan
+en filas auxiliares ocultas: el acuerdo no se suma como si fuera plata que ingresó. El bloque de
+descubierto acordado/usado/disponible conserva su cálculo.
+
+**Detalle de cuotas (22/09)**: el `+` al costado de **Cuotas y tarjetas con débito automático**
+abre una fila por banco en las tres pantallas; arranca plegado. Conserva las mismas fechas,
+estados y signos del total: extractos para lo real, cronograma para diario/semanal y Plan para
+el mensual. El detalle no se vuelve a sumar al total de deuda. Los bancos salen de Deuda Bancaria,
+sin lista escrita a mano. Si se agrega un banco nuevo hay que ejecutar **Armar solapa Cash** para
+crear su fila; las filas ya creadas actualizan sus importes por fórmula. La aparición de nuevas
+filas no está conectada al disparador de importación.
 
 **Qué pasa con lo que vence y no se paga**: no desaparece ni se corre solo a mañana. Al día siguiente
 está en "Atrasado hoy" (stock) y en "Venció y no se pagó". Se paga cuando alguien lo decide, en Plan
@@ -138,7 +154,7 @@ como Excel a `privado/NAVAR - Cash Flow (export Sheets <fecha>).xlsx` y correr
 **Después**: bots de banco + token de Tango Live en la notebook de NAVAR hacen el paso 1 solos
 cada mañana. Nadie sube nada: el cash amanece al día.
 
-## 7. Qué se corrigió el 19–20/09
+## 7. Qué se corrigió el 19–22/09
 
 - Las fórmulas se escribían con `,` y la planilla (en español) usa `;` → todo daba #ERROR!. Ahora el script prueba y reescribe solo.
 - Los Excel del home banking (BBVA, Macro) vienen del más nuevo al más viejo → el saldo "al cierre del día" era el de la primera operación (Macro 15/09 daba +$71 M). Se ordenan cronológicamente.
@@ -150,3 +166,12 @@ cada mañana. Nadie sube nada: el cash amanece al día.
 - La columna "Fuente" hacía ilegible cada pantalla → se fue; el detalle está en Instrucciones.
 - La solapa Plan arrancaba con "pagar todo como está" → arranca con la propuesta del PDF (Corrientes y Galicia a refinanciar, SICORE a plan, municipal a posponer), con el "por qué" en cada fila.
 - La solapa Instrucciones describía la planilla vieja → rehecha en tablas.
+
+- **22/09 — elección del export de cheques**: el lector elegía el último nombre alfabéticamente;
+  con mayúsculas distintas terminaba usando el 16/09 aunque hubiera fotos del 21 y 22/09.
+  Ahora manda la fecha del nombre del export. Verificación contra Drive: las 66 filas generadas
+  coinciden con el origen, incluidas las seis de la evidencia. El cheque propio de $10.872.165,02
+  entra como egreso el 25/09 sin REVISAR. **El incidente de fechas alteradas en la Sheet sigue
+  abierto**: no se reprodujo esa alteración con el lector anterior y no se verificó la importación
+  en Google Sheets. La selección vieja era un error comprobado, pero no explica por sí sola
+  las fechas equivocadas que ya estaban cargadas.
