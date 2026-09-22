@@ -150,3 +150,20 @@ cada mañana. Nadie sube nada: el cash amanece al día.
 - La columna "Fuente" hacía ilegible cada pantalla → se fue; el detalle está en Instrucciones.
 - La solapa Plan arrancaba con "pagar todo como está" → arranca con la propuesta del PDF (Corrientes y Galicia a refinanciar, SICORE a plan, municipal a posponer), con el "por qué" en cada fila.
 - La solapa Instrucciones describía la planilla vieja → rehecha en tablas.
+
+### Incidente de fechas del 22/09 — diagnóstico pendiente, sin arreglo aplicado
+
+Se compararon las 66 filas de Cartera de Cheques del `para_pegar` disponible con el
+export de la Sheet terminado en `2026-09-22c`: mismos ID, cheques e importes, pero
+21 fechas de pago/cobro y 2 fechas de emisión distintas. Once de las fechas de
+pago/cobro distintas no existen en esa columna del archivo original; diez son de
+2027. Por eso no alcanza con correr la columna unas filas o volver a ordenarla.
+La tabla completa y las coincidencias posibles están en la tarea 03.
+
+Hay una limitación para reconstruir lo que pasó: el archivo disponible declara
+creación y modificación a las 17:38:09 de Buenos Aires, después de la importación
+exitosa de las 15:55. El Registro también muestra otro intento fallido por una fila
+filtrada. El nombre del archivo no alcanza para demostrar que sea la misma versión
+que se importó. La prueba local del armado de filas conserva las fechas; falta
+comparar el archivo exacto importado, la Sheet temporal y el destino inmediatamente
+después de escribir. No se modificó el lector ni el importador con este diagnóstico.
