@@ -78,6 +78,15 @@ var IMPORTS = {
         colMarca: "Origen", marcas: ["Extracto", "Captura"], conId: true },
     ]
   },
+  // La operación en efectivo de AA (Tango → lector/tesoreria_aa.py): filas de Movimientos con
+  // Origen "Tango AA". Pisa solo esas; las del extracto ("Extracto") las maneja "bancos".
+  tesoreria_aa: {
+    prefijo: "para_pegar_tesoreria_aa_",
+    solapas: [
+      { xlsx: "Movimientos", sheet: "Movimientos", formulas: ["Semana (lunes)"],
+        colMarca: "Origen", marcas: ["Tango AA"], conId: true },
+    ]
+  },
   impuestos: {
     prefijo: "para_pegar_impuestos_",
     solapas: [
@@ -102,6 +111,7 @@ function onOpen() {
     .addItem("Importar Bancos (saldos / movimientos)", "importarBancos")
     .addItem("Importar Deuda (deuda bancaria)", "importarDeuda")
     .addItem("Importar Impuestos (deuda impositiva)", "importarImpuestos")
+    .addItem("Importar Tesorería AA (efectivo)", "importarTesoreriaAA")
     .addSeparator()
     .addItem("Importar lo nuevo ahora (lo que haría el disparador)", "importarLoNuevo")
     .addItem("Instalar actualización automática (cada hora)", "instalarDisparador")
@@ -116,7 +126,7 @@ function onOpen() {
 // ---- actualización automática ------------------------------------------------------
 // Orden: deuda e impuestos antes que bancos y Tango, porque las pantallas leen todo junto
 // y da igual; pero si un import falla, los demás siguen (cada uno con su try).
-var ORDEN_AUTO = ["deuda", "impuestos", "bancos", "tango"];
+var ORDEN_AUTO = ["deuda", "impuestos", "bancos", "tesoreria_aa", "tango"];
 
 function importarLoNuevo() {
   var props = PropertiesService.getDocumentProperties();
@@ -172,6 +182,7 @@ function importarTango()     { _importar_("tango"); }
 function importarBancos()    { _importar_("bancos"); }
 function importarDeuda()     { _importar_("deuda"); }
 function importarImpuestos() { _importar_("impuestos"); }
+function importarTesoreriaAA() { _importar_("tesoreria_aa"); }
 
 
 function _importar_(cual, archivo) {
