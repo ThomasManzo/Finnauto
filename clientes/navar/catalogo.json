@@ -336,6 +336,10 @@
         "COBRANZA_FACTURAS",
         "FIJO"
       ],
+      "Cobranza AA": [
+        "COBRANZA_FACTURAS",
+        "FIJO"
+      ],
       "Cobranza Canchada": [
         "COBRANZA_CANCHADA",
         "FIJO"
