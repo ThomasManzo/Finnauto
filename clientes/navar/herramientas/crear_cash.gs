@@ -47,7 +47,7 @@ var FORMATO_NUM = "#,##0;[Red]-#,##0;\"\"";
 // correr (fila 1; en Deuda Bancaria, las dos filas "Banco"): si alguien agrega o mueve
 // una columna (el 19/09 apareció una columna "Año" en Cuentas a Cobrar y corrió todo),
 // las fórmulas siguen apuntando a la columna correcta. R se llena en armarCash / armarPlan.
-var R = { planTipo: "Plan!$A:$A" };
+var R = { planTipo: "Plan!$A:$A", planAuto: "Plan!$N:$N" };
 
 var CAMPOS = [
   ["Movimientos",        1, { movFecha: "Fecha", movTipo: "Tipo", movCat: "Categoria", movImp: "Importe", movOrigen: "Origen", movEstado: "Estado" }],
@@ -55,11 +55,11 @@ var CAMPOS = [
   ["Cuentas a Pagar",    1, { pagPend: "Saldo Pendiente", pagEmp: "Empresa", pagVto: "Fecha Vencimiento", pagEstado: "Estado", pagObs: "Observaciones" }],
   ["Cartera de Cheques", 1, { chqTipo: "Tipo", chqFecha: "Fecha Pago / Cobro", chqImp: "Importe", chqEstado: "Estado", chqObs: "Observaciones" }],
   ["Saldos Bancarios",   1, { salFecha: "Fecha", salBanco: "Banco", salImp: "Saldo" }],
-  ["Deuda Impositiva",   1, { diNombre: "Impuesto", diVto: "Fecha Vencimiento", diImp: "Importe", diEstado: "Estado" }],
+  ["Deuda Impositiva",   1, { diNombre: "Impuesto", diVto: "Fecha Vencimiento", diImp: "Importe", diEstado: "Estado", diAuto: "Debito Automatico" }],
 ];
 
 function _rangos_(ss) {
-  var out = { planTipo: "Plan!$A:$A" };
+  var out = { planTipo: "Plan!$A:$A", planAuto: "Plan!$N:$N" };
   CAMPOS.forEach(function (def) {
     var h = ss.getSheetByName(def[0]);
     if (!h) throw new Error("Falta la solapa " + def[0]);
@@ -89,11 +89,13 @@ function _rangos_(ss) {
   out.dbLinea = rangoDB(encA, "Linea / Producto", encs[0] + 1, finA);
   out.dbOrig = rangoDB(encA, "Capital Original", encs[0] + 1, finA);
   out.dbVig = rangoDB(encA, "Capital Vigente", encs[0] + 1, finA);
+  out.dbAuto = rangoDB(encA, "Debito Automatico", encs[0] + 1, finA);
   out.cuBanco = rangoDB(encB, "Banco", iniB, finB);
   out.cuLinea = rangoDB(encB, "Linea / Producto", iniB, finB);
   out.cuVto = rangoDB(encB, "Fecha Vencimiento", iniB, finB);
   out.cuTot = rangoDB(encB, "Importe Total Cuota", iniB, finB);
   out.cuEstado = rangoDB(encB, "Estado", iniB, finB);
+  out.cuAuto = rangoDB(encB, "Debito Automatico", iniB, finB);
   return out;
 }
 
@@ -109,7 +111,7 @@ function _n_(s) {
   return String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
 }
 
-var PLAN_PRIMERA_COL_MES = 15;          // columna O de Plan = mes en curso; P..U los 6 siguientes
+var PLAN_PRIMERA_COL_MES = 16;          // columna P de Plan = mes en curso; Q..V los 6 siguientes (N = débito automático, O = por qué)
 
 
 function armarCash() {
@@ -144,9 +146,10 @@ function _proy_(cat, distinto) {
   return "SUMIFS(" + R.movImp + "," + R.movFecha + ",\">=\"&" + DESDE_EST + "," + R.movFecha + ",\"<\"&{F}," + R.movTipo + ",\"Egreso\"," +
     R.movEstado + ",\"Proyectado\"," + R.movCat + ",\"" + (distinto ? "<>" : "") + cat + "\")";
 }
-function _planMes_(tipo) {
-  // se resuelve por columna: {P} = letra de la columna del Plan para ese mes
-  return "SUMIFS(Plan!${P}:${P}," + R.planTipo + ",\"" + tipo + "\")";
+function _planMes_(tipo, auto) {
+  // se resuelve por columna: {P} = letra de la columna del Plan para ese mes.
+  // auto: "Si" = lo que el banco / ARCA debita solo · "No" = lo que se paga por decisión
+  return "SUMIFS(Plan!${P}:${P}," + R.planTipo + ",\"" + tipo + "\"" + (auto ? "," + R.planAuto + ",\"" + auto + "\"" : "") + ")";
 }
 
 // Un renglón: nombre · real (extracto) · est (listas) · cómo se estima en el mensual ·
@@ -158,8 +161,10 @@ function _renglones_(periodo) {
   var chqT = _lista_(R.chqImp, R.chqFecha, "," + R.chqTipo + ",\"Terceros*\"," + R.chqEstado + ",\"En Cartera\"," + R.chqObs + ",\"<>REVISAR*\"");
   var pagA = _lista_(R.pagPend, R.pagVto, "," + R.pagEmp + ",\"A\"," + R.pagEstado + ",\"<>Pagado\"," + R.pagObs + ",\"<>REVISAR*\"");
   var pagAA = _lista_(R.pagPend, R.pagVto, "," + R.pagEmp + ",\"AA\"," + R.pagEstado + ",\"<>Pagado\"," + R.pagObs + ",\"<>REVISAR*\"");
-  var cuotas = _lista_(R.cuTot, R.cuVto, "," + R.cuEstado + ",\"Pendiente\"");
-  var impDeuda = _lista_(R.diImp, R.diVto, "," + R.diEstado + ",\"<>Pagado\"");
+  var cuotasAuto = _lista_(R.cuTot, R.cuVto, "," + R.cuEstado + ",\"Pendiente\"," + R.cuAuto + ",\"Si\"");
+  var cuotasDec = _lista_(R.cuTot, R.cuVto, "," + R.cuEstado + ",\"Pendiente\"," + R.cuAuto + ",\"<>Si\"");
+  var impAuto = _lista_(R.diImp, R.diVto, "," + R.diEstado + ",\"<>Pagado\"," + R.diAuto + ",\"Si\"");
+  var impDec = _lista_(R.diImp, R.diVto, "," + R.diEstado + ",\"<>Pagado\"," + R.diAuto + ",\"<>Si\"");
   var chqP = _lista_(R.chqImp, R.chqFecha, "," + R.chqTipo + ",\"Propio*\"," + R.chqEstado + ",\"En Cartera\"," + R.chqObs + ",\"<>REVISAR*\"");
   var interes90 = "-SUMIFS(" + R.movImp + "," + R.movTipo + ",\"Egreso\"," + R.movCat + ",\"Gastos Bancarios\"," + R.movOrigen + ",\"Extracto*\"," + R.movFecha + ",\">=\"&($B$3-90))/90*MAX(0,{F}-" + DESDE_EST + ")";
 
@@ -183,18 +188,28 @@ function _renglones_(periodo) {
     { n: "Cheques propios", real: _real_("Egreso", "Cheques"), est: chqP, como: "lista", lista: chqP, f: "real: debitados (extracto) · estimado: en cartera por fecha de pago" },
     { n: "Intereses y gastos bancarios", real: _real_("Egreso", "Gastos Bancarios"), est: mensual ? "" : interes90, como: "prom",
       f: "real: extracto · estimado: " + (mensual ? "promedio × inflación" : "promedio de los últimos 90 días") },
-    { n: "Otros (tarjeta, honorarios, cosecha)", real: _real_("Egreso", "Otros") + "+" + _real_("Egreso", "Honorarios y Dividendos"), est: "-" + _proy_("Sueldos y Jornales", true), como: "lista", lista: "-" + _proy_("Sueldos y Jornales", true),
+    { n: "Otros (tarjeta, honorarios)", real: _real_("Egreso", "Otros") + "+" + _real_("Egreso", "Honorarios y Dividendos"), est: "-" + _proy_("Sueldos y Jornales", true), como: "lista", lista: "-" + _proy_("Sueldos y Jornales", true),
       f: "real: extracto · estimado: lo proyectado con fecha en Movimientos (salvo sueldos)" },
   ];
-  var deuda = mensual ? [
-    { n: "Cuotas bancarias y tarjeta", real: _real_("Egreso", "Prestamo"), est: "", como: "plan", plan: "Banco", f: "real: cuotas debitadas (extracto) · estimado: solapa Plan (cronograma o refinanciación, según la decisión)" },
-    { n: "Impuestos: deuda y planes", real: "", est: "", como: "plan", plan: "Impuesto", f: "solapa Plan: vencimientos de la deuda impositiva o plan de pagos, según la decisión" },
-    { n: "Regularización de atrasado", real: "", est: "", como: "plan", plan: "Atrasado", f: "solapa Plan: lo vencido con proveedores y cheques que se decide pagar en cuotas" },
+  // Deuda en dos bloques. "Sale sí o sí": el banco o ARCA la debita solo cuando hay fondos
+  // (cuotas y tarjetas con débito automático, planes vigentes con CBU). "Por decisión": alguien
+  // tiene que transferir o generar el VEP. La columna "Debito Automatico" de las listas dice cuál es cuál.
+  var deudaAuto = mensual ? [
+    { n: "Cuotas y tarjetas con débito automático", real: _real_("Egreso", "Prestamo"), est: "", como: "plan", plan: "Banco", auto: "Si", f: "real: cuotas debitadas (extracto) · estimado: solapa Plan, líneas con débito automático" },
+    { n: "Planes de ARCA con débito automático", real: "", est: "", como: "plan", plan: "Impuesto", auto: "Si", f: "solapa Plan, impuestos con débito automático" },
     { n: "Préstamos tomados (entra plata: resta)", real: _real_("Ingreso", "Prestamo"), est: "", como: "cero", f: "real: préstamos acreditados (extracto), con signo negativo porque entran · no se proyecta: es una decisión" },
   ] : [
-    { n: "Cuotas bancarias y tarjeta", real: _real_("Egreso", "Prestamo"), est: cuotas, como: "lista", f: "real: cuotas debitadas (extracto) · estimado: cronograma de Deuda Bancaria" },
-    { n: "Impuestos: deuda y planes", real: "", est: impDeuda, como: "lista", f: "estimado: Deuda Impositiva (planilla de Celia / contador) por fecha de vencimiento" },
+    { n: "Cuotas y tarjetas con débito automático", real: _real_("Egreso", "Prestamo"), est: cuotasAuto, como: "lista", f: "real: cuotas debitadas (extracto) · estimado: cronograma, líneas con débito automático" },
+    { n: "Planes de ARCA con débito automático", real: "", est: impAuto, como: "lista", f: "estimado: Deuda Impositiva con débito automático, por fecha de vencimiento" },
     { n: "Préstamos tomados (entra plata: resta)", real: _real_("Ingreso", "Prestamo"), est: "", como: "cero", f: "real: préstamos acreditados, con signo negativo porque entran · no se proyecta" },
+  ];
+  var deudaDec = mensual ? [
+    { n: "Cuotas que se pagan por decisión", real: "", est: "", como: "plan", plan: "Banco", auto: "No", f: "solapa Plan, líneas sin débito automático (transferencia)" },
+    { n: "Impuestos por VEP y planes nuevos", real: "", est: "", como: "plan", plan: "Impuesto", auto: "No", f: "solapa Plan, impuestos sin débito automático" },
+    { n: "Regularización de atrasado", real: "", est: "", como: "plan", plan: "Atrasado", f: "solapa Plan: lo vencido con proveedores y cheques que se decide pagar en cuotas" },
+  ] : [
+    { n: "Cuotas que se pagan por decisión", real: "", est: cuotasDec, como: "lista", f: "estimado: cronograma, líneas sin débito automático" },
+    { n: "Impuestos por VEP y planes nuevos", real: "", est: impDec, como: "lista", f: "estimado: Deuda Impositiva sin débito automático, por fecha de vencimiento" },
   ];
   var atrasado = [
     { n: "Proveedores A vencidos", est: "SUMIFS(" + R.pagPend + "," + R.pagEmp + ",\"A\"," + R.pagVto + ",\"<\"&$B$2," + R.pagEstado + ",\"<>Pagado\"," + R.pagObs + ",\"<>REVISAR*\")", f: "Cuentas a Pagar · vencimiento < hoy · sin la deuda vieja (REVISAR)" },
@@ -204,7 +219,7 @@ function _renglones_(periodo) {
     { n: "Cheques propios vencidos sin debitar", est: "SUMIFS(" + R.chqImp + "," + R.chqTipo + ",\"Propio*\"," + R.chqEstado + ",\"En Cartera\"," + R.chqFecha + ",\"<\"&$B$2)", f: "Cartera de Cheques · confirmar con el extracto" },
     { n: "Vencido a cobrar (informativo, no suma)", est: "SUMIFS(" + R.cobPend + "," + R.cobVto + ",\"<\"&$B$2," + R.cobEstado + ",\"<>Cobrado\"," + R.cobObs + ",\"<>REVISAR*\")", f: "Cuentas a Cobrar", info: true },
   ];
-  return { ingresos: ingresos, egresos: egresos, deuda: deuda, atrasado: atrasado };
+  return { ingresos: ingresos, egresos: egresos, deudaAuto: deudaAuto, deudaDec: deudaDec, atrasado: atrasado };
 }
 
 
@@ -263,8 +278,10 @@ function _armarPeriodica_(ss, nombre, periodo) {
   // ---- 1. saldos de bancos (real, arrastrando el último conocido; vacío hacia adelante)
   _seccion_(h, fila++, "1 · Bancos (saldo real al cierre)", "#e8f0fe", "#174ea6", colFuente);
   var bancos = _bancos_(ss), primeraBanco = fila;
+  var colAcuerdo = colFuente + 1;            // auxiliar oculta: acuerdo de descubierto de cada banco
   bancos.forEach(function (b) {
     h.getRange(fila, 1).setValue(b.etiqueta);
+    h.getRange(fila, colAcuerdo).setFormula("=SUMIFS(" + R.dbOrig + "," + R.dbBanco + ",\"" + b.nombre + "\"," + R.dbLinea + ",\"*escubierto*\")");
     for (var c = 0; c < nCols; c++) {
       // la caja AA se carga a mano y puede ser más nueva que el último extracto: llega hasta hoy
       var corte = "MIN(" + F(c) + "-1," + (b.manual ? "$B$2" : "$B$3") + ")";
@@ -276,10 +293,16 @@ function _armarPeriodica_(ss, nombre, periodo) {
     }
     fila++;
   });
-  var filaSaldoReal = fila;
+  var filaSaldoReal = fila, ultimoBanco = fila - 1;
   h.getRange(fila, 1).setValue("Total saldo real de bancos").setFontWeight("bold");
   for (var c1 = 0; c1 < nCols; c1++) h.getRange(fila, 2 + c1).setFormula("=IF(" + D(c1) + ">$B$3,\"\",SUM(" + L(c1) + primeraBanco + ":" + L(c1) + (fila - 1) + "))").setFontWeight("bold");
   _lineaTotal_(h, fila, colFuente);
+  fila++;
+  // Saldo inicial del período = cierre del anterior (como el "Saldo inicio" de un cash a mano).
+  // Se llena después, cuando se sepa en qué fila queda el cierre.
+  var filaInicial = fila;
+  h.getRange(fila, 1).setValue("Saldo inicial (cierre del período anterior)").setFontWeight("bold");
+  h.getRange(fila, 1, 1, colFuente).setBackground("#fff8e1");
   fila += 2;
 
   // ---- 2. ingresos · 3. egresos de la operación · 4. deuda
@@ -302,7 +325,7 @@ function _armarPeriodica_(ss, nombre, periodo) {
           if (r.como === "prom") est = prom;
           else if (r.como === "max") est = "MAX(" + fx(r.lista, c) + "," + prom + ")";
           else if (r.como === "lista") est = fx(r.lista || r.est, c);
-          else if (r.como === "plan") est = fx(_planMes_(r.plan), c);
+          else if (r.como === "plan") est = fx(_planMes_(r.plan, r.auto), c);
         } else if (!mensual && r.est) est = fx(r.est, c);
         if (est) partes.push(est);
         if (partes.length) h.getRange(fila, 2 + c).setFormula("=" + partes.join("+"));
@@ -322,15 +345,28 @@ function _armarPeriodica_(ss, nombre, periodo) {
   }
   var totIng = bloque("2 · Ingresos", reng.ingresos);
   var totOpe = bloque("3 · Egresos de la operación", reng.egresos);
-  var totDeu = bloque("4 · Deuda", reng.deuda);
 
-  // ---- resultado: acá se ven los ~$150 M que deja la operación y cuánto se lleva la deuda
+  // ---- resultado de la operación: lo que la operación deja antes de cualquier deuda
   h.getRange(fila, 1).setValue("Resultado de la operación (antes de la deuda)").setFontWeight("bold");
   for (var c3 = 0; c3 < nCols; c3++) h.getRange(fila, 2 + c3).setFormula("=" + L(c3) + totIng + "-" + L(c3) + totOpe).setFontWeight("bold");
   h.getRange(fila, 1, 1, colFuente).setBackground("#e6f4ea");
   var filaResOpe = fila++;
+  fila++;
+
+  var totAuto = bloque("4 · Deuda que sale sí o sí (débito automático)", reng.deudaAuto);
+  // ---- cierre 1: pagando solo lo automático (como "sin pago a droguerías" en un cash a mano)
+  h.getRange(fila, 1).setValue("SALDO AL CIERRE pagando solo lo que sale sí o sí").setFontWeight("bold");
+  var filaCierre1 = fila++;
+  fila++;
+
+  var totDec = bloque("5 · Deuda que se paga por decisión", reng.deudaDec);
+  // ---- cierre 2: pagando también lo que es por decisión (es el que arrastra al período siguiente)
+  h.getRange(fila, 1).setValue("SALDO AL CIERRE pagando toda la deuda").setFontWeight("bold");
+  var filaCierre = fila++;
+  h.getRange(fila, 1).setValue("Deuda pospuesta acumulada (si solo se paga lo automático)").setFontColor("#a50e0e");
+  var filaPospuesta = fila++;
   h.getRange(fila, 1).setValue("Resultado después de la deuda").setFontWeight("bold");
-  for (var c4 = 0; c4 < nCols; c4++) h.getRange(fila, 2 + c4).setFormula("=" + L(c4) + filaResOpe + "-" + L(c4) + totDeu).setFontWeight("bold");
+  for (var c4 = 0; c4 < nCols; c4++) h.getRange(fila, 2 + c4).setFormula("=" + L(c4) + filaResOpe + "-" + L(c4) + totAuto + "-" + L(c4) + totDec).setFontWeight("bold");
   var filaRes = fila++;
   // ---- lo que venció en el período y NO se pagó (solo en lo real): es lo que hace que la
   // operación "dé positiva" por banco. Facturas a pagar con vencimiento en el período que siguen
@@ -361,27 +397,59 @@ function _armarPeriodica_(ss, nombre, periodo) {
   h.hideRows(filaRealIng, 2);         // auxiliares: las usa el saldo al cierre, no hace falta verlas
   fila += 3;
 
-  // ---- saldo al cierre · descubiertos · disponible
-  var cierreTxt = periodo === "dia" ? "al cierre del día" : (periodo === "semana" ? "al cierre de la semana" : "al cierre del mes");
-  h.getRange(fila, 1).setValue("Saldo de bancos " + cierreTxt).setFontWeight("bold");
+  // ---- saldo al cierre (pagando toda la deuda): real hasta el último extracto; después,
+  //      inicial + ingresos − egresos − deuda. Es el que arrastra al período siguiente.
+  var cierreTxt = periodo === "dia" ? "del día" : (periodo === "semana" ? "de la semana" : "del mes");
+  h.getRange(filaCierre, 1).setValue("SALDO AL CIERRE " + cierreTxt + " pagando toda la deuda");
   for (var c6 = 0; c6 < nCols; c6++) {
-    var ing = L(c6) + totIng, egr = "(" + L(c6) + totOpe + "+" + L(c6) + totDeu + ")";
+    var ing = L(c6) + totIng, egr = "(" + L(c6) + totOpe + "+" + L(c6) + totAuto + "+" + L(c6) + totDec + ")";
     var mixto = L(c6) + filaSaldoReal + "+(" + ing + "-" + L(c6) + filaRealIng + ")-(" + egr + "-" + L(c6) + filaRealEgr + ")";
-    var futuro = c6 === 0 ? mixto : L(c6 - 1) + fila + "+" + ing + "-" + egr;
-    h.getRange(fila, 2 + c6).setFormula("=IF(" + F(c6) + "-1<=$B$3," + L(c6) + filaSaldoReal + ",IF(" + D(c6) + "<=$B$3," + mixto + "," + futuro + "))").setFontWeight("bold");
+    var futuro = c6 === 0 ? mixto : L(c6) + filaInicial + "+" + ing + "-" + egr;
+    h.getRange(filaCierre, 2 + c6).setFormula("=IF(" + F(c6) + "-1<=$B$3," + L(c6) + filaSaldoReal + ",IF(" + D(c6) + "<=$B$3," + mixto + "," + futuro + "))").setFontWeight("bold");
+    // saldo inicial: el cierre de la columna anterior; en la primera, el cierre real menos lo que pasó en ella
+    h.getRange(filaInicial, 2 + c6).setFormula(c6 === 0
+      ? "=" + L(0) + filaSaldoReal + "-" + L(0) + filaRealIng + "+" + L(0) + filaRealEgr
+      : "=" + L(c6 - 1) + filaCierre).setFontWeight("bold");
+    // deuda pospuesta acumulada: solo hacia adelante, suma lo que se pagaría por decisión y no se paga
+    h.getRange(filaPospuesta, 2 + c6).setFormula("=IF(" + F(c6) + "-1<=$B$3,\"\"," + (c6 === 0 ? "0" : "N(" + L(c6 - 1) + filaPospuesta + ")") + "+" + L(c6) + totDec + ")").setFontColor("#a50e0e");
+    // cierre 1 = cierre pagando todo + lo que se dejó de pagar
+    h.getRange(filaCierre1, 2 + c6).setFormula("=" + L(c6) + filaCierre + "+N(" + L(c6) + filaPospuesta + ")").setFontWeight("bold");
   }
-  h.getRange(fila, 1, 1, colFuente).setBackground("#fff8e1");
-  var filaCierre = fila++;
-  h.getRange(fila, 1).setValue("Descubiertos acordados con los bancos").setFontWeight("bold");
-  for (var c7 = 0; c7 < nCols; c7++) h.getRange(fila, 2 + c7).setFormula("=SUMIFS(" + R.dbOrig + "," + R.dbLinea + ",\"*escubierto*\")");
-  var filaAcuerdos = fila++;
-  h.getRange(fila, 1).setValue("Saldo disponible (cierre + descubiertos)").setFontWeight("bold");
-  for (var c8 = 0; c8 < nCols; c8++) h.getRange(fila, 2 + c8).setFormula("=" + L(c8) + filaCierre + "+" + L(c8) + filaAcuerdos).setFontWeight("bold");
+  h.getRange(filaCierre, 1, 1, colFuente).setBackground("#fff8e1");
+  h.getRange(filaCierre1, 1, 1, colFuente).setBackground("#fff8e1");
+  fila++;
+
+  // ---- descubierto: acordado · usado · disponible. Con extracto, banco por banco (un banco
+  //      excedido no se compensa con otro en positivo); hacia adelante, sobre el total.
+  var rB = function (c) { return L(c) + primeraBanco + ":" + L(c) + ultimoBanco; };
+  var rA = _colLetra_(colAcuerdo) + primeraBanco + ":" + _colLetra_(colAcuerdo) + ultimoBanco;
+  h.getRange(fila, 1).setValue("Descubierto acordado con los bancos");
+  for (var c7 = 0; c7 < nCols; c7++) h.getRange(fila, 2 + c7).setFormula("=SUM(" + rA + ")");
+  var filaAcordado = fila++;
+  h.getRange(fila, 1).setValue("Descubierto usado (saldos en negativo)");
+  // "real" acá = la columna termina antes del último extracto (banco por banco); si no, sobre el cierre estimado
+  var esReal = function (c) { return F(c) + "-1<=$B$3"; };
+  for (var c8 = 0; c8 < nCols; c8++) h.getRange(fila, 2 + c8).setFormula("=IF(" + esReal(c8) + ",SUMPRODUCT((" + rB(c8) + "<0)*(-" + rB(c8) + ")),MAX(0,-" + L(c8) + filaCierre + "))");
+  var filaUsado = fila++;
+  h.getRange(fila, 1).setValue("Descubierto disponible (acordado − usado, banco por banco)").setFontWeight("bold");
+  for (var c9 = 0; c9 < nCols; c9++) {
+    var porBanco = "(" + rA + "+(" + rB(c9) + "<0)*" + rB(c9) + ")";
+    h.getRange(fila, 2 + c9).setFormula("=IF(" + esReal(c9) + ",SUMPRODUCT((" + porBanco + ">0)*" + porBanco + "),MAX(0," + L(c9) + filaAcordado + "-" + L(c9) + filaUsado + "))").setFontWeight("bold");
+  }
+  var filaDispDesc = fila++;
+  // con extracto: saldos en positivo + descubierto disponible banco por banco. Estimado: cierre + acordado
+  // (puede dar negativo: es lo que falta aun usando todo el descubierto).
+  h.getRange(fila, 1).setValue("Saldo disponible pagando toda la deuda (positivos + descubierto disponible)").setFontWeight("bold");
+  for (var c10 = 0; c10 < nCols; c10++) h.getRange(fila, 2 + c10).setFormula("=IF(" + esReal(c10) + ",SUMPRODUCT((" + rB(c10) + ">0)*" + rB(c10) + ")+" + L(c10) + filaDispDesc + "," + L(c10) + filaCierre + "+" + L(c10) + filaAcordado + ")").setFontWeight("bold");
+  h.getRange(fila, 1, 1, colFuente).setBackground("#fce8e6");
+  fila++;
+  h.getRange(fila, 1).setValue("Saldo disponible pagando solo lo que sale sí o sí").setFontWeight("bold");
+  for (var c11 = 0; c11 < nCols; c11++) h.getRange(fila, 2 + c11).setFormula("=" + L(c11) + (fila - 1) + "+N(" + L(c11) + filaPospuesta + ")").setFontWeight("bold");
   h.getRange(fila, 1, 1, colFuente).setBackground("#fce8e6");
   fila += 2;
 
   // ---- 5. atrasado (stock)
-  _seccion_(h, fila++, "5 · Atrasado hoy (no está en la curva: se paga por decisión, en Plan)", "#fce8e6", "#a50e0e", colFuente);
+  _seccion_(h, fila++, "6 · Atrasado hoy (stock: no está en la curva; se paga por decisión, en Plan)", "#fce8e6", "#a50e0e", colFuente);
   var primeraAtr = fila;
   reng.atrasado.forEach(function (r) {
     h.getRange(fila, 1).setValue(r.n).setFontStyle(r.info ? "italic" : "normal");
@@ -403,6 +471,8 @@ function _armarPeriodica_(ss, nombre, periodo) {
   for (var w = 0; w < nCols; w++) h.setColumnWidth(2 + w, ancho);
   if (mensual) { h.setColumnWidth(colProm, 104); h.setColumnWidth(colComo, 200); }
   h.setColumnWidth(colFuente, 20);
+  h.getRange(primeraBanco, colAcuerdo, ultimoBanco - primeraBanco + 1, 1).setNumberFormat(FORMATO_NUM);
+  h.hideColumns(colAcuerdo);          // auxiliar: acuerdo de descubierto por banco
   h.setFrozenRows(filaFechas + 1);
   h.setFrozenColumns(1);
 }
@@ -442,7 +512,7 @@ function _propuesta_(tipo, acreedor, concepto) {
     if (/planes de pago|iva|ganancias|ingresos brutos|agentes/.test(a)) return [1, "Pagar como está", 0, 0, 0, "vencimientos con fecha: si no se pagan, caducan los planes o entra demanda"];
     return [2, "Pagar como está", 0, 0, 0, ""];
   }
-  if (/cheques/.test(a)) return [2, "Posponer", 0, 0, 0, "confirmar con Priscilla si ya se pagaron (tres parecen debitados)"];
+  if (/cheques/.test(a)) return [2, "Posponer", 0, 0, 0, "confirmar con la empresa si ya se pagaron (según el extracto, varios parecen debitados)"];
   return [6, "Posponer", 3, 12, 0, "se regulariza cuando la refinanciación libere caja; primero los que cortan la hoja"];
 }
 
@@ -450,17 +520,17 @@ function armarPlan() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   R = _rangos_(ss);
   var nMeses = MESES_ADELANTE + 1;
-  var h = _hojaLimpia_(ss, "Plan", 14 + nMeses);
-  _titulo_(h, "PLAN · " + _cliente_(ss) + " · qué se paga, qué se refinancia, qué se pospone", 14 + nMeses);
+  var h = _hojaLimpia_(ss, "Plan", 15 + nMeses);
+  _titulo_(h, "PLAN · " + _cliente_(ss) + " · qué se paga, qué se refinancia, qué se pospone", 15 + nMeses);
   h.getRange(2, 1).setValue("Hoy"); h.getRange(2, 2).setFormula("=TODAY()").setNumberFormat("dd/mm/yyyy");
-  h.getRange(3, 1).setValue("Las filas son la deuda REAL (Deuda Bancaria, Deuda Impositiva, lo vencido). La Decisión (columna H) arranca con la propuesta del PDF del 19/09 y se cambia a mano. Si es refinanciar o regularizar: gracia, cuotas y tasa → la cuota nueva se calcula sola (sistema francés) y los meses de la derecha muestran cuánto sale cada mes. Cash Mensual suma esos meses.").setFontStyle("italic").setFontColor("#5f6368");
+  h.getRange(3, 1).setValue("Las filas son la deuda REAL (Deuda Bancaria, Deuda Impositiva, lo vencido). La Decisión (columna H) arranca con la propuesta inicial y se cambia a mano. Si es refinanciar o regularizar: gracia, cuotas y tasa → la cuota nueva se calcula sola (sistema francés) y los meses de la derecha muestran cuánto sale cada mes. 'Débito automático' (N) dice si el banco / ARCA lo debita solo (Sí) o si se paga por decisión (No): el cash separa la deuda en esos dos bloques. Cash Mensual suma esos meses.").setFontStyle("italic").setFontColor("#5f6368");
 
   var enc = ["Tipo", "Acreedor", "Concepto", "Deuda total hoy", "Vencido hoy", "Vence en 6 meses (cronograma)", "Prioridad (1 = primero)",
-             "Decisión", "Meses de gracia", "Cuotas nuevas", "Tasa mensual", "Cuota nueva", "Primer vencimiento", "Por qué"];
+             "Decisión", "Meses de gracia", "Cuotas nuevas", "Tasa mensual", "Cuota nueva", "Primer vencimiento", "Débito automático", "Por qué"];
   var filaEnc = 5;
   enc.forEach(function (t, i) { h.getRange(filaEnc, 1 + i).setValue(t).setFontWeight("bold").setWrap(true); });
   for (var m = 0; m < nMeses; m++) h.getRange(filaEnc, PLAN_PRIMERA_COL_MES + m).setFormula("=EOMONTH($B$2," + (m - 1) + ")+1").setNumberFormat("mmm yy").setFontWeight("bold").setHorizontalAlignment("right");
-  h.getRange(filaEnc, 1, 1, 14 + nMeses).setBackground("#f1f3f4").setBorder(false, false, true, false, false, false, "#3c4043", SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+  h.getRange(filaEnc, 1, 1, 15 + nMeses).setBackground("#f1f3f4").setBorder(false, false, true, false, false, false, "#3c4043", SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
   h.getRange(filaEnc, PLAN_PRIMERA_COL_MES, 1, nMeses).setBackground("#fef7e0");
 
   var filas = [];
@@ -506,8 +576,12 @@ function armarPlan() {
     h.getRange(r, 9).setValue(p[2]); h.getRange(r, 10).setValue(p[3]); h.getRange(r, 11).setValue(p[4]).setNumberFormat("0.0%");
     h.getRange(r, 12).setFormula("=IF(OR(" + H + "=\"Refinanciar\"," + H + "=\"Regularizar en cuotas\"),IF(" + J + "<=0,\"\",IF(" + K + ">0,PMT(" + K + "," + J + ",-" + D + ")," + D + "/" + J + ")),\"\")");
     h.getRange(r, 13).setFormula("=IF(" + Lc + "=\"\",\"\",EOMONTH($B$2," + I + ")+1)").setNumberFormat("dd/mm/yyyy");
-    h.getRange(r, 14).setValue(p[5]);
-    h.getRange(r, 7, 1, 5).setBackground("#fff8e1"); h.getRange(r, 14).setBackground("#fff8e1");
+    // débito automático: viene de la lista (Deuda Bancaria / Deuda Impositiva); el atrasado siempre es por decisión
+    if (f.tipo === "Banco") h.getRange(r, 14).setFormula("=IFERROR(INDEX(FILTER(" + R.dbAuto + "," + R.dbBanco + "=" + B + "," + R.dbLinea + "=" + C + "),1),\"No\")");
+    else if (f.tipo === "Impuesto") h.getRange(r, 14).setFormula("=IFERROR(INDEX(FILTER(" + R.diAuto + "," + R.diNombre + "=" + C + "),1),\"No\")");
+    else h.getRange(r, 14).setValue("No");
+    h.getRange(r, 15).setValue(p[5]);
+    h.getRange(r, 7, 1, 5).setBackground("#fff8e1"); h.getRange(r, 15).setBackground("#fff8e1");
     for (var m2 = 0; m2 < nMeses; m2++) {
       var mes = _colLetra_(PLAN_PRIMERA_COL_MES + m2) + "$" + filaEnc, fin = "(EOMONTH(" + mes + ",0)+1)";
       var comoEsta = "0";
@@ -524,13 +598,13 @@ function armarPlan() {
     var cl = _colLetra_(PLAN_PRIMERA_COL_MES + m3);
     h.getRange(fila, PLAN_PRIMERA_COL_MES + m3).setFormula("=SUM(" + cl + (filaEnc + 1) + ":" + cl + (fila - 1) + ")").setFontWeight("bold");
   }
-  _lineaTotal_(h, fila, 14 + nMeses);
+  _lineaTotal_(h, fila, 15 + nMeses);
   h.getRange(filaEnc + 1, 4, fila - filaEnc, 3).setNumberFormat(FORMATO_NUM);
   h.getRange(filaEnc + 1, 12, fila - filaEnc, 1).setNumberFormat(FORMATO_NUM);
   h.getRange(filaEnc + 1, PLAN_PRIMERA_COL_MES, fila - filaEnc, nMeses).setNumberFormat(FORMATO_NUM);
   h.getRange(filaEnc + 1, 11, fila - filaEnc, 1).setNumberFormat("0.0%");
   h.setColumnWidth(1, 80); h.setColumnWidth(2, 150); h.setColumnWidth(3, 260); [4, 5, 6].forEach(function (c) { h.setColumnWidth(c, 110); });
-  h.setColumnWidth(7, 80); h.setColumnWidth(8, 150); h.setColumnWidth(9, 70); h.setColumnWidth(10, 70); h.setColumnWidth(11, 70); h.setColumnWidth(12, 110); h.setColumnWidth(13, 100); h.setColumnWidth(14, 320);
+  h.setColumnWidth(7, 80); h.setColumnWidth(8, 150); h.setColumnWidth(9, 70); h.setColumnWidth(10, 70); h.setColumnWidth(11, 70); h.setColumnWidth(12, 110); h.setColumnWidth(13, 100); h.setColumnWidth(14, 90); h.setColumnWidth(15, 320);
   h.setFrozenRows(filaEnc); h.setFrozenColumns(3);
   _separadorLocal_(ss, h);
   try { ss.toast("Solapa Plan armada con la propuesta inicial. Las decisiones se cambian en la columna H.", "finauto", 8); } catch (e) {}
@@ -555,106 +629,117 @@ function armarInstrucciones() {
     filas.forEach(function (f) { f.forEach(function (v, i) { h.getRange(fila, 1 + i).setValue(v).setWrap(true).setVerticalAlignment("top"); }); fila++; });
     fila++;
   }
-  titulo("NAVAR S.A. — Cash Flow: cómo funciona");
-  sub("Actualizado el " + Utilities.formatDate(new Date(), "America/Argentina/Buenos_Aires", "dd/MM/yyyy") + ". Regla única: los datos viven en las LISTAS; las PANTALLAS son fórmula. Nadie tipea un número en una pantalla.");
+  titulo(_cliente_(ss) + " — Cash Flow: cómo funciona");
+  sub("Actualizado el " + Utilities.formatDate(new Date(), "America/Argentina/Buenos_Aires", "dd/MM/yyyy") + ". Regla única: los datos viven en las LISTAS; las PANTALLAS son fórmula. Nadie tipea un número en una pantalla. La carga es automática: los archivos se dejan en Drive y el sistema hace el resto.");
 
   seccion("1 · Las solapas");
   tabla(["Solapa", "Qué es", "De dónde sale", "Quién la toca"], [
     ["Cash", "Día por día: 7 días de extracto (real) + 28 días adelante (estimado)", "fórmula sobre las listas", "nadie"],
     ["Cash Semanal", "Semana por semana, lunes a domingo: 4 cerradas (real) + la actual + 12 adelante", "fórmula sobre las listas", "nadie"],
     ["Cash Mensual", "Mes por mes: 3 cerrados (real) + el actual + 6 adelante, con inflación editable (B4)", "fórmula sobre las listas + solapa Plan", "solo la celda de inflación"],
-    ["Plan", "Una fila por deuda: pagar como está / refinanciar / posponer. Cash Mensual toma las cuotas de acá", "Deuda Bancaria + Deuda Impositiva + lo vencido", "Thomas y Priscilla: la Decisión, gracia, cuotas, tasa, prioridad"],
-    ["Movimientos", "LISTA: cada movimiento real de banco, clasificado", "extractos → lector → Importar Bancos", "el importador"],
-    ["Saldos Bancarios", "LISTA: saldo al cierre de cada día, por cuenta", "extractos → Importar Bancos · la caja AA se carga a mano", "el importador · AA: a mano"],
-    ["Cuentas a Cobrar", "LISTA: facturas pendientes de clientes, con vencimiento", "Tango → lector → Importar Tango", "el importador"],
-    ["Cuentas a Pagar", "LISTA: facturas pendientes de proveedores, con vencimiento", "Tango → Importar Tango", "el importador"],
-    ["Cartera de Cheques", "LISTA: cheques de terceros en cartera y cheques propios entregados", "Tango → Importar Tango", "el importador"],
-    ["Deuda Bancaria", "LISTA: A) cada línea con su capital · B) cronograma: cada cuota pendiente", "mapa de deuda + extractos → Importar Deuda", "el importador · capital: a mano si el banco no manda tabla"],
-    ["Deuda Impositiva", "LISTA: cada deuda con ARCA / DGR / municipio, con vencimiento", "planilla de Celia → Importar Impuestos", "el importador"],
+    ["Plan", "Una fila por deuda: pagar como está / refinanciar / posponer. Cash Mensual toma las cuotas de acá", "Deuda Bancaria + Deuda Impositiva + lo vencido", "la dirección: Decisión, gracia, cuotas, tasa, prioridad"],
+    ["Movimientos", "LISTA: cada movimiento real de banco, clasificado", "extractos → lector → importación automática", "el sistema"],
+    ["Saldos Bancarios", "LISTA: saldo al cierre de cada día, por cuenta. La caja en efectivo de AA se carga a mano (una fila por arqueo)", "extractos → lector → importación automática · caja AA: a mano", "el sistema · la caja AA: quien hace el arqueo"],
+    ["Cuentas a Cobrar", "LISTA: facturas pendientes de clientes, con vencimiento", "Tango → lector → importación automática", "el sistema"],
+    ["Cuentas a Pagar", "LISTA: facturas pendientes de proveedores, con vencimiento", "Tango → lector → importación automática", "el sistema"],
+    ["Cartera de Cheques", "LISTA: cheques de terceros en cartera y cheques propios entregados", "Tango → lector → importación automática", "el sistema"],
+    ["Deuda Bancaria", "LISTA: A) cada línea con su capital · B) cronograma: cada cuota pendiente. 'Debito Automatico' dice si el banco la debita solo", "mapa de deuda + extractos → lector → importación automática", "el sistema · el capital, a mano si el banco no manda tabla"],
+    ["Deuda Impositiva", "LISTA: cada deuda con ARCA / DGR / municipio, con vencimiento. 'Debito Automatico' = planes con débito en CBU", "planilla de impuestos → lector → importación automática", "el sistema"],
+    ["Registro", "Una fila por cada importación automática: cuándo, qué archivo, cuántas filas, o el error", "lo escribe el disparador", "nadie"],
   ]);
 
-  seccion("2 · Cómo se lee una pantalla");
+  seccion("2 · Cómo se lee una pantalla (las tres tienen la misma estructura)");
   tabla(["Parte", "Qué muestra"], [
     ["Hoy / Último extracto", "B2 es hoy; B3 el último día con extracto. Hasta B3 todo es REAL; desde el día siguiente, ESTIMADO. La fila bajo las fechas lo dice por columna (real · estimado · real + est.)."],
-    ["1 · Bancos", "Saldo de cada banco al cierre de la columna, del extracto. Si un banco no tiene extracto hasta ahí, arrastra el último conocido. Hacia adelante queda vacío: no se sabe por banco."],
-    ["2 · Ingresos · 3 · Egresos de la operación", "Un renglón por concepto: en las columnas reales, lo que pasó por el banco; en las estimadas, lo que dicen las listas con fecha (tabla 3)."],
-    ["4 · Deuda", "Cuotas de bancos y tarjeta, vencimientos de impuestos y (mensual) regularización del atrasado. En el mensual salen de la solapa Plan."],
-    ["Resultado de la operación", "Ingresos − egresos de la operación, SIN préstamos (los préstamos entran en el bloque Deuda, con signo negativo). Es lo que la operación deja por banco antes de la deuda."],
-    ["Resultado después de la deuda", "Lo anterior menos cuotas, impuestos atrasados y regularización, más los préstamos que entraron. Negativo = la deuda se come más de lo que la operación deja."],
-    ["Venció en el período y no se pagó", "Facturas de proveedores e impuestos con vencimiento en ese período que siguen impagos (Cuentas a Pagar + Deuda Impositiva). Solo en lo real. Es la parte de la operación que se financió NO pagando."],
-    ["Resultado de la operación pagando lo que vencía", "Lo que hubiera quedado si se pagaba todo lo que venció. Es el número honesto de la operación: cerca de cero o negativo."],
-    ["Saldo de bancos al cierre", "Real hasta el último extracto; después, cierre anterior + ingresos − egresos."],
-    ["Saldo disponible", "Cierre + descubiertos acordados ($160 M). Negativo = no se cubre lo comprometido ni con todo el descubierto: hay que elegir."],
-    ["5 · Atrasado hoy", "Lo vencido, por concepto. NO está en ninguna columna (no arranca la curva en rojo). Se paga por decisión, en Plan."],
+    ["1 · Bancos", "Saldo real de cada cuenta al cierre del período, arrastrando el último conocido. Vacío hacia adelante: el futuro no se inventa por banco."],
+    ["Saldo inicial", "El cierre del período anterior. Es el 'saldo inicio' de un cash hecho a mano: de acá se parte cada día / semana / mes."],
+    ["2 · Ingresos", "Un renglón por concepto. Real atrás (extracto), estimado adelante (listas). Sin préstamos: los préstamos no son operación."],
+    ["3 · Egresos de la operación", "Ídem: proveedores, sueldos, impuestos corrientes, cheques propios, banco, otros."],
+    ["Resultado de la operación", "Ingresos − egresos de la operación. Lo que la operación deja ANTES de cualquier deuda."],
+    ["4 · Deuda que sale sí o sí", "Lo que el banco o ARCA debita solo cuando hay fondos: cuotas y tarjetas con débito automático, planes vigentes. Acá también entran (restando) los préstamos tomados."],
+    ["SALDO AL CIERRE pagando solo lo que sale sí o sí", "Escenario 1: si no se paga nada por decisión. Es el saldo 'de mínima'."],
+    ["5 · Deuda que se paga por decisión", "Cuotas por transferencia, impuestos por VEP, planes nuevos, regularización de atrasado. Alguien tiene que decidir pagarlo."],
+    ["SALDO AL CIERRE pagando toda la deuda", "Escenario 2: pagando todo lo que vence. Es el que arrastra al período siguiente como saldo inicial."],
+    ["Deuda pospuesta acumulada", "Si se elige el escenario 1: cuánto se fue dejando de pagar, sumado período a período. Es lo que se acumula como atrasado nuevo."],
+    ["Resultado después de la deuda", "Resultado de la operación menos toda la deuda. Negativo = la deuda se come más de lo que la operación deja."],
+    ["Venció en el período y no se pagó", "Facturas de proveedores e impuestos con vencimiento en ese período que siguen impagos (solo en lo real). Es la parte de la operación que se financió NO pagando."],
+    ["Resultado de la operación pagando lo que vencía", "Lo que hubiera quedado pagando todo lo que venció. Es el número honesto de la operación."],
+    ["Descubierto acordado · usado · disponible", "Acordado: lo que cada banco autorizó. Usado: los saldos en negativo. Disponible: acordado − usado, banco por banco (un banco excedido no se compensa con otro en positivo). Hacia adelante, sobre el total."],
+    ["Saldo disponible", "Saldos en positivo + descubierto disponible, en los dos escenarios. Negativo = no se cubre lo comprometido ni usando todo el descubierto: hay que elegir."],
+    ["6 · Atrasado hoy", "Lo vencido, por concepto. Es un STOCK: no está en ninguna columna (no arranca la curva en rojo). Se paga por decisión, en Plan."],
   ]);
 
   seccion("3 · Cada renglón: qué es lo real y qué es lo estimado");
-  tabla(["Renglón", "REAL (columnas pasadas) = extracto", "ESTIMADO (columnas futuras)"], [
+  tabla(["Renglón", "REAL (columnas pasadas)", "ESTIMADO (columnas futuras)"], [
     ["Cobranza acreditada", "transferencias y depósitos de clientes (Movimientos · Cobranza Facturas)", "diario/semanal: facturas A que vencen (Cuentas a Cobrar) · mensual: promedio × inflación"],
     ["Cobranza AA (efectivo)", "nada: AA cobra en efectivo, no pasa por banco", "facturas AA que vencen (Cuentas a Cobrar)"],
     ["Cheques de clientes", "cheques depositados + venta de valores / descuento (Movimientos · Cheques + Descuento de Cheques)", "diario/semanal: cheques en cartera por fecha de cobro · mensual: promedio × inflación"],
-    ["Préstamos tomados (bloque Deuda, resta)", "préstamos acreditados (Movimientos · Prestamo, ingreso)", "no se proyecta: es una decisión"],
     ["Sin identificar", "lo que el banco acreditó sin decir qué es (Movimientos · Otros)", "tiene que ser 0"],
     ["Proveedores A", "pagos a proveedores (Movimientos · Proveedores)", "diario/semanal: facturas A que vencen (Cuentas a Pagar) · mensual: el mayor entre eso y el promedio × inflación"],
     ["Proveedores AA", "nada: AA paga en efectivo", "facturas AA que vencen (Cuentas a Pagar)"],
-    ["Sueldos y cargas", "Movimientos · Sueldos y Jornales (Macro)", "diario/semanal: lo proyectado con fecha en Movimientos · mensual: promedio × inflación"],
-    ["Impuestos corrientes", "Movimientos · Impuestos (IVA, cargas, retenciones, sellos)", "mensual: promedio × inflación · diario/semanal: no se estima"],
-    ["Cheques propios", "cheques debitados (Movimientos · Cheques, egreso)", "cheques propios en cartera por fecha de pago"],
+    ["Sueldos y cargas", "Movimientos · Sueldos y Jornales", "diario/semanal: lo proyectado con fecha en Movimientos · mensual: promedio × inflación"],
+    ["Impuestos corrientes", "Movimientos · Impuestos (IVA, cargas, retenciones pagadas)", "mensual: promedio × inflación · diario/semanal: no se estima"],
+    ["Cheques propios", "cheques debitados (Movimientos · Cheques, egreso)", "en cartera por fecha de pago (Cartera de Cheques)"],
     ["Intereses y gastos bancarios", "Movimientos · Gastos Bancarios", "diario/semanal: promedio de los últimos 90 días · mensual: promedio × inflación"],
-    ["Otros (tarjeta, honorarios, cosecha)", "Movimientos · Otros + Honorarios", "lo proyectado con fecha en Movimientos (salvo sueldos)"],
-    ["Cuotas bancarias y tarjeta", "cuotas debitadas (Movimientos · Prestamo, egreso)", "diario/semanal: cronograma de Deuda Bancaria · mensual: solapa Plan"],
-    ["Impuestos: deuda y planes", "—", "diario/semanal: Deuda Impositiva por vencimiento · mensual: solapa Plan"],
+    ["Otros (tarjeta, honorarios)", "Movimientos · Otros + Honorarios", "lo proyectado con fecha en Movimientos (salvo sueldos)"],
+    ["Cuotas y tarjetas con débito automático", "cuotas debitadas (Movimientos · Prestamo, egreso)", "diario/semanal: cronograma de Deuda Bancaria (Debito Automatico = Si) · mensual: solapa Plan"],
+    ["Planes de ARCA con débito automático", "—", "Deuda Impositiva (Debito Automatico = Si) · mensual: solapa Plan"],
+    ["Préstamos tomados", "préstamos acreditados (Movimientos · Prestamo, ingreso), restando", "no se proyecta: es una decisión"],
+    ["Cuotas que se pagan por decisión", "—", "cronograma (Debito Automatico = No) · mensual: solapa Plan"],
+    ["Impuestos por VEP y planes nuevos", "—", "Deuda Impositiva (Debito Automatico = No) · mensual: solapa Plan"],
     ["Regularización de atrasado", "—", "mensual: solapa Plan (lo vencido que se decide pagar en cuotas)"],
   ]);
 
-  seccion("4 · Cómo impacta cada movimiento");
-  tabla(["Pasa esto", "Dónde entra", "Qué cambia en el cash"], [
-    ["Un cliente paga por transferencia", "Movimientos (Cobranza Facturas, real) · en Tango se hace el recibo y la factura sale de Cuentas a Cobrar", "sube el saldo real; baja lo estimado a cobrar; baja 'Vencido a cobrar' si estaba vencida"],
-    ["Un cliente paga con cheque", "Tango: recibo + cheque en Cartera de Cheques (terceros)", "sube 'Cheques en cartera' (estimado por fecha de cobro); el saldo real NO cambia hasta que se deposita o descuenta"],
-    ["Se descuenta un cheque en el banco", "Movimientos (Descuento de Cheques, real) · el cheque sale de la cartera", "sube el saldo real; baja lo estimado de cheques; el interés queda en Gastos Bancarios"],
-    ["Se paga a un proveedor", "Movimientos (Proveedores, real) · Tango: orden de pago, la factura sale de Cuentas a Pagar", "baja el saldo real; baja lo estimado a pagar; baja 'Proveedores vencidos' si estaba vencida"],
-    ["Se entrega un cheque propio", "Cartera de Cheques (propio, con fecha de pago)", "aparece en 'Cheques propios' estimado a la fecha de pago; cuando se debita pasa a real y sale de la cartera"],
-    ["Se paga una cuota de préstamo", "Movimientos (Prestamo egreso, real) · Deuda Bancaria: la cuota pasa a 'Pagado' y el capital vigente baja", "baja el saldo real; baja 'Cuotas bancarias' estimado; baja la deuda total en Plan; si estaba vencida, baja 'Cuotas impagas'"],
-    ["Entra un préstamo nuevo", "Movimientos (Prestamo ingreso, real) · Deuda Bancaria: nueva línea + su cronograma", "sube el saldo real hoy; suben las cuotas futuras; sube la deuda total en Plan"],
-    ["Se paga un impuesto", "Movimientos (Impuestos, real) · Deuda Impositiva: la fila pasa a 'Pagado'", "baja el saldo real; baja lo estimado de impuestos; baja 'Impuestos vencidos'"],
-    ["Se firma un plan de pagos con ARCA", "Deuda Impositiva: la deuda original pasa a 'Pagado' y se cargan las cuotas del plan · en Plan, la decisión 'Refinanciar' hace lo mismo sin tocar la lista", "el stock vencido baja; aparecen cuotas mensuales en 'Impuestos: deuda y planes'"],
-    ["Se refinancia un préstamo", "Deuda Bancaria: cronograma nuevo (el banco manda la tabla) · mientras tanto, en Plan: 'Refinanciar' con gracia, cuotas y tasa", "cambian las cuotas futuras; el capital no cambia hasta que el banco lo confirme"],
-    ["Se usa más descubierto", "Movimientos (lo que se pagó) · el saldo real del banco queda más negativo", "baja el saldo real; baja el disponible (saldo + acuerdo)"],
+  seccion("4 · Cómo impacta cada movimiento (qué se mueve cuando pasa algo)");
+  tabla(["Pasa esto", "Dónde entra", "Qué cambia en las pantallas"], [
+    ["Un cliente paga por transferencia", "Movimientos (real, extracto) · en Tango: recibo → la factura sale de Cuentas a Cobrar", "sube 'Cobranza acreditada' real y el saldo del banco; baja lo estimado a cobrar y el vencido a cobrar"],
+    ["Un cliente paga con cheque", "Tango: recibo + Cartera de Cheques (terceros, fecha de cobro)", "sube 'Cheques de clientes' estimado en la fecha de cobro; el saldo real no cambia hasta que se deposita o descuenta"],
+    ["Se descuenta un cheque (venta de valores)", "Movimientos (Descuento de Cheques) · el cheque sale de la cartera", "sube el saldo real hoy; el interés va a 'Intereses y gastos bancarios'"],
+    ["Se paga a un proveedor", "Movimientos (Proveedores) · en Tango: orden de pago → la factura sale de Cuentas a Pagar", "sube 'Proveedores A' real, baja el saldo; baja lo estimado y el vencido a pagar"],
+    ["Se entrega un cheque propio", "Cartera de Cheques (propio, fecha de pago)", "aparece en 'Cheques propios' estimado en esa fecha; cuando se debita pasa a real"],
+    ["Se paga una cuota", "Movimientos (Prestamo egreso) · Deuda Bancaria: la cuota pasa a Pagado, baja el capital", "baja el saldo; baja 'cuotas' estimado; baja la deuda total en Plan; baja 'cuotas impagas' si estaba vencida"],
+    ["Entra un préstamo", "Movimientos (Prestamo ingreso) · Deuda Bancaria: línea nueva + cronograma", "sube el saldo hoy (en el bloque Deuda, restando); suben las cuotas futuras y la deuda total"],
+    ["Se paga un impuesto", "Movimientos (Impuestos) · Deuda Impositiva: la fila pasa a Pagado", "baja el saldo; baja lo estimado y lo vencido de impuestos"],
+    ["Se firma un plan de pagos con ARCA", "Deuda Impositiva: la deuda pasa a Pagado y se cargan las cuotas (o en Plan: 'Refinanciar')", "baja el stock vencido; aparecen cuotas mensuales en el bloque que corresponda (débito automático o VEP)"],
+    ["Se refinancia un préstamo", "Deuda Bancaria: cronograma nuevo (o en Plan: 'Refinanciar' con gracia, cuotas y tasa)", "cambian las cuotas futuras; el mensual toma el Plan"],
+    ["No se paga algo que vencía", "nada: la factura sigue en la lista con vencimiento pasado", "al día siguiente sube 'Atrasado hoy' y 'Venció y no se pagó'; no se corre solo a mañana: se paga por decisión (Plan)"],
+    ["Se usa más descubierto", "el saldo real del banco queda más negativo", "sube 'Descubierto usado', baja el disponible"],
     ["Transferencia entre cuentas propias", "Movimientos, marcada INTERNO", "no cambia nada: sale de una cuenta y entra en otra"],
   ]);
 
-  seccion("5 · Cómo se actualiza (desde el 20/09: sola)");
+  seccion("5 · Cómo se actualiza (sola)");
   tabla(["Paso", "Quién", "Qué hace", "Dónde"], [
-    ["1", "NAVAR (Karina / Priscilla) o el bot", "deja el archivo nuevo en SU carpeta de Drive (una carpeta por export, ver tabla de abajo)", "Drive · NAVAR - Datos"],
-    ["2", "la Mac de Thomas (vigilante, cada 15 min)", "ve el archivo nuevo y corre el lector que corresponde; el lector deja el para_pegar_*.xlsx al lado", "clientes/navar/herramientas/vigilante.py · log en privado/vigilante.log"],
-    ["3", "esta Sheet (disparador, cada hora)", "ve el para_pegar nuevo y lo importa: pisa lo que ese lector cargó antes, no toca fórmulas ni lo cargado a mano", "solapa Registro: una fila por importación (o el error)"],
-    ["4", "las pantallas", "recalculan solas: B3 (último extracto) avanza, lo real reemplaza lo estimado, la cobranza que entró sale del 'a cobrar'", "Cash · Cash Semanal · Cash Mensual"],
-    ["a mano", "quien cierra la caja AA", "una fila por día en Saldos Bancarios: fecha, (varios), saldo", "Saldos Bancarios"],
-    ["a mano", "Priscilla + Thomas", "las decisiones: pagar / refinanciar / posponer, gracia, cuotas, tasa", "Plan"],
+    ["1", "la empresa o el bot", "deja el archivo nuevo en SU carpeta de Drive (una carpeta por export, ver tabla de abajo)", "Drive · carpeta de datos"],
+    ["2", "el vigilante (cada 15 min)", "ve el archivo nuevo y corre el lector que corresponde; el lector deja el para_pegar_*.xlsx en '_para la Sheet'. Si una lista se achica de golpe (un export con filtro cambiado), lo retiene y no publica", "log del vigilante"],
+    ["3", "el disparador de esta Sheet (cada hora)", "ve el para_pegar nuevo y lo importa: pisa lo que ese lector cargó antes, no toca fórmulas ni lo cargado a mano; si el lector trae una columna nueva, la agrega", "solapa Registro"],
+    ["4", "las pantallas", "recalculan solas: B3 avanza, lo real reemplaza lo estimado, la cobranza que entró sale del 'a cobrar'", "Cash · Cash Semanal · Cash Mensual"],
+    ["a mano", "quien hace el arqueo", "una fila por arqueo en Saldos Bancarios: fecha, Varios, AA, saldo, Manual", "Saldos Bancarios"],
+    ["a mano", "la dirección", "las decisiones: pagar / refinanciar / posponer, gracia, cuotas, tasa", "Plan"],
     ["si hace falta", "finauto → Importar lo nuevo ahora", "lo mismo que el disparador, sin esperar la hora", "menú finauto"],
     ["si cambió la estructura", "finauto → Armar solapa Cash", "rearma las pantallas; Plan no se toca", "menú finauto"],
-    ["después", "bots de banco + token de Tango Live en la notebook de NAVAR", "hacen el paso 1 solos cada mañana", "nadie sube nada: el cash amanece al día"],
+    ["después", "bots de banco + bajada de Tango por API", "hacen el paso 1 solos cada mañana", "nadie sube nada: el cash amanece al día"],
   ]);
 
-  seccion("5b · Las carpetas de Drive (NAVAR - Datos): una por export");
+  seccion("5b · Las carpetas de Drive: una por export");
   tabla(["Carpeta", "Qué se deja", "Nombre del archivo", "A qué solapa va"], [
     ["Bancos/<banco>", "el extracto (PDF) o el Excel de movimientos del home banking. Se acumulan: cada mes se agrega el nuevo, nada se borra", "como venga del banco", "Saldos Bancarios · Movimientos"],
-    ["Cuentas a cobrar", "Tango Live: composición de saldos de clientes, de cada empresa, un archivo por día", "A cobranzas 2026-09-22.xlsx · AA cobranzas 2026-09-22.xlsx", "Cuentas a Cobrar"],
-    ["Cuentas a pagar", "Tango Live: composición de saldos de proveedores", "A pagos 2026-09-22.xlsx · AA pagos 2026-09-22.xlsx", "Cuentas a Pagar"],
-    ["Cheques", "Tango Live: cheques de terceros en cartera y cheques propios emitidos", "A cheques terceros 2026-09-22.xlsx · A cheques propios 2026-09-22.xlsx · AA cheques terceros ...", "Cartera de Cheques"],
-    ["Deuda bancaria", "el mapa de deuda (Bancos_Navar.xlsx) cuando cambie", "Bancos_Navar.xlsx", "Deuda Bancaria"],
-    ["Impuestos", "la planilla de Celia cuando cambie", "Control Vencimiento Impuestos.xlsx", "Deuda Impositiva"],
+    ["Cuentas a cobrar", "Tango Live: composición de saldos de clientes, de cada empresa, un archivo por día", "A cobranzas AAAA-MM-DD.xlsx · AA cobranzas AAAA-MM-DD.xlsx", "Cuentas a Cobrar"],
+    ["Cuentas a pagar", "Tango Live: composición de saldos de proveedores", "A pagos AAAA-MM-DD.xlsx · AA pagos AAAA-MM-DD.xlsx", "Cuentas a Pagar"],
+    ["Cheques", "Tango Live: cheques de terceros en cartera y cheques propios emitidos", "A cheques terceros AAAA-MM-DD.xlsx · A cheques propios AAAA-MM-DD.xlsx · AA cheques terceros ...", "Cartera de Cheques"],
+    ["Deuda bancaria", "el mapa de deuda cuando cambie", "Bancos_Navar.xlsx", "Deuda Bancaria"],
+    ["Impuestos", "la planilla de vencimientos impositivos cuando cambie", "Control Vencimiento Impuestos.xlsx", "Deuda Impositiva"],
     ["_para la Sheet", "NO TOCAR: lo que generan los lectores; de acá lo levanta el disparador", "para_pegar_*.xlsx", "—"],
   ]);
-  parrafo("Cada export de Tango es la FOTO completa de ese día (no lo nuevo desde ayer): se carga el más nuevo de cada lista; los anteriores quedan como historia. El nombre importa: primera palabra = empresa (A / AA), después qué es (cobranzas / pagos / cheques terceros / cheques propios), después la fecha.");
+  parrafo("Cada export de Tango es la FOTO completa de ese día (no lo nuevo desde ayer): se carga el más nuevo de cada lista; los anteriores quedan como historia. El nombre importa: primera palabra = empresa (A / AA), después qué es (cobranzas / pagos / cheques terceros / cheques propios), después la fecha. Los filtros de cada consulta tienen que ser los mismos cada vez (vencimiento sin límite, pendientes): si cambian, el vigilante retiene el archivo y no se publica.");
 
   seccion("6 · Reglas que no se rompen");
   tabla(["Regla", "Por qué"], [
     ["Nadie tipea números en las pantallas", "si un número está mal, está mal en la lista: se corrige ahí y las pantallas cambian solas"],
     ["Real y estimado no se mezclan en una celda", "salvo en la columna del último extracto, que lo dice"],
-    ["Las filas 'REVISAR:' y las 'Manual' del cash viejo no suman", "están para no perder información, no para el cash"],
+    ["Las filas 'REVISAR:' no suman", "están para no perder información, no para el cash"],
     ["Lo vencido es un stock, no un movimiento", "no arranca la curva en rojo; se paga por decisión"],
-    ["Ningún número sale a NAVAR sin validar", "la caja la confirma el extracto; lo vencido, Tango; la deuda, el banco"],
+    ["Los préstamos no son operación", "entran en el bloque Deuda, restando; el resultado de la operación se lee sin ellos"],
+    ["Ningún número se muestra sin validar", "la caja la confirma el extracto; lo vencido, Tango; la deuda, el banco"],
   ]);
   h.setColumnWidth(1, 260); h.setColumnWidth(2, 420); h.setColumnWidth(3, 420); h.setColumnWidth(4, 300);
 }

@@ -1,6 +1,6 @@
 # El cash de NAVAR: qué es, cómo funciona, cómo se mantiene
 
-Escrito el 20/09/2026 para que Thomas pueda explicarlo sin leer código. Lo mismo, en
+Escrito el 20/09/2026 (estructura v5 del 22/09) para poder explicarlo sin leer código. Lo mismo, en
 tablas cortas, está en la solapa **Instrucciones** de la Sheet.
 
 ## 1. La idea en una frase
@@ -22,24 +22,41 @@ cambian solas. Eso es lo que hace que se pueda mantener y automatizar.
 | Cuentas a Cobrar / a Pagar | LISTA: facturas pendientes con vencimiento | Tango → Importar Tango |
 | Cartera de Cheques | LISTA: cheques de terceros en cartera y propios entregados | Tango → Importar Tango |
 | Deuda Bancaria | LISTA: cada línea con su capital + cronograma de cuotas | mapa de deuda → Importar Deuda |
-| Deuda Impositiva | LISTA: cada deuda con ARCA/DGR/municipio con vencimiento | planilla de Celia → Importar Impuestos |
+| Deuda Impositiva | LISTA: cada deuda con ARCA/DGR/municipio con vencimiento; 'Debito Automatico' = planes con débito en CBU | planilla de vencimientos impositivos → importación automática |
 
-## 3. Cómo se lee una pantalla (las tres son iguales)
+## 3. Cómo se lee una pantalla (las tres son iguales; es el esqueleto de un cash a mano)
 
 ```
 Hoy · Último día con extracto        ← hasta ahí es REAL; desde el día siguiente, ESTIMADO
 FECHAS                               ← la fila de abajo dice por columna: real · estimado · real + est.
-1 · Bancos                           ← saldo real de cada banco al cierre (vacío hacia adelante)
-2 · Ingresos                         ← un renglón por concepto: real atrás, estimado adelante
+1 · Bancos                           ← saldo real de cada cuenta al cierre (vacío hacia adelante)
+Saldo inicial                        ← el cierre del período anterior: de acá se parte
+2 · Ingresos                         ← un renglón por concepto: real atrás, estimado adelante (SIN préstamos)
 3 · Egresos de la operación
-4 · Deuda                            ← cuotas, planes de ARCA, regularización (en el mensual, según Plan)
-Resultado de la operación            ← ingresos − egresos de la operación = capacidad de pago (~$100–150 M/mes)
+Resultado de la operación            ← ingresos − egresos de la operación, antes de cualquier deuda
+4 · Deuda que sale sí o sí           ← lo que el banco / ARCA debita solo: cuotas y tarjetas con débito
+                                        automático, planes vigentes. Los préstamos tomados entran acá restando
+SALDO AL CIERRE pagando solo lo que sale sí o sí      ← escenario 1 (como "sin pago a proveedores")
+5 · Deuda que se paga por decisión   ← cuotas por transferencia, VEP, planes nuevos, regularización
+SALDO AL CIERRE pagando toda la deuda                 ← escenario 2; es el que arrastra al período siguiente
+Deuda pospuesta acumulada            ← en el escenario 1: lo que se fue dejando de pagar, sumado
 Resultado después de la deuda        ← negativo = la deuda se come más de lo que la operación deja
-Saldo de bancos al cierre            ← real hasta el último extracto; después cierre anterior + ingresos − egresos
-Descubiertos acordados               ← $160 M
-Saldo disponible                     ← cierre + descubiertos; negativo = hay que elegir qué no pagar
-5 · Atrasado hoy                     ← lo vencido, por concepto; NO está en la curva; se paga por decisión en Plan
+Venció en el período y no se pagó    ← solo en lo real: facturas e impuestos vencidos en el período que siguen impagos
+Resultado pagando lo que vencía      ← el número honesto de la operación
+Descubierto acordado · usado · disponible   ← disponible = acordado − usado, banco por banco
+Saldo disponible (2 escenarios)      ← positivos + descubierto disponible; negativo = falta aun con todo el descubierto
+6 · Atrasado hoy                     ← lo vencido, por concepto; es un STOCK, no está en la curva; se paga por decisión
 ```
+
+**Qué pasa con lo que vence y no se paga**: no desaparece ni se corre solo a mañana. Al día siguiente
+está en "Atrasado hoy" (stock) y en "Venció y no se pagó". Se paga cuando alguien lo decide, en Plan
+("Regularización"), y entonces aparece como cuota en el mensual. Si se mira el escenario 1, la fila
+"Deuda pospuesta acumulada" muestra cuánto se acumuló de deuda por decisión sin pagar.
+
+**Qué es "débito automático"**: la columna `Debito Automatico` de Deuda Bancaria y Deuda Impositiva.
+Regla: préstamos, tarjetas e hipotecas = Sí (el banco lo debita si hay fondos); planes de pago
+vigentes de ARCA = Sí (débito en CBU); el resto de impuestos = No (VEP). Se corrige por producto en
+`catalogo.json → debito_automatico`.
 
 ## 4. Cada renglón: real y estimado
 
@@ -48,7 +65,6 @@ Saldo disponible                     ← cierre + descubiertos; negativo = hay q
 | Cobranza acreditada | transferencias y depósitos de clientes | facturas A que vencen (Tango) · mensual: promedio × inflación |
 | Cobranza AA (efectivo) | — (AA no pasa por banco) | facturas AA que vencen |
 | Cheques de clientes | depositados + descontados (venta de valores) | cheques en cartera por fecha de cobro · mensual: promedio |
-| Préstamos nuevos | préstamos acreditados | 0: es una decisión |
 | Sin identificar | lo que el banco acreditó sin decir qué es | tiene que ser 0 |
 | Proveedores A | pagos a proveedores | facturas A que vencen · mensual: el mayor entre Tango y promedio |
 | Proveedores AA | — | facturas AA que vencen |
@@ -57,8 +73,11 @@ Saldo disponible                     ← cierre + descubiertos; negativo = hay q
 | Cheques propios | debitados | en cartera por fecha de pago |
 | Intereses y gastos bancarios | extracto | promedio 90 días |
 | Otros (tarjeta, honorarios) | extracto | proyectado con fecha · la cosecha no se proyecta: en 2027 compran canchada (va por Proveedores) |
-| Cuotas bancarias y tarjeta | cuotas debitadas | cronograma · mensual: Plan |
-| Impuestos: deuda y planes | — | Deuda Impositiva · mensual: Plan |
+| Cuotas y tarjetas con débito automático | cuotas debitadas | cronograma (Debito Automatico = Si) · mensual: Plan |
+| Planes de ARCA con débito automático | — | Deuda Impositiva (Si) · mensual: Plan |
+| Préstamos tomados | préstamos acreditados, restando | no se proyecta |
+| Cuotas que se pagan por decisión | — | cronograma (No) · mensual: Plan |
+| Impuestos por VEP y planes nuevos | — | Deuda Impositiva (No) · mensual: Plan |
 | Regularización de atrasado | — | mensual: Plan |
 
 ## 5. Cómo impacta cada movimiento
@@ -82,12 +101,12 @@ Saldo disponible                     ← cierre + descubiertos; negativo = hay q
 
 | Paso | Quién | Qué hace | Dónde |
 |---|---|---|---|
-| 1 | NAVAR (Karina / Priscilla) | deja el archivo nuevo en Drive: extracto del banco, exports de Tango Live (cobranzas, pagos, cheques), planilla de impuestos de Celia, mapa de deuda | `NAVAR - Datos / Bancos/<banco>` · `Tango/<fecha>` · `Impuestos` · `Deuda` |
-| 2 | la Mac de Thomas (**vigilante**, cada 15 min, launchd) | ve el archivo nuevo y corre el lector que corresponde; el lector deja el `para_pegar_*.xlsx` al lado | `herramientas/vigilante.py` · log en `privado/vigilante.log` |
+| 1 | la empresa o el bot | deja el archivo nuevo en SU carpeta de Drive | `NAVAR - Datos / Bancos/<banco>` · `Cuentas a cobrar` · `Cuentas a pagar` · `Cheques` · `Deuda bancaria` · `Impuestos` |
+| 2 | la notebook de la empresa (**vigilante**, cada 15 min) | ve el archivo nuevo y corre el lector que corresponde; deja el `para_pegar_*.xlsx` en `_para la Sheet`; si una lista se achica de golpe, lo retiene | `herramientas/vigilante.py` · log en `privado/vigilante.log` |
 | 3 | la Sheet (**disparador**, cada hora, Apps Script) | ve el `para_pegar` nuevo y lo importa; pisa lo que ese lector cargó antes, no toca fórmulas ni lo cargado a mano | solapa **Registro**: una fila por importación (o el error) |
 | 4 | las pantallas | recalculan solas: B3 avanza, lo real reemplaza lo estimado, la cobranza que entró sale del "a cobrar" | Cash · Cash Semanal · Cash Mensual |
-| a mano | quien cierra la caja AA | una fila por día en Saldos Bancarios: fecha, (varios), saldo | Saldos Bancarios |
-| a mano | Priscilla + Thomas | las decisiones: pagar / refinanciar / posponer, gracia, cuotas, tasa | Plan |
+| a mano | quien hace el arqueo de caja | una fila por arqueo en Saldos Bancarios: fecha, Varios, AA, saldo, Manual | Saldos Bancarios |
+| a mano | la dirección | las decisiones: pagar / refinanciar / posponer, gracia, cuotas, tasa | Plan |
 
 ### Las carpetas de Drive (`NAVAR - Datos`): una por export
 
@@ -100,7 +119,7 @@ Cada bot o persona deja su archivo en SU carpeta y nada más; el vigilante sabe 
 | `Cuentas a pagar` | Tango Live: composición de saldos de proveedores | `A pagos 2026-09-22.xlsx` · `AA pagos ...` | Cuentas a Pagar |
 | `Cheques` | Tango Live: cheques de terceros en cartera y cheques propios emitidos | `A cheques terceros 2026-09-22.xlsx` · `A cheques propios 2026-09-22.xlsx` · `AA cheques terceros ...` | Cartera de Cheques |
 | `Deuda bancaria` | el mapa de deuda cuando cambie | `Bancos_Navar.xlsx` | Deuda Bancaria |
-| `Impuestos` | la planilla de Celia cuando cambie | `Control Vencimiento Impuestos.xlsx` | Deuda Impositiva |
+| `Impuestos` | la planilla de vencimientos impositivos cuando cambie | `Control Vencimiento Impuestos.xlsx` | Deuda Impositiva |
 | `_para la Sheet` | NO TOCAR: lo que generan los lectores; de acá lo levanta el disparador | `para_pegar_*.xlsx` | — |
 
 Cada export de Tango es la **foto completa** de ese día (no "lo nuevo desde ayer"): se carga el más
