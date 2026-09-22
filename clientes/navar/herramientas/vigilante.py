@@ -48,6 +48,16 @@ import argparse
 import datetime
 import subprocess
 
+# En Windows la consola es cp1252 y los lectores imprimen "→": sin esto, cada lector muere con
+# UnicodeEncodeError al terminar. Se fuerza UTF-8 acá y en los procesos hijos.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+os.environ["PYTHONUTF8"] = "1"
+os.environ["PYTHONIOENCODING"] = "utf-8"
+
 AQUI = os.path.dirname(os.path.abspath(__file__))
 BASE_REPO = os.path.abspath(os.path.join(AQUI, "..", "..", ".."))
 sys.path.insert(0, BASE_REPO)
@@ -248,7 +258,7 @@ def main():
             log("%s: correría  %s" % (n, " ".join(cmd)))
             continue
         log("%s: %d archivo(s) nuevos o cambiados → %s" % (n, len(f["archivos"]), os.path.basename(cmd[1])))
-        r = subprocess.run(cmd, cwd=BASE_REPO, capture_output=True, text=True, timeout=1800)
+        r = subprocess.run(cmd, cwd=BASE_REPO, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=1800, env=os.environ.copy())
         if r.returncode == 0:
             ret = mover_salidas(f["salidas"]())
             estado[n] = fa            # no se reintenta el mismo archivo; cuando suban uno nuevo, se vuelve a mirar

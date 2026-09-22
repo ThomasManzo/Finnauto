@@ -18,3 +18,4 @@ reportlab>=4.0
 # Lectores de extractos (lector/extractos.py): Excel viejos del home banking y PDFs.
 xlrd>=2.0
 pymupdf>=1.24
+pypdf>=4.0
