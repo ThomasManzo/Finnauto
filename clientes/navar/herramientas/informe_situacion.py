@@ -106,6 +106,15 @@ def leer(sheet, hoy):
     for r in filas:
         if r[0] and isinstance(r[0], str):
             M[r[0].strip()] = [float(v) if isinstance(v, (int, float)) else 0.0 for v in r[1:1 + n]]
+    # nombres de la pantalla v5 → nombres que usa este informe (cuotas = todo lo bancario, impuestos = deuda impositiva)
+    z = [0.0] * n
+    suma = lambda *ks: [sum(M.get(k, z)[i] for k in ks) for i in range(n)]
+    M["Cuotas bancarias y tarjeta"] = suma("Cuotas y tarjetas con débito automático", "Cuotas que se pagan por decisión")
+    M["Impuestos: deuda y planes"] = suma("Planes de ARCA con débito automático", "Impuestos por VEP y planes nuevos")
+    M.setdefault("Regularización de atrasado", z)
+    M["Saldo de bancos al cierre del mes"] = M.get("SALDO AL CIERRE del mes pagando toda la deuda", M.get("Saldo de bancos al cierre del mes", z))
+    M["Descubiertos acordados con los bancos"] = M.get("Descubierto acordado con los bancos", M.get("Descubiertos acordados con los bancos", z))
+    M["Saldo disponible (cierre + descubiertos)"] = M.get("Saldo disponible pagando toda la deuda (positivos + descubierto disponible)", M.get("Saldo disponible (cierre + descubiertos)", z))
     D["M"] = M
     # bancos: la última columna con saldo real
     bancos = {}
@@ -467,7 +476,7 @@ def armar(D, out):
     S += [PageBreak(), P("3 · Los tres meses reales: qué entra y qué sale", "h1"),
           P("Junio, julio y agosto según el extracto (no según Tango ni la planilla vieja). Es la base de toda la proyección.", "p")]
     ren_ing = ["Cobranza acreditada", "Cheques de clientes (depositados y descontados)"]
-    ren_egr = ["Proveedores A", "Sueldos y cargas", "Impuestos corrientes", "Cheques propios", "Intereses y gastos bancarios", "Otros (tarjeta, honorarios, cosecha)"]
+    ren_egr = ["Proveedores A", "Sueldos y cargas", "Impuestos corrientes", "Cheques propios", "Intereses y gastos bancarios", "Otros (tarjeta, honorarios)"]
     fr = [["", lab(cols[0]), lab(cols[1]), lab(cols[2]), "promedio"]]
     def f3(nombre, vals, bold=False):
         return [Paragraph(("<b>%s</b>" if bold else "%s") % nombre, ParagraphStyle("l", parent=PR.b, fontSize=8.4, leading=11, spaceAfter=0))] + [celda_num(v, bold) for v in vals[:3]] + [celda_num(sum(vals[:3]) / 3, bold)]
