@@ -34,8 +34,15 @@ suman la bajada de Tango por API y los bots de banco. Adentro de la sesión el W
 
 Sin git: GitHub → `ThomasManzo/Finnauto` → botón verde **Code → Download ZIP**. Descomprimir
 en **`C:\finauto`** (que quede `C:\finauto\finauto.py`, no `C:\finauto\Finnauto-main\...`).
-Cuando haya que actualizar, se baja el ZIP de nuevo y se pisa (las claves no están en el repo,
-no se pierden).
+Para actualizar después (cada vez que Claude suba algo), un solo comando en PowerShell, sin
+bajar nada a mano:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\finauto\clientes\navar\herramientas\actualizar.ps1
+```
+
+Baja la última versión de GitHub y pisa los archivos sin tocar el entorno, la memoria del
+vigilante ni lo privado (las claves están en el llavero, no en archivos).
 
 En PowerShell:
 
