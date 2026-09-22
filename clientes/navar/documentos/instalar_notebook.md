@@ -56,8 +56,10 @@ Comprobar que ve el Drive:
 .\.venv\Scripts\python.exe -c "from ingestas.drive_local import carpeta_datos; print(carpeta_datos())"
 ```
 
-Tiene que imprimir la ruta a `NAVAR - Datos`. Si imprime `None`: Drive no está montado o la
-carpeta se llama distinto; se puede fijar a mano con la variable de entorno `FINAUTO_DRIVE`.
+Tiene que imprimir la ruta a `NAVAR - Datos`. Si la carpeta es COMPARTIDA con la cuenta (no
+propia), Drive la monta como acceso directo en `G:\.shortcut-targets-by-id\<id>\NAVAR - Datos`:
+también la encuentra sola. Si imprime `None`: Drive no está montado; se puede fijar a mano con
+la variable de entorno `FINAUTO_DRIVE` (a nivel Usuario, así la tarea programada la ve).
 
 ## 4. El vigilante (5 min)
 
@@ -73,9 +75,13 @@ Log: `clientes\navar\privado\vigilante.log`.
 **En la Mac, ese mismo día**, desinstalar el vigilante para que no corran dos:
 `zsh clientes/navar/herramientas/instalar_vigilante.sh quitar`.
 
-Limitación conocida: los PDF **escaneados** (el Nación de septiembre) solo se leen en la Mac
-(usa el OCR de macOS). Los Excel del home banking y los PDF con texto se leen en las dos.
-Cuando el Nación llegue por bot (Excel), deja de importar.
+Limitación conocida: los PDF **escaneados** (el Nación de septiembre) solo se OCR-ean en la Mac.
+Pero el resultado del OCR queda en `Bancos\nacion\.ocr\` dentro del Drive, y la notebook lo usa
+tal cual. Si aparece un escaneado nuevo sin caché, el lector de bancos corta con un error claro
+(no publica un para_pegar sin ese banco): se lee una vez en la Mac o se pide el extracto en Excel.
+
+La primera corrida en la notebook relee las cuatro fuentes (no tiene memoria de qué procesó):
+es normal y el control "se achicó de golpe" protege la Sheet.
 
 ## 5. Tango Live por API (cuando Miriam habilite el usuario finauto) (10 min)
 
