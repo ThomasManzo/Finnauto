@@ -1,5 +1,5 @@
 # Tarea 02 — Fechas de cheques mal leídas + dos mejoras del cash
-Estado: pendiente
+Estado: lista para revisión
 Rama: tarea/cheques-y-cash
 
 ## Objetivo
@@ -150,7 +150,125 @@ Al terminar: completar "Qué hice" y poner `Estado: lista para revisión`.
 
 ## Qué hice
 
-(lo completa Codex)
+### Cambios y alcance
+
+- `lector/tango.py`: corregí `localizar` (líneas 195–223). Antes recorría nombres ordenados y
+  pisaba la elección para cada empresa/lista: una minúscula podía ganarle a una fecha más nueva.
+  Ahora elige por fecha `AAAA-MM-DD` del nombre; ante empate usa modificación y un desempate
+  estable. Los archivos sin fecha quedan detrás de los fechados (entre ellos manda modificación).
+  No cambié columnas, fechas de cada fila, filtros de negocio ni formato del `para_pegar`.
+- `lector/pruebas/test_cheques.py`: prueba automática con dos fotos de propios y terceros,
+  tres cheques inventados de cada tipo, columnas invertidas y una columna opcional ausente.
+  Verifica selección, emisión, pago/cobro, observaciones y salida Excel. La foto vieja tiene una
+  modificación más nueva a propósito. Confirmé que falla con `localizar` original y pasa ahora.
+- `clientes/navar/herramientas/crear_cash.gs`: bancos con margen y tres colores; ceros visibles;
+  saldos reales por banco en auxiliares ocultos, reutilizando el acuerdo existente. No entran
+  acuerdos en Saldo inicial, cierres ni en el cálculo del descubierto usado/disponible.
+  Cuotas con detalle por banco, grupos plegados y total que excluye el detalle para no duplicar.
+  Los bancos se leen de líneas y cronograma de Deuda Bancaria. Se limpian grupos previos al rearmar.
+  Instrucciones actualizadas con roles, sin nombres de personas.
+- `clientes/navar/documentos/manual_cash.md`: §3 explica bancos y desplegable; §7 registra el
+  error comprobado y aclara que el incidente de fechas en producción sigue abierto.
+- Este archivo: estado, resultados y límites. No instalé dependencias. Usé Python del entorno
+  ya existente del repo principal y Node del runtime disponible; ninguno se modificó.
+
+### A: qué quedó comprobado y qué NO quedó resuelto
+
+**No doy por arreglada la causa del incidente de producción.** La selección vieja era un bug
+real, pero no explica las fechas equivocadas de la evidencia. El lector anterior, ejecutado
+contra Drive, genera 60 filas: los dos propios y los terceros 32283267/32283268 ya salen con las
+fechas correctas; 32283269 y 32487757 faltan porque toma la foto del 16/09. No encontré un
+corrimiento de columnas o de filas en el parser: busca los encabezados por nombre y ordena
+cada registro completo. Leer el export de la Sheet confirmó las fechas incorrectas denunciadas.
+Queda pendiente rastrear qué archivo se importó y el paso de importación/conversión/carga en
+producción. Leí el importador para orientarme, pero no lo modifiqué ni ejecuté.
+
+Corrí `tango.procesar` directamente contra la carpeta absoluta de Drive indicada arriba,
+con `hoy=2026-09-22`, y `escribir_para_pegar` hacia un directorio temporal que se eliminó al
+terminar. No usé el CLI sobre Drive porque escribe al lado de las entradas. Ningún original,
+archivo privado ni salida publicada fue modificado.
+
+Selección corregida y comparación independiente, reabriendo el Excel generado y comparando
+contra los encabezados del export (empresa, tipo, número, importe, emisión y pago/cobro;
+contando también duplicados, faltantes y sobrantes):
+
+| Export elegido | Filas admitidas y coincidentes |
+|---|---:|
+| A Cheques propios 2026-09-22.xlsx | 10 |
+| A Cheques terceros 2026-09-21.xlsx | 42 |
+| AA Cheques terceros 2026-09-21.xlsx | 14 |
+| **Total** | **66/66; 0 diferencias, 0 faltantes, 0 sobrantes** |
+
+Las filas no admitidas conservan las reglas previas de estado, importe y antigüedad. No había
+export de terceros del 22/09 en la raíz de esa carpeta al verificar; no inventé uno.
+
+| Cheque | Emisión generada | Pago/cobro export = salida | Importe | REVISAR al 22/09 |
+|---|---|---|---:|---|
+| 68150612 | 2026-07-03 | 2026-09-25 | 10.872.165,02 | No |
+| 68150561 | 2026-07-03 | 2026-09-15 | 11.000.000 | Sí: venció realmente el 15/09 |
+| 32283267 | vacía en este export | 2026-11-06 | 5.000.000 | No |
+| 32283268 | vacía en este export | 2026-11-12 | 5.000.000 | No |
+| 32283269 | vacía en este export | 2026-11-20 | 5.600.000 | No |
+| 32487757 | vacía en este export | 2026-10-18 | 600.000 | No |
+
+Pasé el `para_pegar` temporal por `cash_limpio.leer`: el propio de 10.872.165,02 aparece en
+`egresos_cashflow` como CHEQUE el 2026-09-25, sin vencido pendiente; los cuatro terceros aparecen
+en `cartera_cheques` en las fechas de octubre/noviembre de la tabla. Esto prueba el lector del
+cash, no el recálculo del Apps Script ni el tablero publicado.
+
+### B y C: pruebas locales y límites
+
+- Sintaxis JavaScript: `node --check` pasó.
+- Con una simulación local de las llamadas de Apps Script, comparé las fórmulas antes/después
+  por concepto, compensando los cambios de número de fila: 1.200 en diario, 588 en semanal y
+  354 en mensual permanecen iguales (incluidos inicial, cierres y descubiertos). Los totales
+  de bloques ahora suman solo renglones principales; las cuotas detalladas no se suman dos veces.
+- En las tres pantallas, quitar de la fórmula de detalle únicamente el filtro por banco deja
+  exactamente la fórmula del total. Verifiqué creación de grupo, pedido de colapso, tres reglas
+  de color que excluyen celdas vacías y un banco inventado nuevo al regenerar. No es ejecución
+  real de Sheets ni una prueba visual. Los auxiliares de comprobación quedaron en `/tmp`,
+  fuera del repo; la única prueba nueva versionable es la de cheques, como autoriza la consigna.
+- Recalculé desde el export real de la Sheet: Nación −101.709.806,61 + 100.000.000 =
+  **−1.709.806,61, rojo**; Corrientes −45.306.818,06 + 0 = **−45.306.818,06, rojo**.
+  Galicia +1.651,17 y Macro +13.949.717,87 de margen. Un neto exactamente cero tiene formato
+  visible y regla ámbar; el acuerdo vacío suma cero.
+- Revisé la documentación oficial de
+  [agrupación de filas](https://developers.google.com/apps-script/reference/spreadsheet/range#shiftrowgroupdepthdelta).
+  La limpieza de grupos empieza en fila 2 para permitir volver a correr con el control arriba.
+- **Límite de C:** las filas se crean al ejecutar `Armar solapa Cash`, y el código las dimensiona
+  según los bancos encontrados. Un banco nuevo aparece sin editar código al rearmar, pero **no
+  aparece inmediatamente por la mera importación de Deuda Bancaria**. Conectar esa regeneración
+  al importador/disparador excede los archivos autorizados; no lo hice. Queda para revisión si
+  esta limitación alcanza el pedido o si se abre otra tarea para automatizarla.
+- Pendiente en la Sheet: ejecutar dos veces Armar solapa Cash; abrir/cerrar el `+` en las tres
+  pantallas; comprobar fórmulas sin errores en configuración regional española, suma de detalle
+  contra total, colores y ceros; cotejar los cierres antes/después; probar un banco nuevo al rearmar.
+  No se publicó ni ejecutó Apps Script en producción.
+
+### Comandos y controles finales
+
+Desde la raíz, usando el Python del entorno existente:
+
+```sh
+python -m py_compile lector/tango.py
+python -m unittest discover -s lector/pruebas
+node --check < clientes/navar/herramientas/crear_cash.gs
+git diff --check
+```
+
+Todos pasaron. El Python del sistema no tenía `openpyxl`: por eso usé el entorno existente,
+sin instalar paquetes. El chequeo de nombres da vacío en código, prueba y manual. Sobre la
+consigna completa devuelve cuatro coincidencias preexistentes (rutas, cita original y el propio
+comando de búsqueda); no alteré esa evidencia ni las instrucciones para esconderlas.
+
+### Commit
+
+No pude commitear. En la rama correcta `tarea/cheques-y-cash`, `git add` de los cinco archivos
+permitidos falló: `Unable to create .../.git/worktrees/Finnauto-tarea02/index.lock: Operation
+not permitted`. El índice vive en el repo principal, fuera de los permisos de escritura del
+sandbox. No cambié permisos ni intenté otro repositorio. Los cambios están sin stage y sin
+commit, listos para que el revisor los commitee en esta rama.
+
 
 ## Revisión
 
