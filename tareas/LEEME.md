@@ -8,7 +8,8 @@ las tareas aisladas lo escribe Codex. Los dos se hablan **por archivos en este r
 1. **Claude escribe la consigna** en `tareas/<nn>-<nombre>.md` (plantilla abajo) y la commitea en `main`.
 2. **Thomas le dice a Codex**: "hacé la tarea `tareas/<nn>-<nombre>.md`".
 3. **Codex la ejecuta en un worktree propio**, rama `tarea/<nombre>`. No toca `main` directo.
-   Commitea en su rama y, al terminar, completa la sección **"Qué hice"** de la consigna
+   Commitea en su rama (si el sandbox no lo deja —pasó en la tarea 01: el índice de git del worktree vive en
+   `Finnauto/.git/worktrees/` y Codex no llega—, lo anota en "Qué hice" y Claude commitea por él) y, al terminar, completa la sección **"Qué hice"** de la consigna
    (qué archivos tocó, cómo lo probó, qué dudas le quedaron) y cambia `Estado:` a `lista para revisión`.
 4. **Claude revisa el diff** (`git diff main..tarea/<nombre>`), anota en **"Revisión"** y, con el OK
    de Thomas, se mergea a `main`. Si hay que corregir, `Estado:` vuelve a `en curso` con las notas; al mergear pasa a `aprobada`.
