@@ -21,8 +21,10 @@ Cada bot / persona deja su archivo en su carpeta y nada más; el vigilante sabe 
                              (empresa, lista); los viejos quedan como historia.
     Deuda bancaria/          Bancos_Navar.xlsx, el mapa de deuda
                              → lector/deuda_bancaria.py (cruza cuotas con el último extracto)
-    Impuestos/               la planilla de Celia (el archivo más nuevo manda)
+    Impuestos/               la planilla de vencimientos impositivos (el archivo más nuevo manda)
                              → lector/deuda_impositiva.py
+    Tesorería AA/            Tango: movimientos de tesorería de AA (la operación en efectivo), el más nuevo
+                             → lector/tesoreria_aa.py → Movimientos (Origen "Tango AA")
     _para la Sheet/          lo que generan los lectores (para_pegar_*.xlsx y resumen_*.md).
                              De acá los levanta el disparador de la Sheet. Nadie toca esta carpeta.
 
@@ -214,6 +216,11 @@ def fuentes(hoy):
               "cmd": lambda: [PYTHON, os.path.join(BASE_REPO, "lector", "deuda_bancaria.py"), "--archivo", mapa] + H
                              + (["--bancos", ultimo_con_prefijo("para_pegar_bancos_")] if ultimo_con_prefijo("para_pegar_bancos_") else []),
               "salidas": lambda: os.path.dirname(mapa)})
+    tes = archivos_de(os.path.join(DRIVE, "Tesoreria AA"), recursivo=False) or archivos_de(os.path.join(DRIVE, "Tesorería AA"), recursivo=False)
+    tes_nuevo = max(tes, key=lambda x: x[1])[0] if tes else None
+    F.append({"nombre": "tesoreria_aa", "archivos": tes,
+              "cmd": lambda: [PYTHON, os.path.join(BASE_REPO, "lector", "tesoreria_aa.py"), "--archivo", tes_nuevo] + H,
+              "salidas": lambda: os.path.dirname(tes_nuevo)})
     imp = archivos_de(os.path.join(DRIVE, "Impuestos"), recursivo=False)
     imp_nuevo = max(imp, key=lambda x: x[1])[0] if imp else None
     F.append({"nombre": "impuestos", "archivos": imp,

@@ -63,11 +63,11 @@ vigentes de ARCA = Sí (débito en CBU); el resto de impuestos = No (VEP). Se co
 | Renglón | REAL (extracto) | ESTIMADO |
 |---|---|---|
 | Cobranza acreditada | transferencias y depósitos de clientes | facturas A que vencen (Tango) · mensual: promedio × inflación |
-| Cobranza AA (efectivo) | — (AA no pasa por banco) | facturas AA que vencen |
+| Cobranza AA (efectivo) | recibos de AA en la tesorería de Tango (Origen Tango AA) | facturas AA que vencen |
 | Cheques de clientes | depositados + descontados (venta de valores) | cheques en cartera por fecha de cobro · mensual: promedio |
 | Sin identificar | lo que el banco acreditó sin decir qué es | tiene que ser 0 |
 | Proveedores A | pagos a proveedores | facturas A que vencen · mensual: el mayor entre Tango y promedio |
-| Proveedores AA | — | facturas AA que vencen |
+| Proveedores AA | órdenes de pago de AA en la tesorería de Tango (Origen Tango AA) | facturas AA que vencen |
 | Sueldos y cargas | Macro | proyectado con fecha · mensual: promedio |
 | Impuestos corrientes | IVA, cargas, retenciones pagadas | mensual: promedio |
 | Cheques propios | debitados | en cartera por fecha de pago |
@@ -120,6 +120,7 @@ Cada bot o persona deja su archivo en SU carpeta y nada más; el vigilante sabe 
 | `Cheques` | Tango Live: cheques de terceros en cartera y cheques propios emitidos | `A cheques terceros 2026-09-22.xlsx` · `A cheques propios 2026-09-22.xlsx` · `AA cheques terceros ...` | Cartera de Cheques |
 | `Deuda bancaria` | el mapa de deuda cuando cambie | `Bancos_Navar.xlsx` | Deuda Bancaria |
 | `Impuestos` | la planilla de vencimientos impositivos cuando cambie | `Control Vencimiento Impuestos.xlsx` | Deuda Impositiva |
+| `Tesorería AA` | Tango Live: movimientos de tesorería de NAVAR SA Otros (recibos, órdenes de pago, otros), un archivo por día | `AA movimientos tesoreria 2026-09-22.xlsx` | Movimientos (Origen Tango AA) |
 | `_para la Sheet` | NO TOCAR: lo que generan los lectores; de acá lo levanta el disparador | `para_pegar_*.xlsx` | — |
 
 Cada export de Tango es la **foto completa** de ese día (no "lo nuevo desde ayer"): se carga el más

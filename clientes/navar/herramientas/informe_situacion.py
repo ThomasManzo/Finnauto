@@ -415,7 +415,7 @@ def armar(D, out):
                 (m(deuda_imp, True), "deuda impositiva", TINTA)]),
           Spacer(1, 8),
           P("En una página", "h1"),
-          P("<b>La operación, por banco, da; pagando todo lo que vence, no.</b> En los tres meses cerrados entraron en promedio %s por mes (cobranzas, cheques depositados y descontados; sin préstamos) y salieron %s (proveedores, sueldos, impuestos corrientes, banco): quedaron entre %s y %s por mes. Pero en esos mismos meses vencieron y no se pagaron %s, %s y %s de facturas e impuestos. <b>Pagando lo que vencía, la operación queda alrededor de cero.</b> Proyectado a seis meses, con lo que vence según Tango, deja entre %s y %s por mes: esa es la <b>capacidad de pago</b> para toda la deuda, y solo existe si el atrasado deja de crecer." % (m(ing_base, True), m(egr_base, True), m(min(M["Resultado de la operación (antes de la deuda)"][:3]), True), m(max(M["Resultado de la operación (antes de la deuda)"][:3]), True), m(NOPAG[0], True), m(NOPAG[1], True), m(NOPAG[2], True), m(cap_min, True), m(cap_max, True)), "grande"),
+          P("<b>La operación, por caja, da; pagando todo lo que vence, no.</b> En los tres meses cerrados entraron en promedio %s por mes (cobranzas por banco, cheques depositados y descontados, y el efectivo de AA; sin préstamos) y salieron %s (proveedores, sueldos, impuestos corrientes, banco): quedaron entre %s y %s por mes. Pero en esos mismos meses vencieron y no se pagaron %s, %s y %s de facturas e impuestos. <b>Pagando lo que vencía, la operación queda alrededor de cero.</b> Proyectado a seis meses, con lo que vence según Tango, deja entre %s y %s por mes: esa es la <b>capacidad de pago</b> para toda la deuda, y solo existe si el atrasado deja de crecer." % (m(ing_base, True), m(egr_base, True), m(min(M["Resultado de la operación (antes de la deuda)"][:3]), True), m(max(M["Resultado de la operación (antes de la deuda)"][:3]), True), m(NOPAG[0], True), m(NOPAG[1], True), m(NOPAG[2], True), m(cap_min, True), m(cap_max, True)), "grande"),
           P("<b>La deuda pide el doble.</b> Sin tocar nada, entre octubre y marzo las cuotas de bancos, tarjeta e impuestos piden entre %s y %s por mes. Con el plan propuesto bajan a %s–%s, y todavía quedan por encima de lo que la operación deja en la mitad de los meses." % (m(min(cuotas_A_fut), True), m(max(cuotas_A_fut), True), m(min(cuotas_B_fut), True), m(max(cuotas_B_fut), True)), "grande"),
           P("<b>Ya no hay colchón.</b> Los descubiertos están usados (%s sobre %s acordados), hay %s atrasados y Corrientes informa situación 3. Septiembre cierra en %s en bancos porque en lo que queda del mes vencen, según Tango, más pagos de los que entran." % (m(desc_usado, True), m(acuerdos, True), m(atrasado, True), m(B["saldos"][i0], True)), "grande"),
           caja([P("No es un problema de caja: es una estructura de deuda que se está pagando con caja, y la caja no alcanza. La salida tiene tres partes que van juntas: (1) refinanciar a un número que la operación pueda pagar, (2) proteger lo que no puede cortarse (ARCA, sueldos, los bancos que descuentan los cheques) y (3) decidir cada semana, con el cash a la vista, qué se paga y qué no. <b>El plan de este documento es una propuesta: que cada banco la acepte es otra negociación, y por eso se muestra también qué pasa si dicen que no.</b>", "p")], borde=ROJO),
@@ -433,7 +433,7 @@ def armar(D, out):
           P("Lo que se repite (cobranza, cheques, sueldos, impuestos corrientes, intereses) se proyecta como el promedio de los tres meses cerrados × %.1f %% mensual de inflación. Lo que tiene fecha (cuotas, planes, cheques, facturas de Tango) va por su fecha. Para el mes en curso se suma lo real hasta el %s más lo que falta. Es exactamente la cuenta que hace la solapa «Cash Mensual» de la planilla, donde la inflación es una celda editable." % (D["inflacion"] * 100, ult), "p"),
           P("Lo que NO está y hay que tener presente", "h2"),
           LI("La <b>cosecha</b> (abril a septiembre) ya pasó este año y no vuelve como tal: para 2027 NAVAR planea comprar canchada y vender molida, sin cosecha ni secanza propias (Priscilla, 21/09). Ese costo entra como compra a proveedores; la proyección no tiene un renglón de cosecha."),
-          LI("La caja de <b>AA</b> es efectivo (%s al 21/09, arqueo semanal los lunes): se carga a mano y no se mueve en la proyección." % m(caja_aa, True)),
+          LI("<b>AA opera en efectivo</b>: sus cobros y pagos salen de la tesorería de Tango (recibos y órdenes de pago), no de un banco. La caja (%s al 21/09, arqueo semanal) se carga a mano. Queda una pregunta: las salidas de caja sin proveedor que Tango llama «débito y gastos bancarios» (unos %s en junio)." % (m(caja_aa, True), m(57.7e6, True))),
           LI("Corrientes: el límite del acuerdo en cuenta corriente. Nación: la hipoteca «La Gloria» y la tarjeta corporativa, sin importe. Macro: el límite usado de la venta de valores."),
           ]
 
@@ -475,8 +475,8 @@ def armar(D, out):
     # ---------------------------------------------------------------- 3 · tres meses reales
     S += [PageBreak(), P("3 · Los tres meses reales: qué entra y qué sale", "h1"),
           P("Junio, julio y agosto según el extracto (no según Tango ni la planilla vieja). Es la base de toda la proyección.", "p")]
-    ren_ing = ["Cobranza acreditada", "Cheques de clientes (depositados y descontados)"]
-    ren_egr = ["Proveedores A", "Sueldos y cargas", "Impuestos corrientes", "Cheques propios", "Intereses y gastos bancarios", "Otros (tarjeta, honorarios)"]
+    ren_ing = ["Cobranza acreditada", "Cobranza AA (efectivo)", "Cheques de clientes (depositados y descontados)"]
+    ren_egr = ["Proveedores A", "Proveedores AA", "Sueldos y cargas", "Impuestos corrientes", "Cheques propios", "Intereses y gastos bancarios", "Otros (tarjeta, honorarios)"]
     fr = [["", lab(cols[0]), lab(cols[1]), lab(cols[2]), "promedio"]]
     def f3(nombre, vals, bold=False):
         return [Paragraph(("<b>%s</b>" if bold else "%s") % nombre, ParagraphStyle("l", parent=PR.b, fontSize=8.4, leading=11, spaceAfter=0))] + [celda_num(v, bold) for v in vals[:3]] + [celda_num(sum(vals[:3]) / 3, bold)]
@@ -486,21 +486,21 @@ def armar(D, out):
     for r in ren_egr:
         fr.append(f3(r, M[r]))
     fr.append(f3("Total egresos de la operación", M["Total egresos de la operación"], True))
-    fr.append(f3("Resultado de la operación por banco (sin préstamos)", M["Resultado de la operación (antes de la deuda)"], True))
+    fr.append(f3("Resultado de la operación por caja (bancos + efectivo AA, sin préstamos)", M["Resultado de la operación (antes de la deuda)"], True))
     fr.append(f3("Venció en el mes y no se pagó (proveedores + impuestos)", NOPAG))
     fr.append(f3("Resultado de la operación pagando lo que vencía", HONESTO, True))
     fr.append(f3("Cuotas bancarias y tarjeta pagadas", M["Cuotas bancarias y tarjeta"]))
     fr.append(f3("Préstamos tomados", [-v for v in PREST]))
-    fr.append(f3("Resultado después de la deuda (por banco)", M["Resultado después de la deuda"], True))
+    fr.append(f3("Resultado después de la deuda", M["Resultado después de la deuda"], True))
     t = tabla(fr, [70 * mm, 25 * mm, 25 * mm, 25 * mm, 25 * mm], chico=True)
-    t.setStyle(TableStyle([("LINEABOVE", (0, 3), (-1, 3), 0.8, TENUE), ("LINEABOVE", (0, 10), (-1, 10), 0.8, TENUE),
-                           ("BACKGROUND", (0, 11), (-1, 11), colors.HexColor("#FFF8E1")), ("BACKGROUND", (0, 13), (-1, 13), ROJO_FONDO),
-                           ("TEXTCOLOR", (0, 12), (0, 12), ROJO)]))
+    t.setStyle(TableStyle([("LINEABOVE", (0, 4), (-1, 4), 0.8, TENUE), ("LINEABOVE", (0, 12), (-1, 12), 0.8, TENUE),
+                           ("BACKGROUND", (0, 13), (-1, 13), colors.HexColor("#FFF8E1")), ("BACKGROUND", (0, 15), (-1, 15), ROJO_FONDO),
+                           ("TEXTCOLOR", (0, 14), (0, 14), ROJO)]))
     S += [t, P("en millones de $ · «Proveedores A» es lo que salió del banco a proveedores · «Venció y no se pagó» son las facturas de proveedores e impuestos con vencimiento en ese mes que siguen impagos hoy (Tango y planilla de impuestos) · los préstamos entran en el bloque de deuda, no en la operación", "nota"),
-          caja([P("<b>Por banco, la operación da positiva: entre %s y %s por mes.</b> Pero da positiva porque no se pagó todo lo que venció: en julio quedaron sin pagar %s de facturas e impuestos, en agosto %s. <b>Pagando lo que vencía, la operación queda entre %s y %s por mes: alrededor de cero.</b> Ese es el número real de la operación, y es el que explica por qué el atrasado crece cada mes. Lo que no está acá, porque no pasa por el banco: la operación de AA en efectivo (a cobrar %s, a pagar %s pendientes) y los cheques de clientes que se endosan directamente a proveedores (unos %s por mes según Tango: entran y salen sin tocar la cuenta)." % (
+          caja([P("<b>Por caja, la operación da positiva: entre %s y %s por mes.</b> Pero da positiva porque no se pagó todo lo que venció: en julio quedaron sin pagar %s de facturas e impuestos, en agosto %s. <b>Pagando lo que vencía, la operación queda entre %s y %s por mes: alrededor de cero.</b> Ese es el número real de la operación, y es el que explica por qué el atrasado crece cada mes. Incluye la operación en efectivo de AA (cobra %s y paga %s por mes, según la tesorería de Tango). Lo que no está, porque no pasa por ninguna caja: los cheques de clientes que se endosan directamente a proveedores (unos %s por mes según Tango: entran y salen sin tocar la cuenta)." % (
               m(min(M["Resultado de la operación (antes de la deuda)"][:3]), True), m(max(M["Resultado de la operación (antes de la deuda)"][:3]), True),
               m(NOPAG[1], True), m(NOPAG[2], True), m(min(HONESTO[:3]), True), m(max(HONESTO[:3]), True),
-              m(96e6, True), m(170e6, True), m(150e6, True)), "p")], borde=ROJO)]
+              m(sum(M["Cobranza AA (efectivo)"][:3]) / 3, True), m(sum(M["Proveedores AA"][:3]) / 3, True), m(150e6, True)), "p")], borde=ROJO)]
 
     # ---------------------------------------------------------------- 4 · seis meses
     S += [PageBreak(), P("4 · Los próximos seis meses, en tres escenarios", "h1"),
