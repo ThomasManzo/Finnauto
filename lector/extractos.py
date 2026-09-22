@@ -328,7 +328,17 @@ def _ocr_pdf(ruta):
     os.makedirs(cache_dir, exist_ok=True)
     base = os.path.splitext(os.path.basename(ruta))[0]
     tsv = os.path.join(cache_dir, base + ".tsv")
-    if not os.path.exists(tsv) or os.path.getmtime(tsv) < os.path.getmtime(ruta):
+    # El OCR es el de macOS (Vision, vía swift). En Windows (la notebook de NAVAR) no existe:
+    # si la caché .ocr/<pdf>.tsv viene sincronizada por Drive, se usa tal cual; si no, se corta
+    # con un error claro en vez de publicar un para_pegar sin el Nación.
+    ocr_disponible = sys.platform == "darwin" and os.path.exists(OCR_SWIFT)
+    if not ocr_disponible:
+        if os.path.exists(tsv):
+            pass
+        else:
+            raise RuntimeError("%s es un PDF escaneado y el OCR solo existe en la Mac (no hay caché .ocr/%s.tsv). "
+                               "Leerlo una vez en la Mac o pedir el extracto en Excel/PDF con texto." % (os.path.basename(ruta), base))
+    elif not os.path.exists(tsv) or os.path.getmtime(tsv) < os.path.getmtime(ruta):
         import pymupdf
         pngs = []
         doc = pymupdf.open(ruta)

@@ -30,6 +30,12 @@ def carpeta_datos(nombre="NAVAR - Datos"):
     for mi in ("Mi unidad", "My Drive"):
         candidatos.append(os.path.join(home, "Google Drive", mi, nombre))
         candidatos.append(os.path.join(home, "Mi unidad", nombre))
+    # Carpeta COMPARTIDA con la cuenta (no propia): Drive la monta como acceso directo en
+    # .shortcut-targets-by-id/<id de la carpeta>/<nombre>. El id no cambia. Vale en Mac y Windows.
+    candidatos += glob.glob(os.path.join(home, "Library", "CloudStorage", "GoogleDrive-*", ".shortcut-targets-by-id", "*", nombre))
+    for letra in "GHIJKLMNOPQRSTUVWXYZ":
+        candidatos += glob.glob("%s:\\.shortcut-targets-by-id\\*\\%s" % (letra, nombre))
+    candidatos += glob.glob(os.path.join(home, "Google Drive", ".shortcut-targets-by-id", "*", nombre))
     for c in candidatos:
         if os.path.isdir(c):
             return c

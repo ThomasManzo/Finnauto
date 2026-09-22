@@ -58,7 +58,8 @@ DRIVE = carpeta_datos("NAVAR - Datos")        # el Drive montado en esta máquin
 ESTADO = os.path.join(BASE_REPO, "clientes", "navar", ".run", "vigilante.json")
 LOG = os.path.join(BASE_REPO, "clientes", "navar", "privado", "vigilante.log")
 ESPERA_SEG = 120          # un archivo recién bajado por Drive puede estar a medias
-IGNORAR = ("para_pegar", "resumen_", "~$", ".DS_Store")
+IGNORAR = ("para_pegar", "resumen_", "~$", ".", "desktop.ini", "Thumbs.db")     # ocultos y basura de Windows/Drive
+EXTENSIONES = (".pdf", ".xls", ".xlsx", ".csv")                                     # lo único que es un dato
 SALIDA = os.path.join(DRIVE or "", "_para la Sheet")
 CARPETAS_TANGO = ("Cuentas a cobrar", "Cuentas a pagar", "Cheques")
 STAGING_TANGO = os.path.join(BASE_REPO, "clientes", "navar", ".run", "tango_ultimo")
@@ -82,7 +83,7 @@ def archivos_de(carpeta, recursivo=True):
     for raiz, subcarpetas, nombres in os.walk(carpeta):
         subcarpetas[:] = [s for s in subcarpetas if not s.startswith(".")]     # .ocr y similares: caché del lector
         for n in nombres:
-            if n.startswith(IGNORAR) or n.endswith((".md", ".txt", ".log")):
+            if n.lower().startswith(tuple(x.lower() for x in IGNORAR)) or not n.lower().endswith(EXTENSIONES):
                 continue
             r = os.path.join(raiz, n)
             out.append((r, os.path.getmtime(r)))
