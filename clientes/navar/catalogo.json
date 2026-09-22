@@ -390,5 +390,11 @@
       "_ayuda": "Excepciones: codigo de proveedor de Tango (o razon social en MAYUSCULAS) -> categoria de la planilla. Ej: la cooperativa electrica no es materia prima. Vacio a proposito: se llena con Karina, mirando el export de pagos."
     },
     "version_tango": "Delta 5 (25.01.000.4297), web en servidor:17000. Live tiene API: GET Api/GetApiLiveQueryData/{process}/... con headers ApiAuthorization (token) y Company (13 = NAVAR SA). Proceso de 'Cobranzas a realizar' = 17952."
+  },
+  "debito_automatico": {
+    "_ayuda": "Qué deuda sale sola de la cuenta (el banco/ARCA la debita si hay fondos) y qué se paga por decisión. Regla: préstamos, tarjetas e hipotecas = Si; planes de pago vigentes de ARCA = Si; el resto de impuestos = No. Acá van las excepciones, por parte del nombre del producto o impuesto. Se confirma con quien paga.",
+    "_ejemplo": {
+      "Reprog. sola firma": "No"
+    }
   }
 }

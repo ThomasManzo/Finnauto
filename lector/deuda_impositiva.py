@@ -37,7 +37,16 @@ if BASE_REPO not in sys.path:
 import openpyxl
 
 MARCA = "Mapa impuestos"
-ENC = ["Impuesto", "Empresa", "Periodo", "Fecha Vencimiento", "Importe", "Estado", "Nro Cuota (si aplica)", "Observaciones"]
+ENC = ["Impuesto", "Empresa", "Periodo", "Fecha Vencimiento", "Importe", "Estado", "Nro Cuota (si aplica)", "Debito Automatico", "Observaciones"]
+
+# "Debito Automatico": los planes de pago vigentes de ARCA se debitan solos de la cuenta (CBU
+# adherido) → "Si". Todo lo demás (VEP, DGR, municipio) lo paga alguien por decisión → "No".
+# Se corrige impuesto por impuesto en catalogo.json → "debito_automatico": {"<impuesto>": "Si"}.
+def _debito_automatico(impuesto, concepto, excepciones):
+    for clave, valor in (excepciones or {}).items():
+        if _norm(clave) in _norm(impuesto) or _norm(clave) in _norm(concepto or ""):
+            return valor
+    return "Si" if "PLAN" in _norm(impuesto).upper() and "PAGO" in _norm(impuesto).upper() else "No"
 
 # Lo que dijo el mail del 18/09 (Celia / contador) y no está en el Excel como fecha.
 FECHAS_DEL_MAIL = {
@@ -104,7 +113,7 @@ def leer(ruta):
     return {"archivo": os.path.basename(ruta), "deudas": deudas}
 
 
-def armar(mapa, hoy, empresa="A"):
+def armar(mapa, hoy, empresa="A", excepciones_auto=None):
     filas, avisos = [], []
     origen = "%s · %s" % (MARCA, mapa["archivo"])
     for d in mapa["deudas"]:
@@ -135,7 +144,8 @@ def armar(mapa, hoy, empresa="A"):
         filas.append(OrderedDict([
             ("Impuesto", d["impuesto"] or "(sin impuesto)"), ("Empresa", empresa), ("Periodo", d["concepto"]),
             ("Fecha Vencimiento", venc), ("Importe", round(d["importe"], 2)), ("Estado", "Pendiente"),
-            ("Nro Cuota (si aplica)", None), ("Observaciones", " · ".join(obs)),
+            ("Nro Cuota (si aplica)", None), ("Debito Automatico", _debito_automatico(d["impuesto"] or "", d["concepto"], excepciones_auto)),
+            ("Observaciones", " · ".join(obs)),
         ]))
     filas.sort(key=lambda x: (x["Fecha Vencimiento"], x["Impuesto"]))
     return {"filas": filas, "avisos": avisos}
@@ -213,6 +223,16 @@ def resumen(res, mapa, ruta_pegar, hoy):
     return "\n".join(L)
 
 
+def _excepciones_auto(cliente):
+    import json
+    ruta = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "clientes", cliente, "catalogo.json")
+    try:
+        with open(ruta, encoding="utf-8") as f:
+            return json.load(f).get("debito_automatico", {})
+    except Exception:
+        return {}
+
+
 def main():
     ap = argparse.ArgumentParser(description="Control Vencimiento Impuestos -> solapa Deuda Impositiva")
     ap.add_argument("--archivo", required=True)
@@ -223,7 +243,7 @@ def main():
     a = ap.parse_args()
     hoy = datetime.date.fromisoformat(a.hoy) if a.hoy else datetime.date.today()
     mapa = leer(a.archivo)
-    res = armar(mapa, hoy, a.empresa)
+    res = armar(mapa, hoy, a.empresa, _excepciones_auto(a.cliente))
     carpeta = os.path.dirname(os.path.abspath(a.archivo))
     ruta = escribir_para_pegar(res, carpeta, hoy)
     md = resumen(res, mapa, ruta, hoy)

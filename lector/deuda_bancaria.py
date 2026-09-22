@@ -67,9 +67,21 @@ import openpyxl
 MARCA = "Mapa deuda"
 
 ENC_LINEAS = ["Banco", "Empresa", "Linea / Producto", "Capital Original", "Capital Vigente", "Tasa (TNA)",
-              "Fecha Otorgamiento", "Fecha Vto. Final", "Situacion BCRA", "Observaciones"]
+              "Fecha Otorgamiento", "Fecha Vto. Final", "Situacion BCRA", "Debito Automatico", "Observaciones"]
 ENC_CUOTAS = ["Banco", "Empresa", "Linea / Producto", "Nro Cuota", "Fecha Vencimiento", "Importe Capital",
-              "Importe Interes", "Importe Total Cuota", "Estado", "Observaciones"]
+              "Importe Interes", "Importe Total Cuota", "Estado", "Debito Automatico", "Observaciones"]
+
+# "Debito Automatico": si el banco lo debita solo cuando hay fondos ("Si") o si alguien tiene
+# que pagarlo por decisión ("No"). El cash separa la deuda en esos dos bloques. Regla general:
+# préstamos, tarjetas e hipotecas se debitan; el descuento de cheques no es cuota (vacío).
+# Se puede corregir línea por línea en catalogo.json → "debito_automatico": {"<producto>": "No"}.
+def _debito_automatico(tipo, producto, excepciones):
+    for clave, valor in (excepciones or {}).items():
+        if _norm(clave) in _norm(producto):
+            return valor
+    if tipo in ("prestamo", "tarjeta", "hipoteca"):
+        return "Si"
+    return ""
 COLS_CON_FORMULA = {"Importe Total Cuota"}
 
 # Nombre corto del banco, como está en Saldos Bancarios / Movimientos.
@@ -237,7 +249,7 @@ def _fechas_del_mapa(titulo):
     return out
 
 
-def armar(mapa, hoy, empresa="A", pagos_reales=None):
+def armar(mapa, hoy, empresa="A", pagos_reales=None, excepciones_auto=None):
     """-> {"lineas": [...], "cuotas": [...], "avisos": [...]}"""
     fechas = _fechas_del_mapa(mapa["titulo"])
     fecha_gral = max(fechas.values()) if fechas else None
@@ -262,11 +274,12 @@ def armar(mapa, hoy, empresa="A", pagos_reales=None):
             nota.append("atraso %d días" % p["atraso_dias"])
         if (p["banco_corto"], tipo) in NOTAS_PRISCILLA:
             nota.append(NOTAS_PRISCILLA[(p["banco_corto"], tipo)])
+        auto = _debito_automatico(tipo, p["producto"], excepciones_auto)
         lineas.append(OrderedDict([
             ("Banco", p["banco_corto"]), ("Empresa", empresa), ("Linea / Producto", p["producto"]),
             ("Capital Original", p["valor_original"] if isinstance(p["valor_original"], (int, float)) else None),
             ("Capital Vigente", p["saldo"]), ("Tasa (TNA)", p["tna"]), ("Fecha Otorgamiento", p["alta"]),
-            ("Fecha Vto. Final", p["vto_final"]), ("Situacion BCRA", p["situacion"]),
+            ("Fecha Vto. Final", p["vto_final"]), ("Situacion BCRA", p["situacion"]), ("Debito Automatico", auto),
             ("Observaciones", origen + (" · " + " · ".join(nota) if nota else "") + " · " + p["obs"]),
         ]))
 
@@ -304,6 +317,12 @@ def armar(mapa, hoy, empresa="A", pagos_reales=None):
         _cruzar_con_pagos(cuotas, pagos_reales, hoy, fechas, fecha_gral, avisos)
         _cruzar_lineas_con_pagos(lineas, mapa["productos"], pagos_reales, avisos)
     cuotas.sort(key=lambda c: (c["Fecha Vencimiento"], c["Banco"]))
+    # cada cuota hereda el "Debito Automatico" de su línea (el cash filtra por cuota)
+    auto_por_linea = dict(((l["Banco"], l["Linea / Producto"]), l["Debito Automatico"]) for l in lineas)
+    for c in cuotas:
+        c["Debito Automatico"] = auto_por_linea.get((c["Banco"], c["Linea / Producto"]), "Si")
+        # reordenar para que quede antes de Observaciones (el importador va por nombre, pero el xlsx queda prolijo)
+        obs = c.pop("Observaciones"); c["Observaciones"] = obs
     return {"lineas": lineas, "cuotas": cuotas, "avisos": avisos, "origen": origen}
 
 
@@ -556,6 +575,17 @@ def resumen(res, mapa, ruta_pegar, hoy):
     return "\n".join(L)
 
 
+def _excepciones_auto(cliente):
+    """catalogo.json → "debito_automatico": {"<parte del nombre del producto>": "Si"/"No"}"""
+    import json
+    ruta = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "clientes", cliente, "catalogo.json")
+    try:
+        with open(ruta, encoding="utf-8") as f:
+            return json.load(f).get("debito_automatico", {})
+    except Exception:
+        return {}
+
+
 def main():
     ap = argparse.ArgumentParser(description="Mapa de deuda financiera -> solapa Deuda Bancaria")
     ap.add_argument("--archivo", required=True)
@@ -568,7 +598,7 @@ def main():
     hoy = datetime.date.fromisoformat(a.hoy) if a.hoy else datetime.date.today()
     mapa = leer_mapa(a.archivo)
     pagos = leer_pagos_reales(a.bancos) if a.bancos else None
-    res = armar(mapa, hoy, a.empresa, pagos)
+    res = armar(mapa, hoy, a.empresa, pagos, _excepciones_auto(a.cliente))
     carpeta = os.path.dirname(os.path.abspath(a.archivo))
     ruta = escribir_para_pegar(res, carpeta, hoy)
     md = resumen(res, mapa, ruta, hoy)
