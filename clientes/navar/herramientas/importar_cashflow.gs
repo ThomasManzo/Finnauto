@@ -257,6 +257,18 @@ function _saldoManualDeA_(fila, enc) {
 function _volcar_(hOrigen, hDestino, filaEnc, filaFin, s) {
   var encO = hOrigen.getRange(1, 1, 1, hOrigen.getLastColumn()).getValues()[0].map(String);
   var encD = hDestino.getRange(filaEnc, 1, 1, hDestino.getLastColumn()).getValues()[0].map(String);
+  // Si el lector trae una columna que la solapa no tiene (ej. "Debito Automatico" el 22/09),
+  // se agrega al final del encabezado: así una columna nueva no requiere tocar la Sheet a mano.
+  var faltan = encO.filter(function (e) { return e && encD.map(_n_).indexOf(_n_(e)) === -1; });
+  if (faltan.length) {
+    var ultimaCol = 0;
+    encD.forEach(function (e, i) { if (e) ultimaCol = i + 1; });
+    faltan.forEach(function (e, k) {
+      if (ultimaCol + 1 + k > hDestino.getMaxColumns()) hDestino.insertColumnAfter(hDestino.getMaxColumns());
+      hDestino.getRange(filaEnc, ultimaCol + 1 + k).setValue(e).setFontWeight("bold");
+    });
+    encD = hDestino.getRange(filaEnc, 1, 1, hDestino.getLastColumn()).getValues()[0].map(String);
+  }
   var colMarca = encD.map(_n_).indexOf(_n_(s.colMarca));
   var colNombre = 1;   // columna B: Cliente / Proveedor / Tipo / Fecha / Empresa. Vacía = fila sin datos.
 
