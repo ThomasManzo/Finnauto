@@ -145,7 +145,7 @@ los filtros del bloque 6 y no usa promedios, inflación ni cuotas decididas en P
 | Paso | Quién | Qué hace | Dónde |
 |---|---|---|---|
 | 1 | la empresa o el bot | deja el archivo nuevo en SU carpeta de Drive | `NAVAR - Datos / Bancos/<banco>` · `Cuentas a cobrar` · `Cuentas a pagar` · `Cheques` · `Deuda bancaria` · `Impuestos` |
-| 2 | la notebook de la empresa (**vigilante**, cada 15 min) | ve el archivo nuevo y corre el lector que corresponde; deja el `para_pegar_*.xlsx` en `_para la Sheet`; si una lista se achica de golpe, lo retiene | `herramientas/vigilante.py` · log en `privado/vigilante.log` |
+| 2 | la notebook de la empresa (**vigilante**, cada 15 min) | ve el archivo nuevo y corre el lector que corresponde; deja el `para_pegar_*.xlsx` en `_para la Sheet`; si una lista se achica o crece de golpe, lo retiene | `herramientas/vigilante.py` · log en `privado/vigilante.log` |
 | 3 | la Sheet (**disparador**, cada hora, Apps Script) | ve el `para_pegar` nuevo y lo importa; pisa lo que ese lector cargó antes, no toca fórmulas ni lo cargado a mano | solapa **Registro**: una fila por importación (o el error) |
 | 4 | las pantallas | recalculan solas: B3 avanza, lo real reemplaza lo estimado, la cobranza que entró sale del "a cobrar" | Cash · Cash Semanal · Cash Mensual |
 | cada mañana: el aviso | la Sheet (cerca de las 09:00 de Buenos Aires, una vez instalado) | primero recuerda qué falta subir por banco y por empresa; después resume el circuito | `herramientas/aviso_diario.gs` → mail de la empresa |
@@ -261,3 +261,21 @@ cada mañana. Nadie sube nada: el cash amanece al día.
   y se compara toda la carga después de escribir. Los errores indican la solapa y no se marca
   el archivo como importado cuando no cuadra. Esto agrega prevención y detección; no demuestra
   por sí solo la causa histórica de las fechas alteradas ni corrige cargas anteriores.
+
+- **23/09 — cheques: defensa preparada para revisión, todavía sin instalar**:
+  terceros entra solo con `Cód. estado = C` o `Estado = En Cartera`, sin importar mayúsculas,
+  acentos ni espacios. Si ambos tienen valor, ambos deben coincidir: una contradicción queda
+  afuera. Sin esas columnas, o con ambos valores vacíos, no se adivina; el resumen avisa y cuenta
+  lo descartado por motivo. No se usa Subestado para reemplazar Estado.
+  Propios requiere `Estado = Al Cobro` (pendiente de débito según Tango); el export revisado
+  trae ese texto y no trae código de estado. No se inventa un código equivalente. Se mantiene
+  el descarte de fechas de más de 30 días atrás y la marca `REVISAR` para las vencidas recientes.
+  El resumen también cuenta filas sin fecha o importe.
+  El vigilante conserva el control de achicamiento y retiene crecimientos **mayores al triple
+  y con más de 100 filas extra**, incluso desde una solapa vacía. Así una lista chica puede
+  crecer normalmente: 332 → 337 pasa; 1.694 → 75.611 se retiene con su resumen en `_retenido`.
+  Sin publicación anterior no hay comparación: el filtro del lector sigue funcionando.
+  La prueba real descartó 75.579 cheques aplicados, rechazados o anulados del export histórico.
+  Los dos exports no representan la misma cartera: los resultados completos y esa limitación
+  están documentados en `tareas/09-cheques-solo-en-cartera.md`. Este cambio no concilia Tango
+  contra el banco ni corrige la Sheet ya cargada.
