@@ -293,16 +293,37 @@ def leer_pagos(ruta, empresa, hoy, corte_deuda_vieja, origen, categoria_default,
     return filas, desc
 
 
+def _motivo_estado_cheque(d, propio=False):
+    """Sin estado comprobable no entra. Si código y texto se contradicen, tampoco.
+
+    Usamos encabezados exactos: «subestado» no sirve para decidir si sigue pendiente.
+    En propios solo conocemos «Al Cobro»; no inventamos equivalencias de códigos.
+    """
+    estado = _norm(d.get("estado"))
+    codigo = _norm(d.get("cod. estado"))
+    if propio:
+        if "estado" not in d:
+            return "falta columna Estado; lista afuera (propios: se necesita Al Cobro)"
+        if estado == "al cobro":
+            return None
+        return "no está pendiente de débito: Estado=%s" % (estado or "vacío")
+    if "estado" not in d and "cod. estado" not in d:
+        return "faltan columnas Estado y Cód. estado; lista afuera"
+    if (estado or codigo) and (not estado or estado == "en cartera") and (not codigo or codigo == "c"):
+        return None
+    return "no está en cartera: Estado=%s, Cód. estado=%s" % (estado or "vacío", codigo or "vacío")
+
+
 def leer_cheques_terceros(ruta, empresa, hoy, origen):
     """Cheques de terceros -> filas "Terceros Recibido" de "Cartera de Cheques".
     Solo los que están En Cartera: los depositados, aplicados o rechazados ya no son plata por entrar."""
     filas, desc = [], defaultdict(lambda: [0, 0.0])
     for d in _tabla(ruta):
-        estado = _txt(_col(d, "estado"))
         importe = _num(_col(d, "importe"))
-        if _norm(estado) != "en cartera":
-            desc["estado '%s' (no está en cartera)" % (estado or "s/d")][0] += 1
-            desc["estado '%s' (no está en cartera)" % (estado or "s/d")][1] += importe
+        motivo = _motivo_estado_cheque(d)
+        if motivo:
+            desc[motivo][0] += 1
+            desc[motivo][1] += importe
             continue
         cobro = _fecha(_col(d, "fecha del cheque", "fecha de cobro", "fecha cobro"))
         emision = _fecha(_col(d, "fecha de emision", "fecha de origen"))
@@ -333,15 +354,17 @@ def leer_cheques_propios(ruta, empresa, hoy, origen):
     filas, desc = [], defaultdict(lambda: [0, 0.0])
     limite = hoy - datetime.timedelta(days=DIAS_CHEQUE_PROPIO_DUDOSO)
     for d in _tabla(ruta):
-        estado = _txt(_col(d, "estado"))
         importe = _num(_col(d, "importe mon", "importe"))
         pago = _fecha(_col(d, "fecha del cheque", "fecha de pago"))
         emision = _fecha(_col(d, "fecha de emision"))
-        if _norm(estado) != "al cobro":
-            desc["estado '%s'" % (estado or "s/d")][0] += 1
-            desc["estado '%s'" % (estado or "s/d")][1] += importe
+        motivo = _motivo_estado_cheque(d, propio=True)
+        if motivo:
+            desc[motivo][0] += 1
+            desc[motivo][1] += importe
             continue
         if not pago or not importe:
+            desc["sin fecha de pago o sin importe"][0] += 1
+            desc["sin fecha de pago o sin importe"][1] += importe
             continue
         if pago < limite:
             desc["'Al Cobro' con fecha anterior a %s (sin conciliar, se descarta)" % limite.strftime("%d/%m/%Y")][0] += 1
@@ -538,6 +561,10 @@ def resumen(res, ruta_pegar, destino=None, quitadas=None):
 
     L.append("## Descartado (no entra a la Sheet)")
     for (e, l), d in res["descartes"].items():
+        if l in ("cheques_terceros", "cheques_propios"):
+            ignorados = sum(n for n, _ in d.values())
+            L.append("- %s · %s: se ignoraron %d cheques; motivos abajo." %
+                     (e, l.replace("_", " "), ignorados))
         for motivo, (n, monto) in d.items():
             L.append("- %s · %s: %d por %s — %s" % (e, l.replace("_", " "), n, _m(monto), motivo))
     L.append("")
