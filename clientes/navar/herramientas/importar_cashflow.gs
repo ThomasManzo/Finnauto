@@ -117,6 +117,10 @@ function onOpen() {
     .addItem("Instalar actualización automática (cada hora)", "instalarDisparador")
     .addItem("Quitar actualización automática", "quitarDisparador")
     .addSeparator()
+    .addItem("Ver el aviso de hoy (sin mandar)", "avisoDiarioPrueba")          // aviso_diario.gs
+    .addItem("Instalar aviso diario 07:30", "instalarAvisoDiario")
+    .addItem("Quitar aviso diario", "quitarAvisoDiario")
+    .addSeparator()
     .addItem("Armar solapa Cash (Cash, Semanal, Mensual)", "armarCash")
     .addItem("Armar solapa Plan (pisa las decisiones cargadas)", "armarPlan")
     .addToUi();

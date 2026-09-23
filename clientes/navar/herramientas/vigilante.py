@@ -281,4 +281,20 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # Si hubo actividad, comparte el log incluso cuando la pasada termina con un error.
+    # La simulación no publica nada y una falla de Drive no tapa el error del lector.
+    try:
+        log_antes = os.stat(LOG).st_mtime_ns if os.path.exists(LOG) else None
+    except OSError:
+        log_antes = None
+    try:
+        sys.exit(main())
+    finally:
+        try:
+            if "--simular" not in sys.argv and DRIVE and os.path.isdir(DRIVE) and os.path.exists(LOG):
+                if os.stat(LOG).st_mtime_ns != log_antes:
+                    import shutil
+                    os.makedirs(SALIDA, exist_ok=True)
+                    shutil.copyfile(LOG, os.path.join(SALIDA, "vigilante.log"))
+        except Exception as e:
+            print("No pude copiar vigilante.log a Drive: %s" % e)

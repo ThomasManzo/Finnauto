@@ -105,8 +105,11 @@ vigentes de ARCA = Sí (débito en CBU); el resto de impuestos = No (VEP). Se co
 | 2 | la notebook de la empresa (**vigilante**, cada 15 min) | ve el archivo nuevo y corre el lector que corresponde; deja el `para_pegar_*.xlsx` en `_para la Sheet`; si una lista se achica de golpe, lo retiene | `herramientas/vigilante.py` · log en `privado/vigilante.log` |
 | 3 | la Sheet (**disparador**, cada hora, Apps Script) | ve el `para_pegar` nuevo y lo importa; pisa lo que ese lector cargó antes, no toca fórmulas ni lo cargado a mano | solapa **Registro**: una fila por importación (o el error) |
 | 4 | las pantallas | recalculan solas: B3 avanza, lo real reemplaza lo estimado, la cobranza que entró sale del "a cobrar" | Cash · Cash Semanal · Cash Mensual |
+| cada mañana: el aviso | la Sheet (cerca de las 07:30 de Buenos Aires, una vez instalado) | manda qué llegó, qué procesó el vigilante, qué importó la Sheet y qué necesita atención | `herramientas/aviso_diario.gs` → mail de la empresa |
 | a mano | quien hace el arqueo de caja | una fila por arqueo en Saldos Bancarios: fecha, Varios, AA, saldo, Manual | Saldos Bancarios |
 | a mano | la dirección | las decisiones: pagar / refinanciar / posponer, gracia, cuotas, tasa | Plan |
+
+El mail resume las últimas 24 horas y avisa también si no llegó nada. Si el vigilante no procesó, revisar la notebook y `NAVAR - Datos/_para la Sheet/vigilante.log`; si la Sheet no importó, usar finauto → Importar lo nuevo ahora. Si hay un retenido, revisar el export antes de publicarlo; si hay un error de importación o de lectura del aviso, revisar Registro y pedir ayuda a finauto. Si faltan extractos o exports recientes, pedirlos a administración. Primero se revisa con `avisoDiarioPrueba()` (no manda mail); después se instala con `instalarAvisoDiario()`. Google ejecuta cerca de las 07:30, con un margen de 15 minutos.
 
 ### Las carpetas de Drive (`NAVAR - Datos`): una por export
 

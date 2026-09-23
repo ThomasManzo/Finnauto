@@ -125,6 +125,7 @@ python finauto.py --contrato clientes/navar/contrato_<fecha>.json --cliente nava
 | `herramientas/migrar_cash_viejo.py` | Convierte el cash viejo (6 semanas reales + 8 proyectadas) en filas para pegar en el esqueleto nuevo. Deja `privado/datos_migrados_del_cash_viejo.xlsx`. Se corre con `python clientes/navar/herramientas/migrar_cash_viejo.py`. |
 | `herramientas/propuesta.py` | Genera el PDF para la dueña con los números del contrato y las capturas de `privado/capturas/`. |
 | `herramientas/importar_cashflow.gs` | Apps Script: menú finauto → Importar Tango / Bancos / Deuda / Impuestos + Armar solapa Cash / Plan. Cada botón busca el `para_pegar_*` más nuevo en Drive y pisa lo que ese mismo lector cargó antes. |
+| `herramientas/aviso_diario.gs` | Apps Script: aviso por mail cerca de las 07:30 de Buenos Aires con llegadas, procesos, importaciones y alertas; permite probar sin mandar e instalar o quitar el aviso. |
 | `herramientas/crear_cash.gs` | Apps Script: arma Cash, Cash Semanal, Cash Mensual, Plan e Instrucciones con fórmulas sobre las listas. Se corre después de cambiar la estructura; Plan no se pisa salvo con "Armar solapa Plan". |
 | `documentos/manual_cash.md` | El manual del cash: solapas, lectura, real/estimado, impacto de cada movimiento, rutina de actualización, errores corregidos. |
 | `herramientas/informe_situacion.py` | El PDF "Situación y plan" (proyección sin plan / con plan, prioridades, preguntas). |
