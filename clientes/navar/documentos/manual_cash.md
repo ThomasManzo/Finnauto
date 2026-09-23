@@ -178,8 +178,10 @@ los filtros del bloque 6 y no usa promedios, inflación ni cuotas decididas en P
 | a mano | la dirección | las decisiones: pagar / refinanciar / posponer, gracia, cuotas, tasa | Plan |
 
 El mail empieza con **Qué falta subir hoy**: un renglón por banco atrasado (la lista sale de
-Saldos Bancarios), y por cada export de cobranzas, pagos y cheques de A y AA. Muestra la fecha
-requerida y la última disponible; si no hay fecha, lo dice sin inventar desde cuándo falta.
+Saldos Bancarios, del banco que acompaña a `Extracto` en Origen), y por cada export de cobranzas, pagos y cheques de A y AA. Muestra la fecha
+requerida y la última disponible; para cada banco también dice cuántos días corridos tiene
+el último extracto. Reconoce tanto `Extracto BANCO` como el formato viejo `Extracto` (en ese
+caso usa la columna Banco). Si no hay fecha, lo dice sin inventar desde cuándo falta.
 Los bancos y el arqueo manual de caja AA deben cubrir el último día hábil cerrado: el lunes
 alcanza con el viernes. Hábil significa lunes a viernes; todavía no contempla feriados.
 Los seis exports y la tesorería AA deben tener **fecha de hoy en el nombre**; subir de nuevo un

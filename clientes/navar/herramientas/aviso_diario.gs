@@ -62,6 +62,16 @@ function _textoAviso_(texto, limite) {
   return limite && limpio.length > limite ? limpio.slice(0, limite - 3) + "..." : limpio;
 }
 
+// Origen trae «Extracto BANCO». El formato viejo sin banco sigue siendo válido.
+function _esExtractoAviso_(origen) {
+  return /^extracto/i.test(_textoAviso_(origen));
+}
+
+// El banco viene del extracto; sólo usamos Banco si el origen viejo no lo decía.
+function _bancoExtractoAviso_(fila) {
+  return _textoAviso_(fila.origen).replace(/^extracto/i, "").trim() || _textoAviso_(fila.banco);
+}
+
 // Mantiene cada sección corta, pero dice cuántos renglones quedaron afuera.
 function _seccionAviso_(titulo, lineas) {
   var visibles = lineas.slice(0, 5);
@@ -154,7 +164,7 @@ function _leerDatosAviso_() {
     var h = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Registro");
     if (!h) throw new Error("Falta la solapa Registro");
     datos.registro = h.getDataRange().getValues().slice(1).filter(function (r) { return r[0] instanceof Date; })
-      .map(function (r) { return {fecha: r[0], tipo: String(r[1]), estado: String(r[3]), detalle: r[4]}; });
+      .map(function (r) { return {fecha: r[0], tipo: _textoAviso_(r[1]).toLowerCase(), estado: _textoAviso_(r[3]), detalle: r[4]}; });
   });
   leer("Extracto", function () {
     var h = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Saldos Bancarios");
@@ -166,7 +176,7 @@ function _leerDatosAviso_() {
       throw new Error("Faltan columnas Fecha, Origen, Banco o Empresa");
     filas.forEach(function (r) {
       datos.saldos.push({banco: r[banco], empresa: r[empresa], origen: r[origen], fecha: r[fecha]});
-      if (String(r[origen]).trim() === "Extracto" && r[fecha] instanceof Date &&
+      if (_esExtractoAviso_(r[origen]) && _diaAviso_(r[fecha]) &&
           (!datos.extracto || r[fecha] > datos.extracto)) datos.extracto = r[fecha];
     });
   });
@@ -206,17 +216,24 @@ function _faltantesAviso_(ahora, datos) {
   } else {
     var bancos = {}, arqueo = "";
     datos.saldos.forEach(function (r) {
-      var banco = _textoAviso_(r.banco), empresa = _textoAviso_(r.empresa).toUpperCase();
+      var extracto = _esExtractoAviso_(r.origen);
+      var banco = extracto ? _bancoExtractoAviso_(r) : _textoAviso_(r.banco), empresa = _textoAviso_(r.empresa).toUpperCase();
       var origen = _textoAviso_(r.origen).toLowerCase(), dia = _diaAviso_(r.fecha);
       var caja = /^(\(varios\)|varios|caja)$/i.test(banco);
       if (empresa === "AA" && caja && origen === "manual" && dia <= hoy && dia > arqueo) arqueo = dia;
       if (!banco || caja) return;
       var clave = banco.toLowerCase();
       if (!bancos[clave]) bancos[clave] = {nombre: banco, fecha: ""};
-      if (origen === "extracto" && dia <= hoy && dia > bancos[clave].fecha) bancos[clave].fecha = dia;
+      if (extracto && dia <= hoy && dia > bancos[clave].fecha) bancos[clave].fecha = dia;
     });
     Object.keys(bancos).sort().forEach(function (clave) {
-      pedir("Extracto de " + bancos[clave].nombre, bancos[clave].fecha, cierre);
+      var banco = bancos[clave], ultima = banco.fecha;
+      if (ultima && ultima < cierre) {
+        // La edad son días corridos; para pedir actualización manda el cierre hábil.
+        var edad = Math.round((Date.parse(hoy) - Date.parse(ultima)) / AVISO_DIA);
+        lineas.push("- Extracto de " + banco.nombre + ": el último extracto es del " + mostrar(ultima) +
+          ", hace " + edad + (edad === 1 ? " día" : " días") + "; falta actualizar al " + mostrar(cierre) + ".");
+      } else if (!ultima) pedir("Extracto de " + banco.nombre, ultima, cierre);
     });
     if (!Object.keys(bancos).length) lineas.push("- Extractos de banco: no hay bancos identificables en Saldos Bancarios; revisar la lista.");
     pedir("Arqueo de caja AA (carga manual)", arqueo, cierre);
@@ -297,14 +314,14 @@ function _armarAviso_(ahora, datos) {
   });
   if (!errores.Procesados && !errores.Registro) datos.publicados.forEach(function (f) {
     if (ahora - f.fecha > 2 * 60 * 60 * 1000 && !datos.registro.some(function (r) {
-      return r.tipo === f.tipo && r.estado.toLowerCase() === "ok" && r.fecha > f.fecha && r.fecha <= ahora;
+      return r.tipo === f.tipo && _textoAviso_(r.estado).toLowerCase() === "ok" && r.fecha > f.fecha && r.fecha <= ahora;
     })) alertas.push("La Sheet no importó " + _textoAviso_(f.nombre) + ". Abrir la Sheet → finauto → Importar lo nuevo ahora.");
   });
   var registros = nuevos(datos.registro.filter(reciente));
   registros.forEach(function (r) {
     if (String(r.detalle).indexOf("VERIFICACION_NO_CUADRA") !== -1) alertas.push(
       "La escritura de " + _textoAviso_(r.tipo) + " terminó pero NO CUADRÓ al releerla. No usar el cash hasta revisar Registro y reimportar con finauto.");
-    if (r.estado.toUpperCase() === "ERROR") alertas.push("Falló la importación de " + _textoAviso_(r.tipo) + ": " +
+    if (_textoAviso_(r.estado).toUpperCase() === "ERROR") alertas.push("Falló la importación de " + _textoAviso_(r.tipo) + ": " +
       _textoAviso_(r.detalle, 120) + ". Revisar Registro y pedir a finauto que corrija el error antes de reintentar.");
   });
   var retenidos = nuevos(datos.retenidos.filter(reciente));
