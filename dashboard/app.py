@@ -529,10 +529,10 @@ function verPosicion(){
   [['Caja de hoy', pesos(k.caja, true), k.efectivo_sin_asignar
       ? '+ ' + pesos(k.efectivo_sin_asignar, true) + ' de efectivo del grupo, sin asignar'
       : 'banco + efectivo', ''],
-   ['Deuda ya vencida', pesos(k.vencido, true),
+   ['Vencido con ' + V.proveedores, pesos(k.vencido, true),
       V.nota_vencido, k.vencido > 0 ? 'malo' : 'bien'],
    ['Vence en los proximos 7 dias', pesos(k.por_vencer, true),
-      'todavia no aprieta', '']
+      V.nota_vencido, '']
   ].forEach(function(x){
     var t = el('div', 'card kpi ' + x[3]);
     t.appendChild(el('div', 'et', x[0]));
@@ -541,6 +541,26 @@ function verPosicion(){
     c.appendChild(t);
   });
   out.push(c);
+
+  if (d.vencidos_resumen){
+    var vr = d.vencidos_resumen, cv = el('div', 'card');
+    out.push(el('h2', null, 'Vencido e impago · las tres puntas'));
+    var tv = el('table');
+    tv.innerHTML = '<thead><tr><th>Obligación</th><th>Cuánto</th><th>Desde cuándo</th><th>Qué pasa si no se paga</th></tr></thead>';
+    var bv = el('tbody');
+    vr.filas.forEach(function(f){
+      var tr = el('tr');
+      [f.nombre, pesos(f.monto), f.desde ? dia(f.desde) : 'Sin vencido', f.riesgo].forEach(function(t){
+        var td = el('td'); td.textContent = t; tr.appendChild(td);
+      });
+      bv.appendChild(tr);
+    });
+    tv.appendChild(bv); cv.appendChild(tv);
+    cv.appendChild(el('p', 'nota', 'Total vencido: <b>' + pesos(vr.total) +
+      '</b>. Es deuda acumulada; no se vuelve a sumar a las salidas futuras.' +
+      (vr.otros ? ' Incluye otros vencidos fuera de las tres puntas: ' + pesos(vr.otros) + '.' : '')));
+    out.push(cv);
+  }
 
   // La refi va aparte: es obligacion, pero no es una drogueria y no tiene
   // tolerancia de proveedor. Mezclarla con las droguerias infla la deuda que
@@ -557,12 +577,26 @@ function verPosicion(){
   }
 
   if (d.ingresos_dia && d.ingresos_dia.dias.length){
-    out.push(el('h2', null, 'Lo que entra, dia por dia'));
+    out.push(el('h2', null, 'Cobranza e ingresos · próximos 30 días'));
     var ci = el('div', 'card');
     ci.appendChild(leyenda(d.ingresos_dia.fuentes));
     ci.appendChild(barrasApiladas(d.ingresos_dia));
-    ci.appendChild(el('p', 'nota', 'El total del mes no dice nada: lo que importa es ' +
-      'el RITMO. ' + V.nota_ritmo));
+    ci.appendChild(el('p', 'nota', dia(d.ingresos_dia.desde) + ' a ' + dia(d.ingresos_dia.hasta) +
+      ' · Total: <b>' + pesos(d.ingresos_dia.total) + '</b>. Cero significa sin ingresos cargados para ese día.'));
+    var detalle = el('details');
+    detalle.appendChild(el('summary', null, 'Ver importes por día y cheques aparte'));
+    var tdia = el('table');
+    tdia.innerHTML = '<thead><tr><th>Día</th><th>Ingreso en la curva</th></tr></thead>';
+    d.ingresos_dia.dias.forEach(function(f){
+      tdia.appendChild(el('tr', null, '<td>' + dia(f.fecha) + '</td><td>' + pesos(f.total) + '</td>'));
+    });
+    detalle.appendChild(tdia);
+    detalle.appendChild(el('p', 'nota', 'Cheques en cartera en el mismo período: <b>' +
+      pesos(d.ingresos_dia.cheques_total) + '</b>. No suman a la curva hasta decidir depósito o endoso.'));
+    d.ingresos_dia.cheques.forEach(function(f){
+      detalle.appendChild(el('p', 'nota', dia(f.fecha) + ': ' + pesos(f.importe)));
+    });
+    ci.appendChild(detalle);
     out.push(ci);
   }
 
