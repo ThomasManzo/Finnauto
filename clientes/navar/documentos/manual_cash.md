@@ -64,10 +64,33 @@ sin lista escrita a mano. Si se agrega un banco nuevo hay que ejecutar **Armar s
 crear su fila; las filas ya creadas actualizan sus importes por fórmula. La aparición de nuevas
 filas no está conectada al disparador de importación.
 
-**Qué pasa con lo que vence y no se paga**: no desaparece ni se corre solo a mañana. Al día siguiente
-está en "Atrasado hoy" (stock) y en "Venció y no se pagó". Se paga cuando alguien lo decide, en Plan
-("Regularización"), y entonces aparece como cuota en el mensual. Si se mira el escenario 1, la fila
-"Deuda pospuesta acumulada" muestra cuánto se acumuló de deuda por decisión sin pagar.
+**Qué pasa con lo que vence y no se paga**: desde el día siguiente entra en "Atrasado hoy"
+(stock). Debajo del total, **"Venció en ese período y sigue impago hoy"** lo muestra en la
+columna de su vencimiento original: día, semana de lunes a domingo o mes. Por ejemplo, una
+factura del 25/09 impaga al 30/09 queda en el 25/09, en la semana del 21/09 o en septiembre.
+Es la deuda pendiente **hoy**, no una foto de lo que estaba pendiente en aquel momento.
+Este detalle no entra en la curva ni modifica ningún saldo al cierre.
+
+Lo anterior al primer período visible se muestra en **"Venció antes del primer período visible"**.
+Si faltan extractos y la pantalla diaria queda atrás, lo vencido después del último período
+visible se muestra aparte también. Esos dos importes en B son totales fuera de las columnas
+fechadas. **Total repartido por vencimiento = suma del renglón por períodos + antes + después**;
+debe coincidir con **Total atrasado a pagar**. El control muestra la diferencia redondeada a
+centavos y debe decir **0,00**; si no, revisar fechas vacías, cero o inválidas en las listas.
+El detalle muestra centavos para que el formato no esconda diferencias.
+
+Se mantienen los mismos filtros del stock: proveedores A y AA pendientes sin `REVISAR`,
+cuotas bancarias `Pendiente`, impuestos distintos de `Pagado` y cheques propios `En Cartera`.
+El vencido a cobrar es informativo y no suma. Una deuda de 2007 admitida por esos filtros va a
+"antes"; si es de proveedores marcada `REVISAR`, sigue fuera tanto del total como del detalle.
+No se cambia la decisión sobre deuda vieja con este reparto.
+
+Cuando la lista registra el pago (o la factura sale de la nueva foto de pendientes), desaparece
+del total y del detalle por fórmula, sin borrar nada en estas pantallas. No basta que el pago
+figure en el extracto si la lista sigue desactualizada. Para pagar atrasado por decisión se usa
+Plan ("Regularización"); eso aparece como cuota en el mensual. La fila preexistente "Venció en
+el período y no se pagó" sigue siendo solo proveedores e impuestos y solo en lo real: no es el
+total de este nuevo detalle. "Deuda pospuesta acumulada" conserva su lectura del escenario 1.
 
 **Qué es "débito automático"**: la columna `Debito Automatico` de Deuda Bancaria y Deuda Impositiva.
 Regla: préstamos, tarjetas e hipotecas = Sí (el banco lo debita si hay fondos); planes de pago
@@ -95,6 +118,10 @@ vigentes de ARCA = Sí (débito en CBU); el resto de impuestos = No (VEP). Se co
 | Cuotas que se pagan por decisión | — | cronograma (No) · mensual: Plan |
 | Impuestos por VEP y planes nuevos | — | Deuda Impositiva (No) · mensual: Plan |
 | Regularización de atrasado | — | mensual: Plan |
+
+El detalle **Venció en ese período y sigue impago hoy** no es real ni estimado de caja: es stock
+actual repartido por vencimiento original. Incluye también bancos y cheques propios, conserva
+los filtros del bloque 6 y no usa promedios, inflación ni cuotas decididas en Plan.
 
 ## 5. Cómo impacta cada movimiento
 
