@@ -29,6 +29,7 @@ import json
 import sys
 import datetime
 import html
+from decimal import Decimal
 from collections import defaultdict, OrderedDict
 
 BASE_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -61,7 +62,7 @@ def _unidad_real(u):
 # "dia_1" (MAGA): lo vencido entra a la curva HOY. Las droguerias cortan la
 # compra manana si no cobran, asi que la deuda vencida es una salida inmediata.
 #
-# "stock" (NAVAR, Thomas 17/09/2026): "esta gente tiene deuda hace mucho
+# "stock" (NAVAR, la dirección 17/09/2026): "esta gente tiene deuda hace mucho
 # tiempo, no tiene sentido que la paguen toda de una. Lo mas facil seria
 # calcular las salidas proyectadas y cuanto te queda de caja libre vs la deuda,
 # para ver cuanto y que podes pagar sin comprometer las obligaciones futuras".
@@ -133,7 +134,7 @@ def proveedores(contrato, unidad, cliente, hoy, dias=21):
         # tiene nada vencido ni por vencer, no va en la tabla de a quien pagar.
         if not (a["vencido"] or a["por_vencer"]):
             continue
-        # La refinanciacion NO es una drogueria. Thomas fue explicito: "no tiene
+        # La refinanciacion NO es una drogueria. la dirección fue explicito: "no tiene
         # nada que ver con las droguerias". Va en su propia linea del tablero,
         # no mezclada en la tabla de a quien pagarle.
         if "REFINANC" in str(a["proveedor"]).upper():
@@ -186,7 +187,7 @@ def refinanciacion(contrato, unidad, hoy, dias=45):
 def salidas(contrato, unidad, hoy, dias=15, tope=12):
     """Lo que sale en los próximos días, día por día.
 
-    Es la vista que ya tenía Thomas en su dash ("próximas salidas importantes")
+    Es la vista que ya tenía la dirección en su dash ("próximas salidas importantes")
     y es la que se mira antes de decir que sí a algo.
     """
     u = _unidad_real(unidad)
@@ -211,7 +212,7 @@ def salidas(contrato, unidad, hoy, dias=15, tope=12):
 def gastos_del_periodo(contrato, unidad, hoy, dias=45, tope=8, cliente="maga"):
     """En que se va la plata, con las droguerias adentro.
 
-    Thomas: "grafico de gastos: droguerias suizo dds y cofa, cual suma mas, un
+    la dirección: "grafico de gastos: droguerias suizo dds y cofa, cual suma mas, un
     grafico de barras; pago de mercaderia, otros gastos".
 
     Lo importante es que las DROGUERIAS ENTREN. Antes este grafico salia solo
@@ -404,7 +405,7 @@ def hallazgos(contrato):
 def ingresos_por_dia(contrato, unidad, hoy, dias=30):
     """Lo que entra, día por día y separado por fuente.
 
-    Es el gráfico que Thomas ya tenía en su tablero de Apps Script y el único
+    Es el gráfico que la dirección ya tenía en su tablero de Apps Script y el único
     que muestra el RITMO del negocio: un total mensual no dice que el 07 entra
     PAMI y el resto del mes se vive de mostrador.
     """
@@ -442,7 +443,7 @@ def ingresos_por_dia(contrato, unidad, hoy, dias=30):
 
 # Lo que se cobra de mostrador no es "a cobrar": ya esta cobrado.
 #
-# ERROR REAL (06/09/2026): la solapa "A cobrar" de MAGA decia $0 y Thomas
+# ERROR REAL (06/09/2026): la solapa "A cobrar" de MAGA decia $0 y la dirección
 # salto: "como que no te deben nada? Y el pago de obras sociales?".
 #
 # Tenia razon. Yo solo miraba las cuentas a cobrar a droguerias -- que son de
@@ -454,7 +455,7 @@ COBRO_INMEDIATO = ('EFECTIVO', 'TARJETA')
 
 # Conceptos que SI mantienen el saldo hasta cobrarse.
 #
-# ERROR REAL (06/09/2026). Thomas: "tiene cuentas a cobrar de FCIAS vencida
+# ERROR REAL (06/09/2026). la dirección: "tiene cuentas a cobrar de FCIAS vencida
 # Speed, mira esos 102M del 31".
 #
 # Yo habia puesto una regla por BLOQUE: del bloque de ingresos, solo el futuro,
@@ -569,7 +570,7 @@ def a_cobrar(contrato, unidad, hoy, dias=45):
     # LA CARTERA DE CHEQUES ES DE UNA EMPRESA SOLA.
     #
     # Estaba saliendo sin unidad, asi que el tablero le mostraba a MAGA $208M
-    # de cheques que son de Speedmed. Thomas: "MAGA no tiene cheques en cartera
+    # de cheques que son de Speedmed. la dirección: "MAGA no tiene cheques en cartera
     # actualmente". El exportador nuevo los marca; los contratos viejos no, y
     # en ese caso se dice que no estan atribuidos en vez de repartirlos.
     # DE QUE EMPRESA ES LA CARTERA, DEDUCIDO DEL PROPIO CONTRATO.
@@ -598,7 +599,7 @@ def a_cobrar(contrato, unidad, hoy, dias=45):
             continue
         # UN ID POR CHEQUE, NO POR DIA.
         #
-        # ERROR REAL (07/09/2026). Thomas: "cuando le das a endosar un cheque
+        # ERROR REAL (07/09/2026). la dirección: "cuando le das a endosar un cheque
         # automaticamente le da endosar al que se encuentre en el mismo dia, lo
         # cual esta mal: podes endosar uno y el otro no".
         #
@@ -623,13 +624,13 @@ def a_cobrar(contrato, unidad, hoy, dias=45):
 
 # Los grupos que se pueden patear, y en que orden se pateam.
 #
-# Thomas: "esta solapa lo que te tiene que mostrar es que puedo hacer para
+# la dirección: "esta solapa lo que te tiene que mostrar es que puedo hacer para
 # llegar bien, que obligaciones tengo que patear". Para eso la proyeccion no
 # puede ser una curva sola: tiene que poder sacarse cosas y ver que pasa.
 #
 # El orden es el del catalogo: primero lo que menos duele.
 PATEABLES = [
-    # LO YA VENCIDO ENTRA EL PRIMER DIA. Thomas (12/09/2026): "esta mal que el
+    # LO YA VENCIDO ENTRA EL PRIMER DIA. la dirección (12/09/2026): "esta mal que el
     # flujo de tan bien con una empresa con TANTA deuda". Tenia razon: la curva
     # solo sumaba lo que vence DENTRO de la ventana, asi que la deuda atrasada
     # (fecha anterior a hoy) no restaba nunca y la caja parecia mejor de lo que
@@ -698,7 +699,7 @@ def _grupo_de(nombre, tipo=None):
 def proyeccion(contrato, unidad, hoy, dias=45, con_intercompany=False, modo=DIA_1):
     """La caja dia por dia, CON LO QUE ESTA CARGADO — sin estimar nada.
 
-    ERROR REAL (06/09/2026). Thomas: *"¿cómo puede ser que Speed en el cash dé
+    ERROR REAL (06/09/2026). la dirección: *"¿cómo puede ser que Speed en el cash dé
     tan bien y en la aplicación dé tan mal?"*.
 
     Dos causas, las dos mias, y las dos de la misma familia:
@@ -714,7 +715,7 @@ def proyeccion(contrato, unidad, hoy, dias=45, con_intercompany=False, modo=DIA_
        una estimacion de lo mismo.
 
     Ahora no se estima nada: se usa lo que dice la planilla. Y el resultado
-    reproduce las dos filas del cash de Thomas:
+    reproduce las dos filas del cash de la dirección:
 
         Speed sin pagar droguerias   +$3.791M   ("Saldo cierre")
         Speed pagandolas             -$885M     ("Con pago a droguerias")
@@ -797,7 +798,7 @@ def proyeccion(contrato, unidad, hoy, dias=45, con_intercompany=False, modo=DIA_
         items.append({"id": g + "|" + f + "|" + cp, "grupo": g, "fecha": f,
                       "concepto": cp, "monto": v, "estimado": False})
 
-    # EL PAGO ENTRE EMPRESAS VA EN LA DIRECCION QUE DICE THOMAS, NO LA QUE
+    # EL PAGO ENTRE EMPRESAS VA EN LA DIRECCION QUE DICE la dirección, NO LA QUE
     # SUGIERE EL BLOQUE DONDE ESTA CARGADO.
     #
     # ERROR REAL (07/09/2026): "en el selector de Speed sale como si Speed le
@@ -905,7 +906,7 @@ def capacidad_de_pago(contrato, unidad, hoy, cliente, ventanas=VENTANAS):
     sin que ningun dia de la ventana quede en rojo. Con eso se paga vencido en
     orden de atraso (el que hace mas que espera, primero), hasta que se acaba.
 
-    Es la pregunta de Thomas (17/09/2026): "cuanto y que podes pagar sin
+    Es la pregunta de la dirección (17/09/2026): "cuanto y que podes pagar sin
     comprometer las obligaciones futuras". No es un consejo de a quien
     postergar: es cuanto hay, y hasta donde llega.
     """
@@ -945,6 +946,74 @@ def capacidad_de_pago(contrato, unidad, hoy, cliente, ventanas=VENTANAS):
             "vencido_por_tipo": p["vencido_stock"]["por_tipo"],
         }
     return out
+
+
+def _grupo_debito(fila):
+    """Solo vale lo cargado: un vacío o un valor raro queda sin definir."""
+    valor = fila.get("debito_automatico", fila.get("Debito Automatico"))
+    if valor is True or str(valor).strip().casefold() in ("sí", "si"):
+        return "automatico"
+    if valor is False or str(valor).strip().casefold() == "no":
+        return "decision"
+    return "sin_definir"
+
+
+def obligaciones_por_debito(lineas, cuotas, hoy, impuestos=False):
+    """Reparte el stock y el cronograma por separado: jamás se suman entre sí.
+
+    En bancos, el capital sale de las líneas y las fechas de las cuotas.
+    En impuestos, cada fila ya es una deuda con su vencimiento. Si falta el
+    banco del CBU, lo mostramos; no inventamos dónde se va a debitar.
+    """
+    hoy = hoy.isoformat() if hasattr(hoy, "isoformat") else str(hoy)
+    hasta = (datetime.date.fromisoformat(hoy) + datetime.timedelta(days=30)).isoformat()
+    grupos = [{"id": k, "nombre": n, "por_banco": {}} for k, n in (
+        ("automatico", "Sale sí o sí"), ("decision", "Se paga por decisión"),
+        ("sin_definir", "Sin definir"))]
+    indice = {g["id"]: g for g in grupos}
+
+    def agregar(fila, es_stock):
+        banco = fila.get("banco") or ("Banco/CBU sin informar" if impuestos else
+                                      (fila.get("contraparte") or "Banco sin informar").split(" - ")[0])
+        g = indice[_grupo_debito(fila)]
+        b = g["por_banco"].setdefault(banco, {"banco": banco, "total": Decimal(0),
+                "vencido": Decimal(0), "en_30": Decimal(0), "items": []})
+        monto = Decimal(str(fila.get("capital_vigente" if es_stock and not impuestos else "importe") or 0))
+        fecha = str(fila.get("fecha") or "")
+        if es_stock:
+            b["total"] += monto
+        if not es_stock or impuestos:
+            if fecha and fecha < hoy:
+                b["vencido"] += monto
+            elif hoy <= fecha < hasta:
+                b["en_30"] += monto
+        # Dejamos todo el cronograma disponible, también lo posterior a 30 días.
+        b["items"].append({"concepto": fila.get("linea") or fila.get("contraparte") or "Obligación",
+            "fecha": fecha or str(fila.get("vence") or ""), "importe": float(monto),
+            "clase": "Capital (no sumar a cuotas)" if es_stock and not impuestos else "Vencimiento",
+            "estimado": bool(fila.get("estimado")), "falta_importe": bool(fila.get("falta_importe"))})
+
+    for fila in lineas:
+        if not fila.get("en_caja"):
+            agregar(fila, True)
+    for fila in cuotas:
+        agregar(fila, False)
+    for g in grupos:
+        bancos = sorted(g["por_banco"].values(), key=lambda b: b["banco"])
+        for campo in ("total", "vencido", "en_30"):
+            g[campo] = float(sum((b[campo] for b in bancos), Decimal(0)))
+            for b in bancos:
+                b[campo] = float(b[campo])
+        for b in bancos:
+            b["items"].sort(key=lambda x: (x["clase"], x["fecha"], x["concepto"]))
+        g["por_banco"] = bancos
+    return grupos
+
+
+def deuda_impositiva_por_debito(contrato, unidad, hoy):
+    filas = [x for x in contrato.get("deuda_impositiva") or []
+             if unidad == GRUPO or _unidad_real(x.get("unidad")) == unidad]
+    return obligaciones_por_debito(filas, [], hoy, impuestos=True) if filas else []
 
 
 def deuda_bancaria(contrato, unidad, hoy):
@@ -1007,6 +1076,7 @@ def deuda_bancaria(contrato, unidad, hoy):
     margen = sum(b["margen"] for b in filas)
     return {
         "por_banco": filas,
+        "por_debito": obligaciones_por_debito(lineas, cuotas, hoy),
         "total": sum(b["deuda"] for b in filas),
         "vencido": sum(b["vencido"] for b in filas),
         "en_30": sum(b["en_30"] for b in filas),
@@ -1198,6 +1268,7 @@ def armar(contrato, cliente="maga"):
             "capacidad": capacidad_de_pago(contrato, u, hoy, cliente) if modo == STOCK else None,
             # La deuda con los bancos como stock: por banco, vencido, proximos 30 dias, margen.
             "deuda_bancaria": deuda_bancaria(contrato, u, hoy),
+            "deuda_impositiva_debito": deuda_impositiva_por_debito(contrato, u, hoy),
             # El plan minimo para cada ventana que ofrece el timeline.
             # Se precalculan porque el HTML no calcula plata: mover el slider
             # cambia de plan, no lo recalcula.

@@ -4,7 +4,7 @@ dashboard.app — la aplicación: un HTML con capas, empresa por empresa.
 
 QUÉ CAMBIÓ RESPECTO DEL INFORME
 -------------------------------
-Antes esto era un documento de una sola página. Thomas (06/09/2026):
+Antes esto era un documento de una sola página. la dirección (06/09/2026):
 
     "No tiene sentido armar ese informe si la idea es presentar un HTML o
      aplicación con varias capas: 1) el dash con información, cuentas a pagar,
@@ -54,7 +54,7 @@ from dashboard import datos as DATOS
 CSS = """
 /* EL ESTILO (17/09/2026).
  *
- * Thomas, 16/09: "me gustaria ver distintos estilos que se vea mas profesional,
+ * la dirección, 16/09: "me gustaria ver distintos estilos que se vea mas profesional,
  * mas software y no tanto un tablero hecho con Power BI". Se probaron tres
  * direcciones y eligio una mezcla: barra lateral oscura con la navegacion,
  * papel calido de fondo, serif en titulos y en los numeros grandes, monoespaciada
@@ -81,6 +81,9 @@ CSS = """
   --mono:"IBM Plex Mono",Menlo,Consolas,monospace;
 }
 *{box-sizing:border-box}
+.debito{border-top:1px solid var(--linea);padding:12px 0}
+.debito summary{cursor:pointer}
+.debito summary:focus-visible{outline:2px solid var(--tinta);outline-offset:4px}
 html,body{margin:0;background:var(--fondo);color:var(--tinta)}
 body{font:14.5px/1.5 var(--sans);-webkit-font-smoothing:antialiased}
 
@@ -205,7 +208,7 @@ JS = r"""
 // esto solo elige qué mostrar y cómo escribirlo. Ver el docstring de app.py.
 // UNA SOLA ESCALA POR TABLA.
 //
-// ERROR REAL (06/09/2026). Thomas: "queda visualmente feo, si un numero no
+// ERROR REAL (06/09/2026). la dirección: "queda visualmente feo, si un numero no
 // supera el millon le pongamos el numero completo... pero fijate como rapido a
 // simple vista salta un 300M de servicios? Es lo primero que ve el ojo humano".
 //
@@ -263,7 +266,7 @@ function svgEl(t, attrs){
 
 // El tooltip del grafico de ingresos.
 //
-// Thomas: "lo que entra dia por dia, pasar el mouse por arriba y que te diga el
+// la dirección: "lo que entra dia por dia, pasar el mouse por arriba y que te diga el
 // monto de cada concepto". Es lo que convierte un grafico lindo en uno que se
 // usa: la barra alta del 07 no dice nada hasta que se sabe que son $490M de
 // PAMI y no treinta dias de mostrador.
@@ -492,7 +495,7 @@ function resumenEndosos(){
 
 // UN ENDOSO SE IMPUTA AL RESUMEN MAS VIEJO, ASI QUE BAJA LO VENCIDO PRIMERO.
 //
-// Thomas: "en los cheques que te diga cuanto baja de lo vencido, no de lo a
+// la dirección: "en los cheques que te diga cuanto baja de lo vencido, no de lo a
 // vencer". Es la regla del negocio: todo pago o endoso se aplica al resumen
 // mas viejo. Y es lo unico que importa para decidir -- lo vencido es lo que
 // puede hacer que te corten la compra; bajar deuda que todavia no vencio no
@@ -518,7 +521,7 @@ function verPosicion(){
 
   // LOS TRES NUMEROS QUE SE MIRAN, Y NADA MAS.
   //
-  // Antes habia un cuarto, "margen a 7 dias". Thomas lo saco: "no me gusta, no
+  // Antes habia un cuarto, "margen a 7 dias". la dirección lo saco: "no me gusta, no
   // se entiende que toma". Tenia razon -- era caja + cobros - salidas de una
   // ventana, o sea tres cosas mezcladas en un numero sin unidad clara. Un KPI
   // que hay que explicar no es un KPI.
@@ -620,7 +623,7 @@ function verPagar(){
 
   // ORDENADO POR ATRASO, Y CON EL RESUMEN A LA VISTA.
   //
-  // Thomas, 06/09/2026: "el atraso que marcaste esta como el orto"; "no
+  // la dirección, 06/09/2026: "el atraso que marcaste esta como el orto"; "no
   // pongamos esa tolerancia, no ordenemos por tolerancia, ordenemos por
   // atraso"; "aclaremos que resumen suman esas deudas".
   //
@@ -635,7 +638,7 @@ function verPagar(){
   // NAVAR (17/09/2026) son 88 proveedores, y ordenar TODO por atraso ponia
   // primero una deuda de $1.300 con 30 semanas y dejaba los $135M de COPETEGLA
   // en la mitad de una lista de doce mil pixeles. La regla sigue siendo la de
-  // Thomas -- ordenar por atraso, no por nuestra tolerancia -- pero aplicada
+  // la dirección -- ordenar por atraso, no por nuestra tolerancia -- pero aplicada
   // adentro de dos grupos: los que juntan el 90% de la plata (o los 15 mas
   // grandes, lo que ocurra primero) y "el resto", que se abre si hace falta.
   var c = el('div', 'card');
@@ -849,7 +852,7 @@ function verCobrar(){
 
   // CADA CHEQUE, CON SUS DOS DECISIONES SEPARADAS.
   //
-  // Thomas: "habria que sumar una columna mas: la de estado Endosar/depositar
+  // la dirección: "habria que sumar una columna mas: la de estado Endosar/depositar
   // y la de Drogueria: Suizo, DDS, COFA". Van separadas porque son dos
   // decisiones distintas -- primero que hago, despues a quien.
   if (c.cheques.length){
@@ -929,7 +932,7 @@ function verCobrar(){
     }
     // ESTA LINEA ESTABA MAL Y ADEMAS NO SE ENTENDIA.
     //
-    // Thomas (07/09/2026) marco: "explicame que quiere decir esa linea porque
+    // la dirección (07/09/2026) marco: "explicame que quiere decir esa linea porque
     // no entiendo". Decia "faltan $1.066.774.053" justo despues de decir que
     // el endoso bajaba $191.597.425 de deuda -- y no lo restaba.
     //
@@ -974,7 +977,7 @@ function verProyeccion(){
   var d = actual(), out = [];
   // EL ESCENARIO "Y ADEMAS LE PAGO A LA OTRA EMPRESA DEL GRUPO".
   //
-  // Thomas: "acordate de sumar el boton de MAGA con pago a Speed y Speed con
+  // la dirección: "acordate de sumar el boton de MAGA con pago a Speed y Speed con
   // pago a MAGA". Es el escenario 3 de su Posicion Consolidada, y mide cuanto
   // le esta financiando una empresa a la otra -- hoy MAGA solo transfiere
   // cuando Speed necesita cubrir cheques.
@@ -1093,7 +1096,7 @@ function verProyeccion(){
       '). Se paga con la caja libre, en orden de atraso; lo que no se paga sigue atrasado.'));
     out.push(cc0);
 
-    // LA DEUDA CON LOS BANCOS, como stock. Es lo que pidio Thomas (17/09): para
+    // LA DEUDA CON LOS BANCOS, como stock. Es lo que pidio la dirección (17/09): para
     // atras, un numero por concepto que NO toca la caja de hoy; lo que si entra
     // en la curva son las cuotas con fecha. Aca se ve cuanto se debe, a quien,
     // que ya vencio, que vence en 30 dias y como esta la situacion BCRA.
@@ -1136,7 +1139,14 @@ function verProyeccion(){
         'son las cuotas con fecha (cada una el dia que vence). Los descubiertos no se suman: lo usado ya es ' +
         'el saldo negativo de cada cuenta, que esta en la caja de hoy. Fuente: mapa de deuda del ' +
         'cliente cruzado con los extractos.'));
+      cdb.appendChild(detalleDebito("bancos"));
       out.push(cdb);
+    }
+    if (d.deuda_impositiva_debito && d.deuda_impositiva_debito.length){
+      var cdi = el("div", "card");
+      cdi.appendChild(el("h2", null, "Obligaciones impositivas"));
+      cdi.appendChild(detalleDebito("impuestos"));
+      out.push(cdi);
     }
     plan = null;
   }
@@ -1184,7 +1194,7 @@ function verProyeccion(){
   // El interruptor del pago entre empresas, arriba del timeline.
   // EL BOTON DICE EN QUE DIRECCION VA LA PLATA.
   //
-  // Thomas (07/09/2026): "en el selector de Speed sale como si Speed le
+  // la dirección (07/09/2026): "en el selector de Speed sale como si Speed le
   // tendria que pagar a MAGA, cuando en realidad MAGA le debe a Speed. Y ese
   // boton sumalo en MAGA tambien: en Speed 'si te paga MAGA' y en MAGA 'si le
   // pago a Speed'".
@@ -1288,7 +1298,7 @@ function verProyeccion(){
 
   // LA CAJA PRIMERO, LOS INTERRUPTORES DESPUES.
   //
-  // Thomas (07/09/2026): "en la parte de proyeccion deberia ser al reves, el
+  // la dirección (07/09/2026): "en la parte de proyeccion deberia ser al reves, el
   // tema de la caja y demas arriba de todo, para luego abajo ver que se puede
   // patear y se vaya acomodando solo".
   //
@@ -1350,7 +1360,7 @@ function verProyeccion(){
 
       // PAGAR UNA PARTE, que es lo que se hace de verdad.
       //
-      // Thomas: "montos parciales tambien". Tiene razon y cambia el modelo:
+      // la dirección: "montos parciales tambien". Tiene razon y cambia el modelo:
       // hasta aca un resumen se pagaba entero o se pateaba entero, y en la
       // realidad a Suizo le pagas 200 de los 500. Un interruptor de todo o
       // nada obliga a elegir entre dos cosas que nadie hace.
@@ -1483,6 +1493,14 @@ function verHallazgos(){
 var CAPAS = {posicion: verPosicion, pagar: verPagar, cobrar: verCobrar,
              proyeccion: verProyeccion, hallazgos: verHallazgos};
 
+// El detalle ya viene escrito en el HTML. Al cambiar de empresa copiamos el suyo.
+function detalleDebito(tipo){
+  var fuente = document.getElementById('debito-' + D.unidades.indexOf(UNIDAD) + '-' + tipo);
+  var copia = fuente ? fuente.cloneNode(true) : el('div');
+  copia.removeAttribute('id');
+  return copia;
+}
+
 function pintar(){
   document.querySelectorAll('[data-unidad]').forEach(function(b){
     b.setAttribute('aria-pressed', b.dataset.unidad === UNIDAD);
@@ -1495,6 +1513,7 @@ function pintar(){
   var cont = document.getElementById('capa');
   cont.innerHTML = '';
   CAPAS[SOLAPA]().forEach(function(n){ cont.appendChild(n); });
+  document.getElementById('debitos-sin-script').hidden = true;
 }
 
 document.addEventListener('click', function(e){
@@ -1507,7 +1526,7 @@ document.addEventListener('click', function(e){
 pintar();
 """
 
-# La solapa "Retiro" se saco: Thomas, 06/09/2026, "no tiene sentido".
+# La solapa "Retiro" se saco: la dirección, 06/09/2026, "no tiene sentido".
 # La pregunta que contestaba -- cuanto puedo sacar -- se contesta mirando la
 # deuda vencida y la caja, que estan en Posicion. Una solapa entera para
 # repetir eso con otra aritmetica agregaba una respuesta mas para conciliar.
@@ -1535,6 +1554,44 @@ def _cuando(paquete):
         return d.strftime("%d/%m/%Y %H:%M") if "T" in g else d.strftime("%d/%m/%Y")
     except ValueError:
         return g
+
+
+def _detalle_debito(grupos, impuestos=False):
+    """HTML listo para leer aun sin JavaScript; Enter y Espacio abren el detalle."""
+    from html import escape
+    def pesos(n):
+        return "$ " + format(n, ",.2f").replace(",", "X").replace(".", ",").replace("X", ".")
+    def fecha(f):
+        try:
+            return datetime.date.fromisoformat(f).strftime("%d/%m/%Y")
+        except ValueError:
+            return f or "Sin fecha informada"
+    partes = ['<p class="nota">' + (
+        'Impuestos aparte: no integran el total bancario. Los planes con débito en CBU '
+        'se incluyen en Sale sí o sí cuando está informado.' if impuestos else
+        'Los tres totales reparten el capital adeudado, sin descubiertos. Las cuotas '
+        'pueden incluir intereses: se muestran aparte y no se suman al capital.') +
+        ' Sale sí o sí significa débito automático si hay fondos, no pago confirmado. '
+        'Sin definir requiere completar el dato. En 30 días incluye hoy y excluye el día 30.</p>']
+    for g in grupos:
+        partes.append('<details class="debito"><summary><b>%s</b> · '
+                      '<span class="num">%s</span></summary>' % (escape(g['nombre']), pesos(g['total'])))
+        if not g['por_banco']:
+            partes.append('<p class="resumen">Sin obligaciones cargadas en este grupo.</p>')
+        for b in g['por_banco']:
+            partes.append('<h3>%s</h3><p class="resumen">%s: %s · Vencido: '
+                          '<span class="neg">%s</span> · En 30 días: %s</p>' % (
+                escape(b['banco']), 'Deuda' if impuestos else 'Capital', pesos(b['total']),
+                pesos(b['vencido']), pesos(b['en_30'])))
+            partes.append('<div class="envuelve"><table><thead><tr><th>Concepto</th><th>Tipo</th>'
+                          '<th>Fecha</th><th class="num">Importe</th></tr></thead><tbody>')
+            for x in b['items']:
+                nota = ' · importe sin informar' if x['falta_importe'] else (' · estimado' if x['estimado'] else '')
+                partes.append('<tr><td>%s%s</td><td>%s</td><td>%s</td><td class="num">%s</td></tr>' % (
+                    escape(x['concepto']), nota, escape(x['clase']), escape(fecha(x['fecha'])), pesos(x['importe'])))
+            partes.append('</tbody></table></div>')
+        partes.append('</details>')
+    return ''.join(partes)
 
 
 def render(paquete):
@@ -1576,6 +1633,18 @@ def render(paquete):
       '<p class="sub">Tablero de decisión · %s</p></div>' % e(paquete["cliente"]))
     A('<div class="meta"><i></i>generado %s</div></div>' % e(_cuando(paquete)))
     A('<div id="capa"></div>')
+    # Si el script no corre, quedan las empresas y sus detalles a la vista.
+    A('<section id="debitos-sin-script">')
+    for i, u in enumerate(paquete["unidades"]):
+        d = paquete["datos"][u]
+        for tipo, titulo, grupos in (
+            ("bancos", "Lo que se debe a los bancos", (d.get("deuda_bancaria") or {}).get("por_debito", [])),
+            ("impuestos", "Obligaciones impositivas", d.get("deuda_impositiva_debito", []))):
+            if grupos:
+                A('<section class="card"><h2>%s · %s</h2>' % (e(u), titulo))
+                A('<div id="debito-%s-%s">%s</div></section>' %
+                  (i, tipo, _detalle_debito(grupos, impuestos=tipo == "impuestos")))
+    A('</section>')
     A('</main>')
     A('</div>')
     A('<script>var D = %s;</script>'
