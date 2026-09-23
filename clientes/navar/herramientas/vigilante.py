@@ -151,13 +151,17 @@ def preparar_staging_tango(archivos):
 def _filas_por_solapa(ruta):
     import openpyxl
     wb = openpyxl.load_workbook(ruta, read_only=False)
-    return {ws.title: sum(1 for r in ws.iter_rows(min_row=2, values_only=True) if any(v is not None for v in r)) for ws in wb.worksheets}
+    try:
+        return {ws.title: sum(1 for r in ws.iter_rows(min_row=2, values_only=True) if any(v is not None for v in r)) for ws in wb.worksheets}
+    finally:
+        wb.close()
 
 
 def control_contra_anterior(nuevo):
     """Compara el para_pegar nuevo con el último publicado del mismo tipo. Si alguna solapa
     perdió más de la mitad de las filas, algo cambió en el export (un filtro, una consulta mal
     guardada) y NO se publica: el importador borraría de la Sheet lo que el archivo no trae.
+    También retiene si crece a más del triple y suma más de 100 filas.
     Devuelve None si está bien, o el texto del problema."""
     prefijo = os.path.basename(nuevo).rsplit("_", 1)[0] + "_"          # para_pegar_bancos_
     previos = sorted(r for r in glob.glob(os.path.join(SALIDA, prefijo + "*.xlsx")) if r != nuevo)
@@ -165,21 +169,30 @@ def control_contra_anterior(nuevo):
         return None
     antes, ahora = _filas_por_solapa(previos[-1]), _filas_por_solapa(nuevo)
     problemas = []
-    for solapa, n_antes in antes.items():
+    for solapa in sorted(antes.keys() | ahora.keys()):
+        n_antes = antes.get(solapa, 0)
         n_ahora = ahora.get(solapa, 0)
         if n_antes >= 20 and n_ahora < n_antes * 0.5:
             problemas.append("%s: %d filas antes, %d ahora" % (solapa, n_antes, n_ahora))
+        # Las listas chicas pueden duplicarse normalmente. Más del triple y 100 filas
+        # extra merece revisar el export antes de pisar el cash, incluso desde cero.
+        if n_ahora > n_antes * 3 and n_ahora - n_antes > 100:
+            problemas.append("%s: crecimiento desmedido, %d filas antes, %d ahora "
+                             "(más del triple y más de 100 filas extra)" % (solapa, n_antes, n_ahora))
     return "; ".join(problemas) or None
 
 
 def mover_salidas(desde):
     """Lleva lo que generó un lector (para_pegar_*, resumen_*) a _para la Sheet, salvo que el
-    control contra el anterior diga que algo se achicó de golpe: entonces va a _retenido."""
+    control contra el anterior diga que algo se achicó o creció de golpe: entonces va a _retenido."""
     import shutil
     os.makedirs(SALIDA, exist_ok=True)
     retenido = None
     for r in glob.glob(os.path.join(desde, "para_pegar_*.xlsx")):
-        retenido = control_contra_anterior(r)
+        problema = control_contra_anterior(r)
+        if problema:
+            # Un archivo sano no levanta la retención de otro que falló en la misma tanda.
+            retenido = "; ".join(filter(None, (retenido, problema)))
     destino = SALIDA
     if retenido:
         destino = os.path.join(SALIDA, "_retenido")
