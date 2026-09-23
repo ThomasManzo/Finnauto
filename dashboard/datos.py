@@ -403,42 +403,46 @@ def hallazgos(contrato):
 
 
 def ingresos_por_dia(contrato, unidad, hoy, dias=30):
-    """Lo que entra, día por día y separado por fuente.
+    """Misma cobranza que la curva; los días sin dato quedan visibles en cero.
 
-    Es el gráfico que la dirección ya tenía en su tablero de Apps Script y el único
-    que muestra el RITMO del negocio: un total mensual no dice que el 07 entra
-    PAMI y el resto del mes se vive de mostrador.
+    Las facturas estaban fuera del gráfico porque solo se leían movimientos.
+    Los cheques se muestran aparte: depositar o endosar sigue siendo una decisión.
     """
     u = _unidad_real(unidad)
-    hasta = (datetime.date.fromisoformat(hoy)
-             + datetime.timedelta(days=dias)).isoformat()
-    por_dia = {}
-    fuentes = {}
-    for x in contrato.get("cobros_previstos", []):
-        if x.get("interno"):
+    desde = datetime.date.fromisoformat(hoy)
+    fechas = [(desde + datetime.timedelta(days=i)).isoformat() for i in range(dias)]
+    por_dia = {f: defaultdict(float) for f in fechas}
+    for lista in ("cobros_previstos", "cuentas_a_cobrar_droguerias"):
+        for x in contrato.get(lista, []):
+            if x.get("interno") or x.get("intercompany") or (u and x.get("unidad") != u):
+                continue
+            f = x.get("fecha")
+            if f not in por_dia:
+                continue
+            con = (x.get("concepto") or "Otros ingresos").strip()
+            if "CARTERA" in con.upper():
+                continue
+            if lista == "cuentas_a_cobrar_droguerias":
+                con = "Facturas " + str(x.get("unidad") or "sin empresa")
+            elif str(x.get("estado") or "").upper() == "REAL":
+                con = str(x.get("categoria_planilla") or con) + " (real)"
+            por_dia[f][con] += float(x.get("importe") or 0)
+    fuentes = sorted({k for d in por_dia.values() for k in d})
+    filas = [{"fecha": f, "valores": [por_dia[f].get(k, 0.0) for k in fuentes],
+              "total": sum(por_dia[f].values())} for f in fechas]
+    cheques = defaultdict(float)
+    dueno = _dueno_de_la_cartera(contrato)
+    for x in contrato.get("cartera_cheques", []):
+        if (x.get("propio") or str(x.get("estado") or "").upper() == "ANULADO"
+                or (u and (x.get("unidad") or dueno) != u)):
             continue
-        if u and (x.get("unidad") or "") != u:
-            continue
-        f = x.get("fecha") or ""
-        if not (hoy <= f <= hasta):
-            continue
-        con = (x.get("concepto") or "?").strip()
-        # Un movimiento REAL de un extracto trae el concepto del banco
-        # ("TRANSF:76V4MR2Z8DG1..."). Como serie del grafico va su categoria
-        # de la planilla (Cobranza Facturas), no el renglon del extracto.
-        if (x.get("estado") or "").upper() == "REAL" and x.get("categoria_planilla"):
-            con = "%s (real)" % x["categoria_planilla"]
-        por_dia.setdefault(f, {})
-        por_dia[f][con] = por_dia[f].get(con, 0.0) + float(x.get("importe") or 0)
-        fuentes[con] = fuentes.get(con, 0.0) + float(x.get("importe") or 0)
-
-    orden = [k for k, _ in sorted(fuentes.items(), key=lambda kv: -kv[1])]
-    dias_ord = sorted(por_dia)
-    return {
-        "fuentes": orden,
-        "dias": [{"fecha": f, "valores": [por_dia[f].get(k, 0.0) for k in orden],
-                  "total": sum(por_dia[f].values())} for f in dias_ord],
-    }
+        if x.get("fecha") in por_dia:
+            cheques[x["fecha"]] += abs(float(x.get("importe") or 0))
+    return {"fuentes": fuentes, "dias": filas, "desde": hoy,
+            "hasta": fechas[-1] if fechas else hoy,
+            "total": sum(x["total"] for x in filas),
+            "cheques": [{"fecha": f, "importe": v} for f, v in sorted(cheques.items())],
+            "cheques_total": sum(cheques.values())}
 
 
 # Lo que se cobra de mostrador no es "a cobrar": ya esta cobrado.
@@ -748,20 +752,9 @@ def proyeccion(contrato, unidad, hoy, dias=45, con_intercompany=False, modo=DIA_
         else:
             d[grupo] = d.get(grupo, 0.0) + monto
 
-    # --- lo que entra
-    for x in contrato.get("cobros_previstos", []):
-        if not _mia(x) or x.get("interno"):
-            continue
-        if "CARTERA" in str(x.get("concepto") or "").upper():
-            continue          # no es caja hasta que se decide
-        if _dentro(x.get("fecha")):
-            _sumar(x["fecha"], "entra", abs(float(x.get("importe") or 0)))
-
-    for x in contrato.get("cuentas_a_cobrar_droguerias", []):
-        if not _mia(x) or x.get("intercompany"):
-            continue
-        if _dentro(x.get("fecha")):
-            _sumar(x["fecha"], "entra", abs(float(x.get("importe") or 0)))
+    # Una sola cuenta para el gráfico y la curva: una factura no puede faltar en uno.
+    for x in ingresos_por_dia(contrato, unidad, hoy, dias)["dias"]:
+        _sumar(x["fecha"], "entra", x["total"])
 
     # --- lo que sale, item por item para poder patearlo
     items = []
@@ -1232,6 +1225,12 @@ def vocabulario(cliente):
 
 
 def armar(contrato, cliente="maga"):
+    # La estimación por kg fue dada de baja en NAVAR. Filtramos una copia
+    # antes de TODOS los cálculos del tablero; el contrato original no se toca.
+    if cliente == "navar":
+        contrato = dict(contrato)
+        contrato["cobros_previstos"] = [x for x in contrato.get("cobros_previstos", [])
+            if x.get("fuente") != "COBRANZA_PROYECTADA"]
     hoy = D.hoy_de(contrato)
     vocab = vocabulario(cliente)
     modo = modo_vencido(cliente)
@@ -1275,6 +1274,21 @@ def armar(contrato, cliente="maga"):
             "planes": planes_por_ventana(contrato, u, hoy, cliente),
             "refi": refinanciacion(contrato, u, hoy),
         }
+
+    for d in datos.values():
+        stock = d["proyeccion"]["vencido_stock"]
+        filas = []
+        for tipo, nombre, riesgo in (
+            ("IMPUESTO", "ARCA / impuestos", "Riesgo de embargo de cuentas."),
+            ("PRESTAMO", "Bancos", "Riesgo de corte de las líneas que financian la caja."),
+            ("PROVEEDOR", "Proveedores", "Riesgo de corte de entregas.")):
+            items = [x for x in stock["items"] if x["tipo"] == tipo]
+            filas.append({"nombre": nombre, "monto": sum(x["monto"] for x in items),
+                          "desde": min((x["fecha"] for x in items), default=None),
+                          "riesgo": riesgo})
+        # Reusamos el stock de la curva: no sumamos de nuevo el mapa bancario.
+        d["vencidos_resumen"] = {"filas": filas, "total": stock["total"],
+            "otros": stock["por_tipo"].get("otros", 0)} if modo == STOCK else None
 
     paquete_parcial = {"fecha": hoy, "unidades": unidades, "datos": datos}
     return {
