@@ -8,6 +8,8 @@
  *                   extracto + estimado el resto) y 12 semanas hacia adelante.
  *   "Cash Mensual"  MES POR MES: 3 meses cerrados (real, la base), el mes en curso y 6
  *                   meses hacia adelante, con la inflación mensual en una celda editable.
+ *   "Supuestos" / "Modelo Nuevo": proyección a 12 períodos desde datos explícitos;
+ *                   se arman aparte ejecutando armarModeloNuevo(), sin pisar el cash.
  *   "Plan"          qué se hace con cada deuda: pagar como está, refinanciar o posponer.
  *                   Cash Mensual toma las cuotas de acá.
  *   "Instrucciones" qué es cada solapa, cómo se actualiza, dónde va cada dato.
@@ -27,6 +29,7 @@
  *
  * Todo es fórmula. Nadie tipea acá: si un número está mal, está mal en la lista. Las
  * celdas sin nada quedan vacías (los ceros se muestran en blanco por formato).
+ * Excepción: Modelo Nuevo muestra — si falta información y muestra los ceros confirmados.
  *
  * La planilla está en español: los argumentos van con ";". Las fórmulas se escriben con
  * "," y al final se reescriben si la planilla no las acepta (_separadorLocal_).
@@ -942,4 +945,349 @@ function _separadorLocal_(ss, h) {
       h.getRange(r + 1, ini + 1, 1, c - ini).setFormulas([nuevas[r].slice(ini, c)]);
     }
   }
+}
+
+// ================================================================== Modelo Nuevo
+// Se corre aparte: no rearma el cash actual, no cambia Plan ni la inflación ya cargada.
+// Los números de este bloque son plazos del calendario, filas y reglas de cálculo;
+// no son supuestos del negocio. Todos los casilleros para cargar datos nacen vacíos.
+function armarModeloNuevo() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var s = _mnSupuestos_(ss);
+  var fuentes = _mnFuentes_(ss);
+  _mnPantalla_(ss, s, fuentes);
+  _separadorLocal_(ss, ss.getSheetByName("Supuestos"));
+  _separadorLocal_(ss, ss.getSheetByName("Modelo Nuevo"));
+  ss.toast("Modelo Nuevo armado. Cargá Supuestos; los faltantes se ven arriba y por renglón.", "finauto", 8);
+}
+
+function _mnDefiniciones_() {
+  var d = [
+    ["precio", "Ventas · precio por kilo", "$/kg", "comercial", "Precio del primer período; después acompaña la inflación."],
+    ["cobro", "Ventas · condición de cobro", "días", "administración", "Días corridos desde la venta; ventas parejas dentro de cada período."],
+    ["canchada", "Canchada · precio por kilo", "$/kg", "compras", "Precio del primer período."],
+    ["rendimiento", "Canchada · kilos por kilo vendido", "kg/kg", "producción", "Consumo necesario para cada kilo vendido."],
+    ["pago", "Canchada · condición de pago", "días", "compras", "Plazo de la parte que no se anticipa, desde la compra."],
+    ["anticipo", "Canchada · anticipo", "%", "compras", "Parte pagada al inicio del período de compra. Cargar 0 si no hay. No modela anticipos anteriores a la compra."],
+    ["pack", "Packaging · costo por kilo vendido", "$/kg", "compras", "Se paga en el período de venta."],
+    ["nomina", "Personal · nómina completa confirmada", "Sí", "administración", "Completar la tabla de puestos al pie y luego elegir Sí. Sin puestos y con Sí declara que no hay personal ni honorarios."],
+    ["cargas", "Personal · cargas sobre sueldos brutos", "%", "el estudio", "No aplica a honorarios. Cargar 0 sólo si está confirmado."],
+    ["indem", "Indemnizaciones · importe total", "$", "administración", "Importe nominal total; no lleva inflación. 0 declara que no hay."],
+    ["mesIndem", "Indemnizaciones · primer mes de pago", "mes 1 a 12", "administración", "Se pide sólo si el importe es mayor que 0."],
+    ["cuotas", "Indemnizaciones · cantidad de cuotas", "cuotas", "administración", "Cuotas mensuales iguales; 1 si se paga todo junto. El remanente fuera del horizonte se informa."],
+    ["comision", "Comercial · comisión", "%", "comercial", "Se paga en el mismo período que su base."],
+    ["base", "Comercial · base de comisión", "Facturada / Cobrada", "comercial", "Cobrada incluye el cobro de ventas anteriores cargado abajo."],
+    ["tipoFlete", "Fletes · forma de cálculo", "$/kg / % venta", "logística", "Elegir una sola base."],
+    ["flete", "Fletes · tarifa elegida", "$/kg o proporción", "logística", "Si elegiste % venta, ingresar como porcentaje (por ejemplo con el signo %)."],
+    ["seguros", "Seguros · importe mensual", "$/mes", "administración", "Importe de un mes completo; primer período parcial se prorratea."],
+    ["energia", "Energía · importe mensual", "$/mes", "administración", "Importe de un mes completo."],
+    ["gas", "Gas · importe mensual", "$/mes", "administración", "Importe de un mes completo."],
+    ["impuestos", "Impuestos corrientes · importe mensual", "$/mes", "el estudio", "Sólo operación nueva; excluir cargas sociales e impuestos ya incluidos en Deuda Impositiva."],
+    ["imprevistos", "Imprevistos · proporción del total operativo", "%", "la dirección", "Menor que 100%. Provisión = otros egresos × porcentaje / (1 − porcentaje). No incluye indemnizaciones ni deuda."],
+    ["stock", "Stock · días de canchada (opcional)", "días", "producción", "Vacío: capital de trabajo SIN stock, indicado en pantalla. No programa compras para formar stock."],
+    ["deuda", "Deuda · cronogramas completos confirmados", "Sí", "administración", "Confirmar capital e intereses para los 12 períodos, incluso meses sin deuda. No supone que una lista vacía signifique ausencia de deuda."],
+    ["saldo", "Caja · saldos al día confirmados", "Sí", "administración", "Confirmar que las últimas fotos por banco, empresa y cuenta representan la caja real de hoy, incluida la caja física. No incluye acuerdos de descubierto."]
+  ];
+  for (var m = 1; m <= 12; m++) {
+    d.push(["kg" + m, "Ventas · kilos del período " + m, "kg", "comercial", m === 1 ? "Sólo desde mañana hasta fin de mes; no el mes completo." : "Volumen del mes, sin inflación."]);
+    d.push(["cobAnterior" + m, "Arranque · cobros de ventas anteriores · período " + m, "$", "administración", "Importe nominal pendiente de cobrar por ventas hasta hoy. 0 sólo si se confirmó que no hay."]);
+    d.push(["pagAnterior" + m, "Arranque · pagos operativos anteriores · período " + m, "$", "administración", "Obligaciones operativas hasta hoy que se pagarán en este período, sin deuda financiera ni impositiva del cronograma. 0 sólo si se confirmó que no hay."]);
+  }
+  return d;
+}
+
+function _mnSupuestos_(ss) {
+  var h = ss.getSheetByName("Supuestos");
+  if (!h) h = ss.insertSheet("Supuestos");
+  if (h.getMaxColumns() < 40) h.insertColumnsAfter(h.getMaxColumns(), 40 - h.getMaxColumns());
+  if (h.getMaxRows() < 1000) h.insertRowsAfter(h.getMaxRows(), 1000 - h.getMaxRows());
+  // Nunca se limpia esta hoja: volver a armar conserva valores y puestos ya cargados.
+  _titulo_(h, "SUPUESTOS · modelo nuevo", 7);
+  h.getRange(2, 1, 1, 7).merge().setValue("Amarillo = completar. Vacío = falta. 0 = ausencia confirmada. Período 1: mañana a fin de mes; después, 11 meses completos. Las fechas avanzan con el día de hoy.").setWrap(true);
+  h.setRowHeight(2, 48);
+  h.getRange(4, 1, 1, 5).setValues([["Qué es", "Unidad", "Valor", "Quién lo provee", "Nota"]]);
+  var refs = {}, defs = _mnDefiniciones_();
+  defs.forEach(function (d, i) {
+    var fila = 5 + i;
+    refs[d[0]] = "Supuestos!$C$" + fila;
+    h.getRange(fila, 1, 1, 2).setValues([[d[1], d[2]]]);
+    h.getRange(fila, 4, 1, 2).setValues([[d[3], d[4]]]);
+    var celda = h.getRange(fila, 3).setBackground("#fff8e1").setFontColor("#174ea6");
+    var opciones = { nomina: ["Sí"], deuda: ["Sí"], saldo: ["Sí"], base: ["Facturada", "Cobrada"], tipoFlete: ["$/kg", "% venta"] };
+    var regla = SpreadsheetApp.newDataValidation().setAllowInvalid(false);
+    if (opciones[d[0]]) regla.requireValueInList(opciones[d[0]], true);
+    else if (d[2] === "%") regla.requireNumberBetween(0, d[0] === "imprevistos" ? 0.999999 : 1);
+    else regla.requireNumberGreaterThanOrEqualTo(0);
+    celda.setDataValidation(regla.build()).setNumberFormat(d[2] === "%" ? "0.0%" : "#,##0.00;[Red]-#,##0.00;0.00");
+  });
+  h.getRange(67, 1).setValue("Inflación mensual · única fuente");
+  h.getRange(67, 2).setValue("%");
+  // No se crea un supuesto duplicado ni se escribe el valor histórico por defecto.
+  h.getRange(67, 3).setFormula('=IFERROR(IF(ISNUMBER(\'Cash Mensual\'!B4),\'Cash Mensual\'!B4,"—"),"—")').setNumberFormat("0.0%");
+  h.getRange(67, 5).setValue("Se edita sólo en Cash Mensual!B4. Si falta esa hoja o el dato, el modelo queda incompleto.");
+  refs.inflacion = "Supuestos!$C$67";
+  h.getRange(69, 1, 1, 7).merge().setValue("PUESTOS · una fila por puesto o incorporación, sólo roles. Completar A, C, F y G; honorarios también van acá. Hay lugar hasta la fila 1000. No insertar filas dentro del bloque superior.").setWrap(true);
+  h.setRowHeight(69, 45);
+  h.getRange(70, 1, 1, 7).setValues([["Puesto / rol", "Unidad", "Bruto / honorario mensual", "Quién lo provee", "Nota", "Sueldo / Honorario", "Mes de entrada (1 a 12)"]]);
+  h.getRange(71, 1, 930, 7).setBackground("#fff8e1");
+  h.getRange(71, 3, 930, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireNumberGreaterThanOrEqualTo(0).setAllowInvalid(false).build()).setNumberFormat("#,##0.00;[Red]-#,##0.00;0.00");
+  h.getRange(71, 6, 930, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(["Sueldo", "Honorario"], true).setAllowInvalid(false).build());
+  h.getRange(71, 7, 930, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireNumberBetween(1, 12).setAllowInvalid(false).build());
+  h.getRange(4, 1, 64, 5).setWrap(true);
+  h.getRange(70, 1, 1, 7).setWrap(true).setFontWeight("bold").setBackground("#e8f0fe");
+  h.setRowHeight(70, 48);
+  h.setColumnWidth(1, 340); h.setColumnWidth(2, 140); h.setColumnWidth(3, 150);
+  h.setColumnWidth(4, 140); h.setColumnWidth(5, 510); h.setColumnWidth(6, 130); h.setColumnWidth(7, 130);
+  h.setFrozenRows(4); h.setFrozenColumns(1);
+  return refs;
+}
+
+// Sólo se leen encabezados; ninguna copia de datos privados queda en el código.
+// Si una fuente falta, se puede armar igual: la pantalla dice cuál falta.
+function _mnFuentes_(ss) {
+  var out = { errores: [] };
+  function leer(nombre, bloque, campos) {
+    var h = ss.getSheetByName(nombre);
+    if (!h) { out.errores.push("Falta solapa " + nombre); return null; }
+    var fila = 1;
+    if (bloque) {
+      var bancos = h.getRange(1, 1, Math.max(1, h.getLastRow()), 1).getValues();
+      var encs = [];
+      bancos.forEach(function (r, i) { if (_n_(r[0]) === "banco") encs.push(i + 1); });
+      if (encs.length !== 2) { out.errores.push("Revisar encabezados de " + nombre); return null; }
+      fila = encs[1];
+    }
+    var enc = h.getRange(fila, 1, 1, h.getLastColumn()).getValues()[0], r = {}, falta = false;
+    Object.keys(campos).forEach(function (k) {
+      var c = _colPorNombre_(enc, campos[k]);
+      if (c < 0) { out.errores.push(nombre + ": falta " + campos[k]); falta = true; }
+      else { var l = _colLetra_(c + 1); r[k] = "'" + nombre + "'!$" + l + "$" + (fila + 1) + ":$" + l; }
+    });
+    return falta ? null : r;
+  }
+  out.banco = leer("Deuda Bancaria", true, { id: "Banco", fecha: "Fecha Vencimiento", capital: "Importe Capital", interes: "Importe Interes", total: "Importe Total Cuota", estado: "Estado", auto: "Debito Automatico" });
+  out.impuesto = leer("Deuda Impositiva", false, { id: "Impuesto", fecha: "Fecha Vencimiento", total: "Importe", estado: "Estado", auto: "Debito Automatico" });
+  out.saldo = leer("Saldos Bancarios", false, { fecha: "Fecha", banco: "Banco", empresa: "Empresa", cuenta: "Cuenta / Nro", importe: "Saldo" });
+  return out;
+}
+
+function _mnTexto_(texto) { return '"' + texto.replace(/"/g, '""') + '"'; }
+function _mnNumero_(ref, min, max, entero) {
+  return 'IFERROR(AND(ISNUMBER(' + ref + '),' + ref + '>=' + min +
+    (max === undefined ? '' : ',' + ref + '<=' + max) + (entero ? ',MOD(' + ref + ',1)=0' : '') + '),FALSE)';
+}
+function _mnFalta_(condicion, texto) { return 'IF(' + condicion + ',"",' + _mnTexto_(texto) + ')'; }
+function _mnUnir_(faltas) { return faltas.length ? 'TEXTJOIN(" | ",TRUE,' + faltas.join(',') + ')' : '""'; }
+
+// Cobra / paga lo de cada mes según cuántos días de ese mes caen en el destino.
+// Así 15, 30 o 75 días cruzan los meses de verdad, incluso febrero. Las ventas y
+// compras se reparten parejo: es una convención visible, no una fecha inventada.
+function _mnDesplazar_(fila, destino, dias) {
+  var partes = [], faltas = [], d = _colLetra_(destino + 2) + '$4', f = _colLetra_(destino + 2) + '$5';
+  for (var origen = 0; origen <= destino; origen++) {
+    var l = _colLetra_(origen + 2), inicio = l + '$4', fin = l + '$5';
+    var peso = 'MAX(0,MIN(' + f + ',' + fin + '+' + dias + ')-MAX(' + d + ',' + inicio + '+' + dias + '))/(' + fin + '-' + inicio + ')';
+    partes.push('IF(' + peso + '>0,' + l + fila + '*' + peso + ',0)');
+    faltas.push(_mnFalta_('OR(' + peso + '=0,ISNUMBER(' + l + fila + '))', 'Falta base del período ' + (origen + 1)));
+  }
+  return { valor: partes.join('+'), faltas: faltas };
+}
+
+function _mnDeuda_(r, inicio, fin, automatico, campo, bancaria) {
+  if (!r) return { valor: '0', faltas: [_mnTexto_('Falta fuente de deuda; revisar aviso de fuentes')] };
+  var auto = 'UPPER(TRIM(' + r.auto + '))', estado = 'UPPER(TRIM(' + r.estado + '))';
+  var pendiente = bancaria ? '(' + estado + '="PENDIENTE")' : '(' + estado + '<>"PAGADO")';
+  var tiene = '(' + r.id + '<>"")';
+  var fechas = 'ISNUMBER(' + r.fecha + ')*(' + r.fecha + '>0)';
+  var importes = bancaria ? 'ISNUMBER(' + r.capital + ')*ISNUMBER(' + r.interes + ')*ISNUMBER(' + r.total + ')' : 'ISNUMBER(' + r.total + ')';
+  importes += '*(' + r.total + '>=0)';
+  if (bancaria) importes += '*(' + r.capital + '>=0)*(' + r.interes + '>=0)';
+  var clasificado = '((' + auto + '="SI")+(' + auto + '="SÍ")+(' + auto + '="NO"))';
+  var valida = fechas + '*' + importes + '*' + clasificado;
+  if (bancaria) valida += '*IFERROR(ABS(' + r.total + '-' + r.capital + '-' + r.interes + ')<0.01,FALSE)';
+  var faltas = [
+    _mnFalta_('SUMPRODUCT((' + r.id + '="")*(((' + r.fecha + '<>"")+(' + r.total + '<>""))>0))=0', 'Deuda sin identificación'),
+    _mnFalta_('SUMPRODUCT(' + tiene + '*' + pendiente + '*(1-IFERROR(' + valida + ',0)))=0', 'Revisar fechas, importes o débito de ' + (bancaria ? 'Deuda Bancaria' : 'Deuda Impositiva')),
+    _mnFalta_('SUMPRODUCT(' + tiene + '*(' + estado + '<>"PAGADO")*(' + estado + '<>"PENDIENTE"))=0', 'Revisar estados de ' + (bancaria ? 'Deuda Bancaria' : 'Deuda Impositiva'))
+  ];
+  var filtroAuto = automatico ? '((' + auto + '="SI")+(' + auto + '="SÍ"))' : '(' + auto + '="NO")';
+  return { valor: 'SUMPRODUCT(IFERROR(' + tiene + '*' + pendiente + '*(' + r.fecha + '>=' + inicio + ')*(' + r.fecha + '<' + fin + ')*' + filtroAuto + '*' + r[campo] + ',0))', faltas: faltas };
+}
+
+function _mnPantalla_(ss, s, fuentes) {
+  var h = _hojaLimpia_(ss, 'Modelo Nuevo', 13);
+  if (h.getMaxRows() < 130) h.insertRowsAfter(h.getMaxRows(), 130 - h.getMaxRows());
+  h.getRange(1, 1, h.getMaxRows(), 13).breakApart();
+  _titulo_(h, 'MODELO NUEVO · operación primero, deuda debajo de la línea', 13);
+  h.getRange(2, 1).setValue('Faltan datos').setFontWeight('bold');
+  h.getRange(3, 1, 1, 13).merge().setValue('Proyección desde mañana. Cargá Supuestos. — = falta o dato inválido; 0 = ausencia confirmada. Los egresos se muestran positivos y se restan. Ver detalle de faltantes desde la fila 66.').setWrap(true);
+  h.setRowHeight(3, 40);
+  var nombres = {
+    4: 'Desde (incluido)', 5: 'Hasta (sin incluir)', 6: 'Ventas · kilos', 7: 'Precio por kilo', 8: 'Ventas facturadas ($)',
+    9: '1 · Ingresos', 10: 'Cobranza del modelo nuevo', 11: 'Cobros de ventas anteriores', 12: 'Total ingresos',
+    13: '2 · Egresos de la operación', 14: 'Canchada · consumo / compra del período ($)', 15: 'Canchada · pago según plazo y anticipo',
+    16: 'Packaging', 17: 'Sueldos brutos', 18: 'Cargas sociales', 19: 'Honorarios', 20: 'Comisiones', 21: 'Fletes',
+    22: 'Seguros', 23: 'Energía', 24: 'Gas', 25: 'Impuestos corrientes', 26: 'Pagos operativos anteriores', 27: 'Imprevistos',
+    28: 'Total egresos de la operación', 29: 'Resultado de la operación (antes de la deuda)', 30: '3 · Indemnizaciones',
+    31: '4 · Deuda que sale sí o sí', 32: 'Capital bancario automático', 33: 'Intereses bancarios automáticos', 34: 'Deuda impositiva automática',
+    35: 'Total deuda automática', 36: 'SALDO DEL PERÍODO pagando solo lo automático', 37: '5 · Deuda que se paga por decisión',
+    38: 'Capital bancario por decisión', 39: 'Intereses bancarios por decisión', 40: 'Deuda impositiva por decisión', 41: 'Total deuda por decisión',
+    42: 'SALDO DEL PERÍODO pagando toda la deuda', 43: 'Saldo inicial · caja real / cierre anterior',
+    44: 'Saldo acumulado pagando toda la deuda', 45: 'Saldo acumulado pagando sólo lo automático',
+    46: 'Capital de trabajo · necesidad según plazos', 47: 'Plata en la calle · días de cobro', 48: 'Stock de canchada · opcional',
+    49: 'Financiación de proveedores · días de pago', 50: 'Capital de trabajo neto', 51: 'Alcance del capital de trabajo',
+    52: 'Fuentes / actualización', 53: 'Base de caja: fecha más antigua usada',
+    54: 'Indemnizaciones pendientes después del horizonte', 55: 'Ventas del modelo pendientes al cierre',
+    56: 'Canchada del modelo pendiente de pagar al cierre'
+  };
+  Object.keys(nombres).forEach(function (r) { h.getRange(Number(r), 1).setValue(nombres[r]); });
+  var filasEstado = [];
+  function estado(fila) { return fila + 60; }
+  // Cada cálculo tiene al pie su motivo de falta. Los totales exigen todos sus
+  // componentes numéricos: SUM solo nunca decide si un bloque está completo.
+  function escribir(fila, mes, valor, faltas) {
+    var col = mes + 2, l = _colLetra_(col), motivo = l + estado(fila);
+    if (mes === 0) {
+      filasEstado.push(fila);
+      h.getRange(estado(fila), 1).setValue('Falta / revisar · ' + nombres[fila]);
+    }
+    h.getRange(estado(fila), col).setFormula('=IFERROR(' + _mnUnir_(faltas) + ',"Revisar fuente o supuesto de este renglón")');
+    h.getRange(fila, col).setFormula('=IFERROR(IF(' + motivo + '="",' + valor + ',"—"),"—")');
+  }
+  for (var m = 0; m < 12; m++) {
+    var l = _colLetra_(m + 2), anterior = _colLetra_(m + 1), d = l + '$4', f = l + '$5';
+    h.getRange(4, m + 2).setFormula(m === 0 ? '=TODAY()+1' : '=' + anterior + '$5');
+    h.getRange(5, m + 2).setFormula('=EOMONTH(' + d + ',0)+1');
+    var factor = '(1+' + s.inflacion + ')^' + m;
+    var parteMes = '(' + f + '-' + d + ')/DAY(EOMONTH(' + d + ',0))';
+    var inf = _mnFalta_(_mnNumero_(s.inflacion, -0.999999), 'Inflación mensual (Cash Mensual!B4)');
+    function dato(clave, texto, max, entero) { return _mnFalta_(_mnNumero_(s[clave], 0, max, entero), texto); }
+    function dep(fila) { return _mnFalta_('ISNUMBER(' + l + fila + ')', nombres[fila]); }
+    function sumar(fila, componentes) {
+      escribir(fila, m, componentes.map(function (r) { return l + r; }).join('+'), componentes.map(dep));
+    }
+    escribir(6, m, s['kg' + (m + 1)], [dato('kg' + (m + 1), 'Kilos período ' + (m + 1))]);
+    escribir(7, m, s.precio + '*' + factor, [dato('precio', 'Precio de venta'), inf]);
+    escribir(8, m, l + '6*' + l + '7', [dep(6), dep(7)]);
+    var cobro = _mnDesplazar_(8, m, s.cobro);
+    escribir(10, m, cobro.valor, [dato('cobro', 'Días de cobro', undefined, true)].concat(cobro.faltas));
+    escribir(11, m, s['cobAnterior' + (m + 1)], [dato('cobAnterior' + (m + 1), 'Cobros anteriores período ' + (m + 1))]);
+    sumar(12, [10, 11]);
+    escribir(14, m, l + '6*' + s.rendimiento + '*' + s.canchada + '*' + factor,
+      [dep(6), dato('rendimiento', 'Rendimiento canchada'), dato('canchada', 'Precio canchada'), inf]);
+    var pago = _mnDesplazar_(14, m, s.pago);
+    escribir(15, m, s.anticipo + '*' + l + '14+(1-' + s.anticipo + ')*(' + pago.valor + ')',
+      [dep(14), dato('pago', 'Días de pago canchada', undefined, true), dato('anticipo', 'Anticipo canchada', 1)].concat(pago.faltas));
+    escribir(16, m, l + '6*' + s.pack + '*' + factor, [dep(6), dato('pack', 'Packaging por kilo'), inf]);
+    // Una fila parcialmente cargada nunca se pierde dentro de un SUMIFS.
+    var roles = 'Supuestos!$A$71:$A$1000', brutos = 'Supuestos!$C$71:$C$1000', tipos = 'Supuestos!$F$71:$F$1000', entradas = 'Supuestos!$G$71:$G$1000';
+    var usada = '((' + roles + '<>"")+(' + brutos + '<>"")+(' + tipos + '<>"")+(' + entradas + '<>""))>0';
+    var valida = '(' + roles + '<>"")*ISNUMBER(' + brutos + ')*(' + brutos + '>=0)*((' + tipos + '="Sueldo")+(' + tipos + '="Honorario"))*ISNUMBER(' + entradas + ')*(' + entradas + '>=1)*(' + entradas + '<=12)*(MOD(' + entradas + ',1)=0)';
+    var personalFalta = [_mnFalta_(s.nomina + '="Sí"', 'Confirmar nómina completa'), _mnFalta_('SUMPRODUCT((' + usada + ')*(1-IFERROR(' + valida + ',0)))=0', 'Completar rol, importe, tipo y mes entero de cada puesto'), inf];
+    escribir(17, m, 'SUMIFS(' + brutos + ',' + tipos + ',"Sueldo",' + entradas + ',"<=' + (m + 1) + '")*' + factor + '*' + parteMes, personalFalta);
+    escribir(18, m, l + '17*' + s.cargas, [dep(17), dato('cargas', 'Cargas sociales', 1)]);
+    escribir(19, m, 'SUMIFS(' + brutos + ',' + tipos + ',"Honorario",' + entradas + ',"<=' + (m + 1) + '")*' + factor + '*' + parteMes, personalFalta);
+    escribir(20, m, s.comision + '*IF(' + s.base + '="Facturada",' + l + '8,' + l + '12)', [dato('comision', 'Comisión', 1),
+      _mnFalta_('OR(' + s.base + '="Facturada",' + s.base + '="Cobrada")', 'Base de comisión'),
+      _mnFalta_('ISNUMBER(IF(' + s.base + '="Facturada",' + l + '8,' + l + '12))', 'Importe de la base de comisión')]);
+    escribir(21, m, 'IF(' + s.tipoFlete + '="$/kg",' + l + '6*' + s.flete + '*' + factor + ',' + l + '8*' + s.flete + ')',
+      [dato('flete', 'Tarifa de flete'), inf, _mnFalta_('OR(' + s.tipoFlete + '="$/kg",' + s.tipoFlete + '="% venta")', 'Tipo de flete'),
+        _mnFalta_('OR(' + s.tipoFlete + '<>"% venta",' + s.flete + '<=1)', 'Flete porcentual mayor a 100%'),
+        _mnFalta_('ISNUMBER(IF(' + s.tipoFlete + '="$/kg",' + l + '6,' + l + '8))', 'Base del flete')]);
+    ['seguros', 'energia', 'gas', 'impuestos'].forEach(function (k, i) {
+      escribir(22 + i, m, s[k] + '*' + factor + '*' + parteMes, [dato(k, nombres[22 + i]), inf]);
+    });
+    escribir(26, m, s['pagAnterior' + (m + 1)], [dato('pagAnterior' + (m + 1), 'Pagos operativos anteriores período ' + (m + 1))]);
+    var gastos = [15,16,17,18,19,20,21,22,23,24,25,26];
+    escribir(27, m, 'SUM(' + l + '15:' + l + '26)*' + s.imprevistos + '/(1-' + s.imprevistos + ')',
+      gastos.map(dep).concat([dato('imprevistos', 'Imprevistos (menor a 100%)', 0.999999)]));
+    sumar(28, gastos.concat([27]));
+    escribir(29, m, l + '12-' + l + '28', [dep(12), dep(28)]);
+    var indemFalta = [dato('indem', 'Importe de indemnizaciones'),
+      _mnFalta_('OR(' + s.indem + '=0,AND(' + _mnNumero_(s.mesIndem, 1, 12, true) + ',' + _mnNumero_(s.cuotas, 1, undefined, true) + '))', 'Mes y cuotas de indemnizaciones')];
+    escribir(30, m, 'IF(' + s.indem + '=0,0,IF(AND(' + (m + 1) + '>=' + s.mesIndem + ',' + (m + 1) + '<' + s.mesIndem + '+' + s.cuotas + '),' + s.indem + '/' + s.cuotas + ',0))', indemFalta);
+    [true, false].forEach(function (automatico) {
+      var primera = automatico ? 32 : 38;
+      ['capital', 'interes', 'total'].forEach(function (campo, i) {
+        var deuda = _mnDeuda_(i === 2 ? fuentes.impuesto : fuentes.banco, d, f, automatico, campo, i !== 2);
+        escribir(primera + i, m, deuda.valor, deuda.faltas.concat([_mnFalta_(s.deuda + '="Sí"', 'Confirmar cronogramas completos')]));
+      });
+      sumar(primera + 3, [primera, primera + 1, primera + 2]);
+    });
+    escribir(36, m, l + '29-' + l + '30-' + l + '35', [dep(29), dep(30), dep(35)]);
+    escribir(42, m, l + '36-' + l + '41', [dep(36), dep(41)]);
+    escribir(43, m, m === 0 ? '$B$58' : anterior + '44', [_mnFalta_('ISNUMBER(' + (m === 0 ? '$B$58' : anterior + '44') + ')', m === 0 ? 'Caja real de hoy (fuentes / confirmación)' : 'Saldo acumulado del período anterior')]);
+    escribir(44, m, l + '43+' + l + '42', [dep(43), dep(42)]);
+    var baseAuto = m === 0 ? '$B$58' : anterior + '45';
+    escribir(45, m, baseAuto + '+' + l + '36', [dep(36), _mnFalta_('ISNUMBER(' + baseAuto + ')', 'Caja inicial / saldo automático anterior')]);
+    escribir(47, m, l + '8/(' + f + '-' + d + ')*' + s.cobro, [dep(8), dato('cobro', 'Días de cobro', undefined, true)]);
+    // Stock es opcional, pero nunca se disfraza de un cero informado.
+    escribir(48, m, 'IF(' + s.stock + '="","—",' + l + '14/(' + f + '-' + d + ')*' + s.stock + ')',
+      [dep(14), _mnFalta_('OR(' + s.stock + '="",' + _mnNumero_(s.stock, 0, undefined, true) + ')', 'Días de stock inválidos')]);
+    escribir(49, m, l + '14/(' + f + '-' + d + ')*(1-' + s.anticipo + ')*' + s.pago,
+      [dep(14), dato('anticipo', 'Anticipo canchada', 1), dato('pago', 'Días de pago canchada', undefined, true)]);
+    escribir(50, m, l + '47+IF(' + s.stock + '="",0,' + l + '48)-' + l + '49', [dep(47), dep(49), _mnFalta_('OR(' + s.stock + '="",ISNUMBER(' + l + '48))', 'Stock')]);
+    h.getRange(51, m + 2).setFormula('=IF(' + s.stock + '="","Sin stock: falta informar días","Incluye stock de canchada")');
+    h.getRange(52, m + 2).setValue(fuentes.errores.length ? fuentes.errores.join(' · ') : 'Listas vinculadas. Confirmar cobertura y saldos en Supuestos.');
+    h.getRange(53, m + 2).setFormula('=$B$59').setNumberFormat('dd/mm/yyyy');
+    escribir(54, m, 'IF(' + s.indem + '=0,0,' + s.indem + '*MAX(0,' + s.mesIndem + '+' + s.cuotas + '-13)/' + s.cuotas + ')', indemFalta);
+    var ventasHasta = [], cobrosHasta = [], comprasHasta = [], pagosHasta = [], faltasVenta = [], faltasCompra = [];
+    for (var previo = 0; previo <= m; previo++) {
+      var p = _colLetra_(previo + 2);
+      ventasHasta.push(p + '8'); cobrosHasta.push(p + '10'); comprasHasta.push(p + '14'); pagosHasta.push(p + '15');
+      faltasVenta.push(_mnFalta_('AND(ISNUMBER(' + p + '8),ISNUMBER(' + p + '10))', 'Ventas / cobros período ' + (previo + 1)));
+      faltasCompra.push(_mnFalta_('AND(ISNUMBER(' + p + '14),ISNUMBER(' + p + '15))', 'Canchada / pagos período ' + (previo + 1)));
+    }
+    escribir(55, m, 'SUM(' + ventasHasta.join(',') + ')-SUM(' + cobrosHasta.join(',') + ')', faltasVenta);
+    escribir(56, m, 'SUM(' + comprasHasta.join(',') + ')-SUM(' + pagosHasta.join(',') + ')', faltasCompra);
+    // Arriba se ven los supuestos concretos, sin repetir el mismo faltante.
+    // El detalle por renglón queda al pie por si la lista de arriba no entra a simple vista.
+    var listaFaltas = filasEstado.map(function (r) {
+      return 'IF(AND(' + l + estado(r) + '="",' + l + r + '="—"' + (r === 48 ? ',' + s.stock + '<>""' : '') + '),"Revisar cálculo fila ' + r + '",' + l + estado(r) + ')';
+    });
+    listaFaltas.push('$B$60');
+    h.getRange(2, m + 2).setFormula('=LET(faltantes,' + _mnUnir_(listaFaltas) + ',IF(faltantes="","Completo",TEXTJOIN(" | ",TRUE,UNIQUE(TRANSPOSE(SPLIT(faltantes," | ",FALSE,TRUE))))))');
+  }
+  _mnCaja_(h, s, fuentes.saldo);
+  h.getRange(57, 1, 1, 13).merge().setValue('Capital de trabajo = venta diaria × días de cobro + costo diario de canchada × días de stock − costo diario de canchada × parte no anticipada × días de pago. Es una necesidad orientativa a ese ritmo: no se resta otra vez de la caja. Stock no programa compras.').setWrap(true);
+  h.setRowHeight(57, 48);
+  h.getRange(61, 1, 1, 13).merge().setValue('La caja toma la última foto por banco + empresa + cuenta hasta hoy. El saldo requiere confirmación de cobertura. Deuda vencida antes de mañana queda fuera de estos flujos: acordar un cronograma real para incorporarla. El modelo no lee propuestas de Plan.').setWrap(true);
+  h.setRowHeight(61, 48);
+  h.getRange(63, 1, 1, 13).merge().setValue('PRUEBA: correr armarModeloNuevo. Vacíos → — y faltantes. Cargar un dato → sólo se habilitan sus dependientes completos. Vaciarlo → vuelven a —. Repetir armado → conserva Supuestos y no toca Cash / Semanal / Mensual / Plan. Ver manual §8 para ejemplo y prueba completa.').setWrap(true);
+  h.setRowHeight(63, 48);
+  h.getRange(65, 1).setValue('DETALLE · qué falta para cada renglón').setFontWeight('bold');
+  h.getRange(4, 2, 2, 12).setNumberFormat('dd/mm/yyyy');
+  h.getRange(6, 2, 45, 12).setNumberFormat('#,##0.00;[Red]-#,##0.00;0.00');
+  h.getRange(54, 2, 3, 12).setNumberFormat('#,##0.00;[Red]-#,##0.00;0.00');
+  h.getRange(2, 2, 1, 12).setWrap(true).setVerticalAlignment('top').setBackground('#fff8e1');
+  h.setRowHeight(2, 180);
+  h.getRange(51, 2, 2, 12).setWrap(true); h.setRowHeights(51, 2, 65);
+  h.getRange(66, 2, 51, 12).setWrap(true).setVerticalAlignment('top'); h.setRowHeights(66, 51, 76);
+  [9,13,31,37,46].forEach(function (r) { _seccion_(h, r, nombres[r], '#e8f0fe', '#174ea6', 13); });
+  [12,28,29,30,35,36,41,42,44,45,50].forEach(function (r) { _lineaTotal_(h, r, 13); h.getRange(r, 1, 1, 13).setFontWeight('bold'); });
+  h.getRange(14, 1).setNote('Base de compra, informativa. El total de egresos incluye el pago de la fila 15, nunca las dos filas.');
+  h.setColumnWidth(1, 425); h.setColumnWidths(2, 12, 180); h.setFrozenRows(5); h.setFrozenColumns(1);
+}
+
+function _mnCaja_(h, s, r) {
+  h.getRange(58, 1).setValue('Caja real de hoy · sin acuerdos de descubierto');
+  h.getRange(59, 1).setValue('Fecha más antigua de las fotos de caja usadas');
+  h.getRange(60, 1).setValue('Falta / revisar · caja inicial');
+  if (!r) {
+    h.getRange(58, 2, 2, 1).setValues([['—'], ['—']]);
+    h.getRange(60, 2).setValue('Falta Saldos Bancarios o sus encabezados');
+    return;
+  }
+  // La clave incluye la cuenta y la empresa: dos cuentas del mismo banco no se pisan.
+  // MAP vuelve a leer las claves por fórmula; una cuenta nueva entra sin rearmar.
+  var claves = r.banco + '&"|"&' + r.empresa + '&"|"&' + r.cuenta;
+  var fechaValida = 'ISNUMBER(' + r.fecha + ')*(' + r.fecha + '>0)*(' + r.fecha + '<=TODAY())';
+  var lista = 'UNIQUE(FILTER(' + claves + ',' + r.banco + '<>""))';
+  var fecha = 'MAX(FILTER(' + r.fecha + ',(' + claves + ')=clave,' + fechaValida + '))';
+  var cuerpo = 'LET(fecha,' + fecha + ',coincide,((' + claves + ')=clave)*(' + r.fecha + '=fecha),IF(AND(SUMPRODUCT(coincide)=1,SUMPRODUCT(coincide*ISNUMBER(' + r.importe + '))=1),SUM(FILTER(' + r.importe + ',coincide)),NA()))';
+  var calculo = 'SUM(MAP(' + lista + ',LAMBDA(clave,' + cuerpo + ')))';
+  h.getRange(60, 2).setFormula('=IFERROR(IF(' + s.saldo + '<>"Sí","Confirmar saldos al día en Supuestos",IF(ISNUMBER(' + calculo + '),"","Revisar caja")),"Revisar saldos: faltan fechas/importes o hay fotos duplicadas por cuenta")');
+  h.getRange(58, 2).setFormula('=IFERROR(IF(B60="",' + calculo + ',"—"),"—")').setNumberFormat('#,##0.00;[Red]-#,##0.00;0.00');
+  h.getRange(59, 2).setFormula('=IFERROR(MIN(MAP(' + lista + ',LAMBDA(clave,' + fecha + '))),"—")').setNumberFormat('dd/mm/yyyy');
+  h.getRange(60, 2, 1, 12).merge().setWrap(true); h.setRowHeight(60, 42);
 }
