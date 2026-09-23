@@ -219,6 +219,8 @@ function _armarAviso_(ahora, datos) {
   });
   var registros = nuevos(datos.registro.filter(reciente));
   registros.forEach(function (r) {
+    if (String(r.detalle).indexOf("VERIFICACION_NO_CUADRA") !== -1) alertas.push(
+      "La escritura de " + _textoAviso_(r.tipo) + " terminó pero NO CUADRÓ al releerla. No usar el cash hasta revisar Registro y reimportar con finauto.");
     if (r.estado.toUpperCase() === "ERROR") alertas.push("Falló la importación de " + _textoAviso_(r.tipo) + ": " +
       _textoAviso_(r.detalle, 120) + ". Revisar Registro y pedir a finauto que corrija el error antes de reintentar.");
   });

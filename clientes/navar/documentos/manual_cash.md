@@ -127,6 +127,32 @@ vigentes de ARCA = Sí (débito en CBU); el resto de impuestos = No (VEP). Se co
 
 El mail resume las últimas 24 horas y avisa también si no llegó nada. Si el vigilante no procesó, revisar la notebook y `NAVAR - Datos/_para la Sheet/vigilante.log`; si la Sheet no importó, usar finauto → Importar lo nuevo ahora. Si hay un retenido, revisar el export antes de publicarlo; si hay un error de importación o de lectura del aviso, revisar Registro y pedir ayuda a finauto. Si faltan extractos o exports recientes, pedirlos a administración. Primero se revisa con `avisoDiarioPrueba()` (no manda mail); después se instala con `instalarAvisoDiario()`. Google ejecuta cerca de las 07:30, con un margen de 15 minutos.
 
+### Importación y filtros (cambio preparado el 22/09, pendiente de probar en la Sheet)
+
+Antes de cargar datos, el importador revisa las solapas del lector: si falta alguna, si no
+puede consultar las vistas de filtro o si encuentra una vista guardada, frena con **ERROR**.
+Para instalar esta versión, finauto debe habilitar **Google Sheets API** además de Drive API
+en Servicios de Apps Script. Una vista guardada se debe eliminar en Datos → Vistas de filtro;
+solo cerrarla no alcanza. Después: finauto → Importar lo nuevo ahora.
+
+El filtro común se quita automáticamente y las filas ocultas se muestran antes de cargar.
+Las listas quedan visibles: no se vuelve a ocultar por número de fila porque, al cambiar la
+lista, esa posición puede corresponder a otro movimiento. Tampoco se repone el rango viejo
+del filtro, que podría dejar datos nuevos afuera. Se puede volver a filtrar al terminar.
+
+Después de escribir, se releen todas las celdas de datos cargadas, se comparan con lo preparado
+(incluidas fechas, importes y filas manuales), se revisa lo borrado abajo y la cantidad de filas.
+Si hay diferencia, Registro dice **ERROR / VERIFICACION_NO_CUADRA**, con solapa, fila y columna:
+**no usar el cash para una reunión hasta revisar y reimportar**. El aviso diario destaca ese
+fallo dentro de las últimas 24 horas. Los botones manuales también dejan Registro.
+
+Este control compara contra la Sheet temporal convertida del `para_pegar`, no contra los
+seriales originales del Excel; no valida la conversión ni las fórmulas del cash. No hay
+reversión automática: si falla después de empezar, puede quedar una carga parcial. El candado
+evita dos importadores simultáneos, pero no impide que una persona edite durante la carga.
+Las vistas temporales del navegador y el comportamiento real de Google quedan por validar
+en la prueba manual; no se afirma que la API muestre ese estado de cada navegador.
+
 ### Las carpetas de Drive (`NAVAR - Datos`): una por export
 
 Cada bot o persona deja su archivo en SU carpeta y nada más; el vigilante sabe qué hacer con cada una.
@@ -178,3 +204,9 @@ cada mañana. Nadie sube nada: el cash amanece al día.
   abierto**: no se reprodujo esa alteración con el lector anterior y no se verificó la importación
   en Google Sheets. La selección vieja era un error comprobado, pero no explica por sí sola
   las fechas equivocadas que ya estaban cargadas.
+
+- **22/09 — defensa del importador ante filtros (pendiente de validación en Google)**:
+  se quitan filtros comunes y filas ocultas, se bloquean vistas guardadas y consultas fallidas,
+  y se compara toda la carga después de escribir. Los errores indican la solapa y no se marca
+  el archivo como importado cuando no cuadra. Esto agrega prevención y detección; no demuestra
+  por sí solo la causa histórica de las fechas alteradas ni corrige cargas anteriores.
