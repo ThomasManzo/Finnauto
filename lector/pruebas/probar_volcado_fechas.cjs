@@ -5,12 +5,15 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
-const contexto = vm.createContext({});
+const contexto = vm.createContext({Date, SpreadsheetApp: {flush() {}}});
 vm.runInContext(fs.readFileSync(path.join(__dirname,
   '../../clientes/navar/herramientas/importar_cashflow.gs'), 'utf8'), contexto);
 
 class Hoja {
   constructor(filas) { this.filas = filas.map(r => r.map(v => v ?? '')); }
+  getFilter() { return null; }
+  showRows() {}
+  getMaxRows() { return 1000; }
   getName() { return 'Cartera de Cheques'; }
   getLastColumn() { return Math.max(...this.filas.map(r => r.length)); }
   getLastRow() { return this.filas.length; }

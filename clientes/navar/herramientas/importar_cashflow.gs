@@ -28,7 +28,8 @@
  *  2. Si ya está el script "importar_tango" del 17/09: borrar todo su contenido y
  *     pegar esto entero (el nombre del archivo en Apps Script no importa). Si no,
  *     Archivo nuevo → Script → pegar → Guardar.
- *  3. En Servicios (el "+" del panel izquierdo) tiene que estar "Drive API".
+ *  3. En Servicios (el "+" del panel izquierdo) tienen que estar "Drive API" y "Google Sheets API".
+ *     Si falta Sheets API, la importación se frena sin cargar datos.
  *  4. Elegir arriba la función que se quiera probar (importarTango, importarBancos,
  *     importarDeuda) y darle ▶ Ejecutar. La primera vez pide autorizar. Aceptar.
  *  5. Al terminar aparece un aviso chico abajo a la derecha de la Sheet (toast) con
@@ -177,19 +178,40 @@ function _registrar_(cual, archivo, estado, detalle) {
     h.setFrozenRows(1);
     h.setColumnWidths(1, 5, 140); h.setColumnWidth(3, 260); h.setColumnWidth(5, 520);
   }
+  _quitarFiltros_(h);
   h.insertRowAfter(1);
   h.getRange(2, 1, 1, 5).setValues([[new Date(), cual, archivo, estado, detalle]]);
   h.getRange(2, 1).setNumberFormat("dd/mm/yyyy hh:mm");
 }
 
-function importarTango()     { _importar_("tango"); }
-function importarBancos()    { _importar_("bancos"); }
-function importarDeuda()     { _importar_("deuda"); }
-function importarImpuestos() { _importar_("impuestos"); }
-function importarTesoreriaAA() { _importar_("tesoreria_aa"); }
+function importarTango()     { _importarManual_("tango"); }
+function importarBancos()    { _importarManual_("bancos"); }
+function importarDeuda()     { _importarManual_("deuda"); }
+function importarImpuestos() { _importarManual_("impuestos"); }
+function importarTesoreriaAA() { _importarManual_("tesoreria_aa"); }
 
+
+// Los botones y el reloj dejan la misma evidencia; un fallo nunca se disfraza de ok.
+function _importarManual_(cual) {
+  var archivo;
+  try {
+    archivo = _ultimoConPrefijo_(IMPORTS[cual].prefijo);
+    var resumen = _importar_(cual, archivo);
+    _registrar_(cual, archivo.getName(), "ok", resumen);
+  } catch (e) {
+    _registrar_(cual, archivo ? archivo.getName() : "", "ERROR", String(e.message || e));
+    throw e;
+  }
+}
 
 function _importar_(cual, archivo) {
+  var lock = LockService.getDocumentLock();
+  if (!lock || !lock.tryLock(1000)) throw new Error("Importación en curso: esperá y volvé a correr Importar lo nuevo.");
+  try { return _importarConLock_(cual, archivo); }
+  finally { lock.releaseLock(); }
+}
+
+function _importarConLock_(cual, archivo) {
   var cfg = IMPORTS[cual];
   archivo = archivo || _ultimoConPrefijo_(cfg.prefijo);
   if (!archivo) throw new Error("No encontré ningún " + cfg.prefijo + "*.xlsx dentro de " + CARPETA_RAIZ);
@@ -201,6 +223,19 @@ function _importar_(cual, archivo) {
   var destino = SpreadsheetApp.getActiveSpreadsheet();
   var resumen = [];
   try {
+    // Se revisan TODAS las solapas de datos antes de cargar la primera.
+    var nombres = cfg.solapas ? cfg.solapas.map(function (s) { return s.sheet; }) : ["Deuda Bancaria"];
+    var hojas = nombres.map(function (nombre) {
+      var h = destino.getSheetByName(nombre);
+      if (!h) throw new Error(nombre + ": falta la solapa destino; pedí ayuda a finauto.");
+      return h;
+    });
+    (cfg.solapas || cfg.bloques).forEach(function (s) {
+      if (!origen.getSheetByName(s.xlsx)) throw new Error((s.sheet || "Deuda Bancaria") + ": falta " + s.xlsx + " en el para_pegar; revisá el archivo.");
+    });
+    _comprobarVistas_(destino, hojas);
+    hojas.forEach(_quitarFiltros_);
+
     if (cfg.solapas) {
       cfg.solapas.forEach(function (s) {
         var hOrigen = origen.getSheetByName(s.xlsx);
@@ -270,6 +305,16 @@ function _saldoManualDeA_(fila, enc) {
 // Todo se escribe por bloques (setValues por columna), no celda por celda: con 2.000
 // filas, celda por celda tarda minutos y Apps Script corta a los 6.
 function _volcar_(hOrigen, hDestino, filaEnc, filaFin, s) {
+  try {
+    _quitarFiltros_(hDestino);
+    return _volcarSinFiltro_(hOrigen, hDestino, filaEnc, filaFin, s);
+  } catch (e) {
+    throw new Error(hDestino.getName() + "/" + (s.xlsx || "lista") + ": " + String(e.message || e) +
+      " Puede haber una carga parcial; revisá Registro y el para_pegar antes de usar el cash.");
+  }
+}
+
+function _volcarSinFiltro_(hOrigen, hDestino, filaEnc, filaFin, s) {
   var encO = hOrigen.getRange(1, 1, 1, hOrigen.getLastColumn()).getValues()[0].map(String);
   var encD = hDestino.getRange(filaEnc, 1, 1, hDestino.getLastColumn()).getValues()[0].map(String);
   // Si el lector trae una columna que la solapa no tiene (ej. "Debito Automatico" el 22/09),
@@ -284,7 +329,17 @@ function _volcar_(hOrigen, hDestino, filaEnc, filaFin, s) {
     });
     encD = hDestino.getRange(filaEnc, 1, 1, hDestino.getLastColumn()).getValues()[0].map(String);
   }
+  [encO, encD].forEach(function (encabezados) {
+    var usados = {};
+    encabezados.forEach(function (nombre) {
+      var clave = _n_(nombre);
+      if (clave && usados[clave]) throw new Error("encabezado repetido: " + nombre);
+      if (clave) usados[clave] = true;
+    });
+  });
   var colMarca = encD.map(_n_).indexOf(_n_(s.colMarca));
+  if (colMarca < 0 || encO.map(_n_).indexOf(_n_(s.colMarca)) < 0)
+    throw new Error("falta la columna " + s.colMarca + "; no se puede distinguir lo manual.");
   var colNombre = 1;   // columna B: Cliente / Proveedor / Tipo / Fecha / Empresa. Vacía = fila sin datos.
 
   // 1. Lo que hay hoy: se separa lo que se pisa de lo que cargó una persona.
@@ -309,7 +364,11 @@ function _volcar_(hOrigen, hDestino, filaEnc, filaFin, s) {
   var finales = vivas.slice();
   nuevas.forEach(function (r) {
     var idxNombre = mapa[_n_(encD[colNombre])];
-    if (idxNombre === undefined || String(r[idxNombre] || "") === "") return;
+    if (idxNombre === undefined) throw new Error("falta la columna " + encD[colNombre] + " en el para_pegar");
+    if (String(r[idxNombre] || "") === "") {
+      if (r.some(function (v) { return v !== "" && v !== null; })) throw new Error("fila del para_pegar sin " + encD[colNombre] + "; revisá el archivo");
+      return;
+    }
     finales.push(encD.map(function (nombre) {
       var idx = mapa[_n_(nombre)];
       return idx === undefined ? "" : (r[idx] === null ? "" : r[idx]);
@@ -337,6 +396,8 @@ function _volcar_(hOrigen, hDestino, filaEnc, filaFin, s) {
     primera.copyTo(hDestino.getRange(filaEnc + 1, c + 1, total, 1), SpreadsheetApp.CopyPasteType.PASTE_FORMULA, false);
     if (antes > total) hDestino.getRange(filaEnc + 1 + total, c + 1, antes - total, 1).clearContent();
   });
+  SpreadsheetApp.flush();
+  _verificarVolcado_(hDestino, filaEnc, filaFin, encD, s, finales, antes);
   return { borradas: borradas, cargadas: cargadas };
 }
 
@@ -353,4 +414,60 @@ function _ultimaFilaConDatos_(h, desde, hasta, col) {
 
 function _n_(s) {
   return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim();
+}
+
+
+// Sheets permite consultar las vistas guardadas, pero no saber cuál tiene abierta cada
+// persona. Ante cualquiera de ellas frenamos: cerrarla no alcanza, hay que eliminarla.
+function _comprobarVistas_(ss, hojas) {
+  var nombres = hojas.map(function (h) { return h.getName(); }).join(", ");
+  var foto;
+  try {
+    foto = Sheets.Spreadsheets.get(ss.getId(), {fields: "sheets(properties(sheetId),filterViews)"});
+    if (!foto || !foto.sheets) throw new Error("respuesta incompleta");
+  } catch (e) {
+    throw new Error(nombres + ": no pude comprobar vistas de filtro. Pedí a finauto habilitar Google Sheets API y revisar permisos; no se cargaron datos. " + String(e.message || e));
+  }
+  hojas.forEach(function (h) {
+    var datos = foto.sheets.filter(function (s) { return s.properties.sheetId === h.getSheetId(); });
+    if (datos.length !== 1) throw new Error(h.getName() + ": no pude comprobar vistas de filtro; pedí ayuda a finauto.");
+    if ((datos[0].filterViews || []).length) throw new Error(h.getName() +
+      ": sacá las vistas de filtro guardadas (Datos → Vistas de filtro → Eliminar) y volvé a correr Importar lo nuevo. No se cargaron datos.");
+  });
+}
+
+// No reocultamos números de fila: al reemplazar la lista podrían tapar otro cheque.
+// Tampoco reponemos filtros viejos: su rango puede dejar afuera las filas nuevas.
+function _quitarFiltros_(h) {
+  try {
+    var filtro = h.getFilter();
+    if (filtro) filtro.remove();
+    h.showRows(1, h.getMaxRows());
+    SpreadsheetApp.flush();
+    if (h.getFilter()) throw new Error("el filtro sigue puesto");
+  } catch (e) {
+    throw new Error(h.getName() + ": sacá el filtro y mostrá todas las filas; volvé a correr Importar lo nuevo. " + String(e.message || e));
+  }
+}
+
+// Se vuelve a leer TODO lo escrito, incluidas las filas manuales conservadas y la cola
+// borrada. No alcanza comparar totales: una fecha corrida puede sumar igual.
+function _verificarVolcado_(h, enc, fin, nombres, cfg, esperado, antes) {
+  var alto = Math.max(esperado.length, antes);
+  var leido = alto ? h.getRange(enc + 1, 1, alto, nombres.length).getValues() : [];
+  for (var f = 0; f < alto; f++) {
+    for (var c = 0; c < nombres.length; c++) {
+      if (!nombres[c] || cfg.formulas.indexOf(nombres[c]) !== -1) continue;
+      var valor = f < esperado.length ? esperado[f][c] : "";
+      if (!_mismoDato_(valor, leido[f][c])) throw new Error("VERIFICACION_NO_CUADRA: " + h.getName() +
+        " fila " + (enc + 1 + f) + ", columna " + nombres[c] + ". La escritura terminó pero no coincide con lo preparado; no usar el cash hasta revisar y reimportar.");
+    }
+  }
+  if (_ultimaFilaConDatos_(h, enc + 1, fin, 2) !== enc + esperado.length)
+    throw new Error("VERIFICACION_NO_CUADRA: " + h.getName() + ": cantidad de filas distinta; revisá el para_pegar y reimportá.");
+}
+
+function _mismoDato_(a, b) {
+  if (a instanceof Date || b instanceof Date) return a instanceof Date && b instanceof Date && a.getTime() === b.getTime();
+  return a === b;
 }
