@@ -279,3 +279,231 @@ cada mañana. Nadie sube nada: el cash amanece al día.
   Los dos exports no representan la misma cartera: los resultados completos y esa limitación
   están documentados en `tareas/09-cheques-solo-en-cartera.md`. Este cambio no concilia Tango
   contra el banco ni corrige la Sheet ya cargada.
+
+## 8. Modelo Nuevo: proyección desde supuestos (tarea 10, pendiente de probar en Google)
+
+**Cash, Cash Semanal y Cash Mensual siguen como están.** Proyectan lo que viene según lo que
+vino y las listas vigentes: sirven para manejar la próxima semana. **Modelo Nuevo** arma la
+operación nueva desde kilos, precios, puestos y plazos: sirve para decidir y negociar. No fuerza
+un resultado positivo ni negativo; muestra lo que dan los datos, o **—** cuando no se sabe.
+
+### Cómo se arma y qué se carga
+
+En Apps Script, actualizar `crear_cash.gs` y ejecutar **`armarModeloNuevo()`**. Crea **Supuestos**
+y **Modelo Nuevo**; no corre `armarCash()`, no modifica las tres pantallas actuales, Plan ni
+Instrucciones. No se agregó un botón porque eso requería modificar otro archivo. Repetir esta
+función conserva los valores y la tabla de puestos de Supuestos, y rearma sólo Modelo Nuevo.
+Si faltan listas o encabezados, los avisa; corregirlos y volver a ejecutar la función.
+
+En Supuestos, las celdas amarillas arrancan **vacías**, incluidas las confirmaciones. Cada fila
+indica unidad, rol que provee el dato y una nota. Hay doce cantidades de venta, doce cobros de
+ventas anteriores y doce pagos operativos anteriores. Estos últimos importes son el arranque del
+modelo: lo pendiente de la operación hasta hoy que se cobrará o pagará después. No incluyen
+capital, intereses ni impuestos ya cargados en el cronograma de deuda. Hay que informar **0**
+cuando se sabe que no existen; dejarlos vacíos mantiene el faltante.
+
+La tabla de personal empieza en la fila 71 y permite una fila por puesto hasta la 1000:
+**rol · unidad · bruto/honorario · quién lo provee · nota · Sueldo/Honorario · mes de entrada**.
+Para calcular hacen falta rol, importe, tipo y mes entero entre 1 y 12. Las filas totalmente
+vacías no son puestos. Una fila parcialmente cargada bloquea personal. Al terminar, confirmar
+“Nómina completa”; confirmarla sin puestos declara explícitamente que no hay sueldos ni
+honorarios. No se precargó una dotación supuesta. No insertar filas dentro del bloque superior.
+
+La inflación **se lee de Cash Mensual!B4** (Supuestos!C67 es un vínculo, no otro dato editable).
+No se escribe ni reemplaza el valor existente. Si falta esa celda, no es numérica o falta la
+solapa, los cálculos que dependen de ella muestran **—**. Revisarla antes de usar el modelo.
+
+**Fechas:** son doce períodos. El primero va desde mañana hasta fin de mes; los otros once son
+meses completos. Las filas “Desde” y “Hasta” muestran las fechas exactas; “Hasta” no se incluye.
+El primer volumen debe ser lo que se venderá en los días restantes, no el volumen del mes entero.
+Al avanzar el día, cambia el horizonte: actualizar kilos del primer período, pendientes de arranque
+y confirmaciones; al cambiar de mes, reubicar los doce volúmenes y los meses de incorporación y
+cuotas. Para conservar un escenario de negociación, guardar una copia con fecha: no es una foto
+histórica congelada ni una bitácora automática.
+
+### Qué hacen las fórmulas
+
+- **Ventas:** kilos del período × precio del primer período × `(1 + inflación)^meses transcurridos`.
+  Kilos y porcentajes no se inflan. Los precios, costos por kilo y gastos mensuales sí. Se supone
+  venta y compra parejas dentro de cada período, sin redondear los resultados intermedios.
+- **Cobranza según días:** cada venta diaria se cobra tantos días corridos después como indique
+  la condición. La fórmula cruza ese intervalo desplazado con las fechas de cada columna y toma
+  la parte que cae adentro. Suma las partes de todos los períodos anteriores y del actual; luego
+  agrega los cobros anteriores informados. **30 días no es siempre una columna**, porque los meses
+  tienen distinta duración. Si falta el volumen o precio de un mes que aporta a esa cobranza,
+  también queda incompleta la cobranza del mes de destino.
+- **Canchada:** kilos vendidos × kilos de canchada por kilo vendido × precio de canchada actualizado.
+  Ese costo se muestra como base informativa. Se compra para el consumo del período. La parte
+  anticipada se paga al inicio de ese mismo período; el resto se reparte según los días de pago,
+  con el mismo cruce de fechas que las cobranzas. El total operativo suma **el pago**, no vuelve
+  a sumar la base de compra. No modela anticipos en meses anteriores a la compra.
+- **Packaging, sueldos y otros gastos:** packaging se paga en el período de venta. Sueldos y
+  honorarios entran desde el mes de incorporación y continúan los meses siguientes; las cargas
+  se calculan sólo sobre sueldos. Los importes mensuales de personal, seguros, energía, gas e
+  impuestos se prorratean por días cuando el primer período es parcial. No modela bajas,
+  aguinaldos ni escalones salariales adicionales. Si hacen falta, debe ampliarse antes de usarlo.
+- **Comisiones y fletes:** comisión sobre venta facturada o cobranza total, según la elección;
+  se paga en ese período. Fletes permite tarifa por kilo (actualizada por inflación) o porcentaje
+  de venta facturada. Impuestos corrientes son un importe mensual provisto por el estudio, sin
+  duplicar cargas ni deuda impositiva. No se adivinan alícuotas ni tratamientos tributarios.
+- **Imprevistos:** si se pide que sean `p` del **total** operativo, la provisión es
+  `otros egresos × p / (1 − p)`. Incluye pagos operativos de arranque; excluye indemnizaciones y
+  deuda. No se permite 100%. Así el porcentaje no se aplica a una base distinta de la pedida ni
+  crea una fórmula circular.
+- **Indemnizaciones:** total nominal dividido en cuotas mensuales iguales desde el mes informado,
+  sin inflación. Si el total es 0, mes y cuotas no son necesarios. Las cuotas fuera de los doce
+  períodos quedan informadas en “Indemnizaciones pendientes después del horizonte”.
+- **Deuda:** lee directamente capital, interés y total del cronograma de Deuda Bancaria, e importes
+  de Deuda Impositiva, por vencimiento. Separa `Si`/`Sí` de `No` en `Debito Automatico`, admite
+  diferencias de mayúsculas y espacios. No recalcula tasas ni inventa cuotas. Verifica que capital
+  más interés coincida con la cuota al centavo; un interés vacío **no** equivale a interés cero.
+  Excluye Pagado; el estado pendiente debe decir Pendiente. Estados inesperados, importes o fechas
+  faltantes, importes negativos o un débito sin clasificar bloquean el bloque de deuda. Además hay
+  que confirmar cobertura de los doce períodos: ninguna fórmula puede deducir cuotas que faltan
+  en el origen. Los vencimientos anteriores a mañana quedan fuera de los flujos; para pagarlos,
+  acordar y cargar un cronograma, sin duplicar la obligación. **El modelo usa el cronograma real,
+  no las propuestas de Plan** que hoy utiliza Cash Mensual.
+- **Caja y saldos:** toma la última foto hasta hoy por **banco + empresa + cuenta**, incluida caja
+  física si está registrada. No suma acuerdos de descubierto. Muestra la fecha más antigua usada
+  y requiere confirmar que las fotos representan la caja de hoy. Datos vacíos o dos fotos en la
+  última fecha de la misma cuenta bloquean el saldo. Desde ahí acumula por separado el escenario
+  pagando toda la deuda y el escenario pagando sólo lo automático. Los saldos del período no
+  incluyen caja inicial; los acumulados sí. Una fuente vieja no se vuelve actual por fórmula:
+  actualizarla antes de confirmar.
+- **Capital de trabajo:** venta diaria × días de cobro, más costo diario de canchada × días de stock,
+  menos costo diario de canchada × parte no anticipada × días de pago. Es la necesidad al ritmo
+  de cada período: positivo = plata a financiar, negativo = financiación neta de proveedores.
+  Stock vacío muestra **—** y el neto dice **sin stock**; es opcional y no bloquea la
+  operación. Stock cero muestra 0. Esta necesidad no se resta otra vez de la caja, que ya respeta
+  cobros y pagos. No es el saldo exacto de cuentas a cobrar/pagar de una transición con estacionalidad:
+  esos saldos del modelo se muestran aparte en las filas 55 y 56. Tampoco programa compras para
+  formar stock ni calcula stock de packaging o producto terminado. Si se necesita financiar un
+  stock inicial o compras anticipadas, incorporar su calendario antes de tomar el saldo como
+  una proyección completa de esa transición.
+
+**Faltantes:** arriba figura la lista de supuestos o fuentes que impiden cerrar cada período,
+sin repetir textos idénticos. Debajo, desde la fila 66, está el motivo por renglón; sirve cuando
+la lista de arriba es larga. Un total sólo se calcula si todos sus componentes están completos.
+Un dato faltante no se convierte en cero ni desaparece dentro de una suma. El cero confirmado
+se muestra como `0,00`. Los bloques independientes pueden calcularse aunque otro esté incompleto.
+
+### Ejemplo hecho a mano — ficticio, no cargar en la planilla del cliente
+
+Para verificar sin datos reales, suponer hoy **31/08/2026**, por lo que los primeros períodos son
+septiembre (30 días) y octubre (31 días). En una copia descartable se puede fijar B4 de Modelo
+Nuevo en `01/09/2026`; “Hasta” y los períodos siguientes se recalculan desde esa fecha.
+
+Supuestos de prueba: 100.000 kg en cada período; precio $1.000/kg; cobro a 30 días; canchada
+0,7 kg/kg a $500, pago a 30 días y anticipo 0%; packaging $100/kg; un sueldo bruto $1.000.000 y
+un honorario $200.000, ambos desde mes 1; cargas 20%; comisión 1% facturada; flete $10/kg;
+seguros $100.000, energía $200.000, gas $100.000 e impuestos corrientes $200.000 por mes;
+imprevistos 10% del total operativo; inflación 0%; stock 10 días. Pendientes operativos anteriores:
+0 en todos los meses. Indemnización $2.000.000 en dos cuotas desde mes 1. Nómina y fuentes completas.
+
+Para esta prueba, caja inicial $5.000.000. En **cada uno** de los dos meses, cronograma ficticio:
+automático capital $2.000.000 + interés $200.000 + impuesto $300.000; por decisión capital
+$1.000.000 + interés $100.000 + impuesto $400.000. Todo Pendiente y con su débito clasificado.
+Estos números son únicamente un ejemplo de comprobación; no están en el generador de supuestos.
+
+Cuenta del plazo: las ventas de septiembre se cobran del 1 al 30 de octubre. A eso se agrega
+el 31 de octubre la venta del 1 de octubre: `$100.000.000 + $100.000.000 / 31`.
+Canchada se paga igual: `$35.000.000 + $35.000.000 / 31`. Sin canchada, los otros gastos suman
+$14.000.000. En septiembre, imprevistos = `$14.000.000 × 10% / 90%`.
+
+Importes siguientes en **millones de pesos**, salvo kilos y precio. Se muestran seis decimales
+para facilitar el control; la planilla calcula sin ese redondeo.
+
+| Renglón | Septiembre | Octubre |
+|---|---:|---:|
+| Ventas, kg | 100.000 | 100.000 |
+| Precio, $/kg | 1.000 | 1.000 |
+| Ventas facturadas | 100,000000 | 100,000000 |
+| Cobranza del modelo | 0,000000 | 103,225806 |
+| Cobros anteriores | 0,000000 | 0,000000 |
+| **Total ingresos** | **0,000000** | **103,225806** |
+| Canchada, base de compra (no se suma a pagos) | 35,000000 | 35,000000 |
+| Canchada, pago | 0,000000 | 36,129032 |
+| Packaging | 10,000000 | 10,000000 |
+| Sueldos brutos | 1,000000 | 1,000000 |
+| Cargas | 0,200000 | 0,200000 |
+| Honorarios | 0,200000 | 0,200000 |
+| Comisiones | 1,000000 | 1,000000 |
+| Fletes | 1,000000 | 1,000000 |
+| Seguros | 0,100000 | 0,100000 |
+| Energía | 0,200000 | 0,200000 |
+| Gas | 0,100000 | 0,100000 |
+| Impuestos corrientes | 0,200000 | 0,200000 |
+| Pagos operativos anteriores | 0,000000 | 0,000000 |
+| Imprevistos | 1,555556 | 5,569892 |
+| **Total egresos operativos** | **15,555556** | **55,698925** |
+| **Resultado operativo antes de deuda** | **−15,555556** | **47,526882** |
+| Indemnizaciones | 1,000000 | 1,000000 |
+| Capital automático | 2,000000 | 2,000000 |
+| Interés automático | 0,200000 | 0,200000 |
+| Impuestos automáticos | 0,300000 | 0,300000 |
+| **Total deuda automática** | **2,500000** | **2,500000** |
+| **Saldo del período, sólo automático** | **−19,055556** | **44,026882** |
+| Capital por decisión | 1,000000 | 1,000000 |
+| Interés por decisión | 0,100000 | 0,100000 |
+| Impuestos por decisión | 0,400000 | 0,400000 |
+| **Total deuda por decisión** | **1,500000** | **1,500000** |
+| **Saldo del período, toda la deuda** | **−20,555556** | **42,526882** |
+| Saldo inicial, escenario toda la deuda | 5,000000 | −15,555556 |
+| **Acumulado, toda la deuda** | **−15,555556** | **26,971326** |
+| **Acumulado, sólo automático** | **−14,055556** | **29,971326** |
+| Plata en la calle según días de cobro | 100,000000 | 96,774194 |
+| Stock de canchada según días | 11,666667 | 11,290323 |
+| Financiación de proveedores | 35,000000 | 33,870968 |
+| **Capital de trabajo neto con stock** | **76,666667** | **74,193548** |
+| Indemnizaciones después del horizonte | 0,000000 | 0,000000 |
+| Ventas del modelo pendientes al cierre | 100,000000 | 96,774194 |
+| Canchada del modelo pendiente al cierre | 35,000000 | 33,870968 |
+
+### Guion de prueba en Google Sheets (todavía pendiente)
+
+1. Trabajar en una **copia descartable**, con listas ficticias. Antes, anotar los valores y fórmulas
+   de Cash, Cash Semanal, Cash Mensual y Plan. Correr `armarModeloNuevo()` desde Apps Script.
+   Deben aparecer sólo las dos solapas nuevas; los supuestos editables vacíos, ninguna dotación
+   precargada, la inflación vinculada a la celda existente, egresos y saldos incompletos como **—**.
+2. Leer “Faltan datos” y el detalle al pie. Cargar sólo precio: se habilita el precio si hay inflación,
+   pero no ventas sin kilos. Vaciarlo: vuelve **—**. Cargar 0 con los demás requisitos completos:
+   el resultado es 0 visible. Texto, negativos indebidos, porcentajes fuera de rango o un mes
+   fraccionario deben rechazarse al cargar o quedar marcados como inválidos en el cálculo.
+3. Completar el ejemplo anterior, incluidos ceros, puestos y confirmaciones. En la copia, fijar
+   temporalmente la fecha de inicio indicada y crear una foto de caja ficticia de $5.000.000 con
+   fecha hasta hoy. Verificar **cada renglón** de las primeras dos columnas contra la tabla.
+   No agregar estos supuestos a la versión entregada ni a la planilla del cliente.
+4. Probar 0, 15, 30 y 75 días; cambio de mes y febrero. Con anticipo 50%, la primera salida de
+   canchada del ejemplo debe ser $17.500.000; con plazo 0, $35.000.000. Borrar kilos de septiembre:
+   se bloquea su facturación y también la cobranza/pago de octubre que dependía de ese mes.
+5. Cambiar comisión a Cobrada: en septiembre del ejemplo debe ser 0. Cambiar flete a 1% de venta:
+   debe seguir en $1.000.000. Inflación 10%: precio del período 2 pasa a $1.100. Vaciar inflación:
+   se bloquean sus dependientes. No hay una segunda celda editable de inflación.
+6. Quitar el mes de un puesto: personal y total operativo deben quedar **—**. Mes 2 para honorarios:
+   no paga honorarios en mes 1. Indemnización 0 admite mes/cuotas vacíos; importe positivo los exige.
+   Cuotas que exceden el horizonte dejan remanente visible. Imprevistos 100% no debe calcularse.
+7. Vaciar días de stock: fila stock muestra **—**, alcance dice “Sin stock”; no finge stock 0.
+   Con días 0, stock muestra 0. Cambiar cobro/pago debe cambiar tanto caja como capital de trabajo;
+   el capital de trabajo no se vuelve a descontar de los saldos.
+8. En una cuota, cambiar Si a No: debe pasar de bloque conservando capital e interés. Vaciar interés,
+   fecha, estado o débito: deuda y saldos dependientes muestran **—**, no una cuota menor. Marcar
+   Pagado: sale de la proyección. Verificar que no usa Plan y que no suma vencido previo como si
+   fuera una cuota futura. Una lista vacía sólo da ausencia de pagos tras confirmar cobertura.
+9. Agregar dos cuentas del mismo banco y otra empresa: suma la última foto de cada combinación,
+   sin duplicar la historia. Un importe vacío en la última foto o una foto duplicada bloquea caja;
+   una foto vieja queda expuesta por fecha. Quitar confirmación de caja vuelve **—** los acumulados,
+   pero no impide ver un resultado operativo completo.
+10. Reejecutar `armarModeloNuevo()`: debe conservar todos los supuestos y puestos cargados. Comparar
+    las otras cuatro solapas con el paso 1: sin cambios. Revisar separadores en es_AR, ausencia de
+    errores nativos, tiempos de recálculo de los rangos abiertos y lectura de textos largos.
+    Restaurar o descartar la copia; no publicar un ejemplo como si fueran datos reales.
+
+### Para que sea la base del mensual
+
+Primero, confirmar los supuestos con sus proveedores, los cronogramas completos y los saldos;
+conciliar los pendientes de arranque para no duplicar deuda ni omitir pagos. Acordar si hay stock
+inicial, anticipos anteriores a las compras, aguinaldos, bajas o condiciones comerciales que
+necesiten calendarios propios. Confirmar fecha de entrada en vigencia, actualización de supuestos,
+tratamiento de inflación y quién guarda cada versión. Después, con una tarea aparte, cambiar la
+fuente operativa de Cash Mensual y acordar cómo aplica las decisiones de Plan, con un puente entre
+real y proyectado. **Esta tarea no hace ese reemplazo.**
