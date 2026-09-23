@@ -195,6 +195,7 @@ def _col(d, *nombres):
 def localizar(carpeta):
     """{ (empresa, lista): ruta } a partir de los nombres de los .xlsx."""
     out = {}
+    prioridades = {}
     for ruta in sorted(glob.glob(os.path.join(carpeta, "*.xlsx"))):
         nombre = _norm(os.path.splitext(os.path.basename(ruta))[0])
         if nombre.startswith("para pegar") or nombre.startswith("~$"):
@@ -210,7 +211,15 @@ def localizar(carpeta):
                 lista = clave
                 break
         if lista:
-            out[(empresa, lista)] = ruta
+            # La foto más nueva manda: las mayúsculas del nombre no dicen cuándo se exportó.
+            # Sin fecha en el nombre, usamos la modificación; una foto fechada tiene prioridad.
+            fechas = re.findall(r"(?<!\d)(\d{4}-\d{2}-\d{2})(?!\d)", nombre)
+            fecha = _fecha(fechas[-1]) if fechas else None
+            prioridad = (fecha or datetime.date.min, os.path.getmtime(ruta), nombre, ruta)
+            clave = (empresa, lista)
+            if clave not in prioridades or prioridad > prioridades[clave]:
+                prioridades[clave] = prioridad
+                out[clave] = ruta
     return out
 
 

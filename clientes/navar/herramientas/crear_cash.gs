@@ -50,7 +50,7 @@ var FORMATO_NUM = "#,##0;[Red]-#,##0;\"\"";
 var R = { planTipo: "Plan!$A:$A", planAuto: "Plan!$N:$N" };
 
 var CAMPOS = [
-  ["Movimientos",        1, { movFecha: "Fecha", movTipo: "Tipo", movCat: "Categoria", movImp: "Importe", movOrigen: "Origen", movEstado: "Estado" }],
+  ["Movimientos",        1, { movFecha: "Fecha", movBanco: "Banco", movTipo: "Tipo", movCat: "Categoria", movImp: "Importe", movOrigen: "Origen", movEstado: "Estado" }],
   ["Cuentas a Cobrar",   1, { cobPend: "Saldo Pendiente", cobEmp: "Empresa", cobVto: "Fecha Vencimiento", cobEstado: "Estado", cobObs: "Observaciones" }],
   ["Cuentas a Pagar",    1, { pagPend: "Saldo Pendiente", pagEmp: "Empresa", pagVto: "Fecha Vencimiento", pagEstado: "Estado", pagObs: "Observaciones" }],
   ["Cartera de Cheques", 1, { chqTipo: "Tipo", chqFecha: "Fecha Pago / Cobro", chqImp: "Importe", chqEstado: "Estado", chqObs: "Observaciones" }],
@@ -138,11 +138,15 @@ var HASTA_REAL = "MIN({F},$B$3+1)", DESDE_EST = "MAX({D},$B$3+1)";
 // Lo real viene de dos lados: el extracto de los bancos (Origen "Extracto…") y, para AA, la
 // tesorería de Tango en efectivo (Origen "Tango AA…"). Las filas migradas ("Manual") no cuentan.
 var ORIGENES_REALES = ["Extracto*", "Tango AA*"];
-function _real_(tipo, cat) {
+// El nombre puede traer comillas o comodines: se busca el banco literal, no un patrón.
+function _criterioBanco_(banco) {
+  return '"' + banco.replace(/~/g, "~~").replace(/\*/g, "~*").replace(/\?/g, "~?").replace(/"/g, '\"\"') + '"';
+}
+function _real_(tipo, cat, banco) {
   // entre paréntesis: los renglones de egreso le anteponen "-" y tiene que negar la suma entera
   return "(" + ORIGENES_REALES.map(function (origen) {
     return "SUMIFS(" + R.movImp + "," + R.movFecha + ",\">=\"&{D}," + R.movFecha + ",\"<\"&" + HASTA_REAL + "," + R.movTipo + ",\"" + tipo + "\"," +
-      R.movEstado + ",\"Real\"," + R.movOrigen + ",\"" + origen + "\"" + (cat ? "," + R.movCat + ",\"" + cat + "\"" : "") + ")";
+      R.movEstado + ",\"Real\"," + R.movOrigen + ",\"" + origen + "\"" + (cat ? "," + R.movCat + ",\"" + cat + "\"" : "") + (banco !== undefined ? "," + R.movBanco + "," + _criterioBanco_(banco) : "") + ")";
   }).join("+") + ")";
 }
 function _lista_(imp, fecha, extra) {
@@ -152,10 +156,10 @@ function _proy_(cat, distinto) {
   return "SUMIFS(" + R.movImp + "," + R.movFecha + ",\">=\"&" + DESDE_EST + "," + R.movFecha + ",\"<\"&{F}," + R.movTipo + ",\"Egreso\"," +
     R.movEstado + ",\"Proyectado\"," + R.movCat + ",\"" + (distinto ? "<>" : "") + cat + "\")";
 }
-function _planMes_(tipo, auto) {
+function _planMes_(tipo, auto, banco) {
   // se resuelve por columna: {P} = letra de la columna del Plan para ese mes.
   // auto: "Si" = lo que el banco / ARCA debita solo · "No" = lo que se paga por decisión
-  return "SUMIFS(Plan!${P}:${P}," + R.planTipo + ",\"" + tipo + "\"" + (auto ? "," + R.planAuto + ",\"" + auto + "\"" : "") + ")";
+  return "SUMIFS(Plan!${P}:${P}," + R.planTipo + ",\"" + tipo + "\"" + (auto ? "," + R.planAuto + ",\"" + auto + "\"" : "") + (banco !== undefined ? ",Plan!$B:$B," + _criterioBanco_(banco) : "") + ")";
 }
 
 // Un renglón: nombre · real (extracto) · est (listas) · cómo se estima en el mensual ·
@@ -279,14 +283,29 @@ function _armarPeriodica_(ss, nombre, periodo) {
     return out;
   };
   var reng = _renglones_(periodo);
+  var bancosCuotas = _bancosDeuda_(ss);
+  // El alto se calcula al rearmar; ningún banco tiene un renglón reservado a mano.
+  var filasNecesarias = 160 + bancosCuotas.length + 2 * _bancos_(ss).length;
+  if (h.getMaxRows() < filasNecesarias) h.insertRowsAfter(h.getMaxRows(), filasNecesarias - h.getMaxRows());
+  // clear() no quita grupos: desarmarlos evita acumular niveles en cada corrida.
+  h.getRange(2, 1, h.getMaxRows() - 1, 1).shiftRowGroupDepth(-8);
+  h.setRowGroupControlPosition(SpreadsheetApp.GroupControlTogglePosition.BEFORE);
   var fila = filaFechas + 2;
 
-  // ---- 1. saldos de bancos (real, arrastrando el último conocido; vacío hacia adelante)
-  _seccion_(h, fila++, "1 · Bancos (saldo real al cierre)", "#e8f0fe", "#174ea6", colFuente);
-  var bancos = _bancos_(ss), primeraBanco = fila;
+  // ---- 1. margen por banco. El saldo real queda aparte: el acuerdo no es plata ingresada.
+  _seccion_(h, fila++, "1 · Bancos (saldo real + descubierto acordado)", "#e8f0fe", "#174ea6", colFuente);
+  var bancos = _bancos_(ss), primeraMargen = fila;
+  fila += bancos.length;
+  var primeraBanco = fila;
+  // Al rearmar, las filas antes ocultas pueden haber cambiado de lugar.
+  h.showRows(1, h.getMaxRows());
+  h.clearConditionalFormatRules();
   var colAcuerdo = colFuente + 1;            // auxiliar oculta: acuerdo de descubierto de cada banco
-  bancos.forEach(function (b) {
-    h.getRange(fila, 1).setValue(b.etiqueta);
+  bancos.forEach(function (b, indice) {
+    var filaMargen = primeraMargen + indice;
+    h.getRange(filaMargen, 1).setValue(b.etiqueta);
+    h.getRange(filaMargen, 1).setNote("Saldo real + descubierto acordado. Verde: queda margen; ámbar: agotado; rojo: excedido. Sin acuerdo informado se suma cero. No modifica los cierres.");
+    h.getRange(fila, 1).setValue(b.etiqueta + " · saldo real (auxiliar)");
     h.getRange(fila, colAcuerdo).setFormula("=SUMIFS(" + R.dbOrig + "," + R.dbBanco + ",\"" + b.nombre + "\"," + R.dbLinea + ",\"*escubierto*\")");
     for (var c = 0; c < nCols; c++) {
       // la caja AA se carga a mano y puede ser más nueva que el último extracto: llega hasta hoy
@@ -297,8 +316,14 @@ function _armarPeriodica_(ss, nombre, periodo) {
       // si no hay saldo anterior al corte (la caja AA se cargó el 31/08), se toma el primero conocido
       h.getRange(fila, 2 + c).setFormula("=IF(" + D(c) + ">$B$3,\"\",SUMIFS(" + R.salImp + "," + cond + "," + R.salFecha + ",IF(" + ult + "=0," + primero + "," + ult + ")))");
     }
+    for (var cm = 0; cm < nCols; cm++) {
+      var saldo = L(cm) + fila;
+      h.getRange(filaMargen, 2 + cm).setFormula("=IF(ISNUMBER(" + saldo + ")," + saldo + "+N($" + _colLetra_(colAcuerdo) + fila + "),\"\")");
+    }
     fila++;
   });
+  // Estas filas siguen alimentando los cierres y el descubierto usado/disponible, sin neteo.
+  if (bancos.length) h.hideRows(primeraBanco, bancos.length);
   var filaSaldoReal = fila, ultimoBanco = fila - 1;
   h.getRange(fila, 1).setValue("Total saldo real de bancos").setFontWeight("bold");
   for (var c1 = 0; c1 < nCols; c1++) h.getRange(fila, 2 + c1).setFormula("=IF(" + D(c1) + ">$B$3,\"\",SUM(" + L(c1) + primeraBanco + ":" + L(c1) + (fila - 1) + "))").setFontWeight("bold");
@@ -314,8 +339,20 @@ function _armarPeriodica_(ss, nombre, periodo) {
   // ---- 2. ingresos · 3. egresos de la operación · 4. deuda
   function bloque(titulo, lista) {
     _seccion_(h, fila++, titulo, "#e8f0fe", "#174ea6", colFuente);
-    var primera = fila;
+    var principales = [], grupos = [], ampliada = [];
     lista.forEach(function (r) {
+      ampliada.push(r);
+      if (r.n !== "Cuotas y tarjetas con débito automático") return;
+      bancosCuotas.forEach(function (banco) {
+        ampliada.push({ n: "    " + banco, detalle: true, banco: banco,
+          real: _real_("Egreso", "Prestamo", banco),
+          est: _lista_(R.cuTot, R.cuVto, "," + R.cuEstado + ",\"Pendiente\"," + R.cuAuto + ",\"Si\"," + R.cuBanco + "," + _criterioBanco_(banco)),
+          como: r.como, plan: r.plan, auto: r.auto });
+      });
+    });
+    ampliada.forEach(function (r) {
+      if (!r.detalle) principales.push(fila);
+      if (r.n === "Cuotas y tarjetas con débito automático" && bancosCuotas.length) grupos.push(fila + 1);
       h.getRange(fila, 1).setValue(r.n);
       var promRef = mensual ? "$" + _colLetra_(colProm) + fila : "";
       for (var c = 0; c < nCols; c++) {
@@ -331,7 +368,7 @@ function _armarPeriodica_(ss, nombre, periodo) {
           if (r.como === "prom") est = prom;
           else if (r.como === "max") est = "MAX(" + fx(r.lista, c) + "," + prom + ")";
           else if (r.como === "lista") est = fx(r.lista || r.est, c);
-          else if (r.como === "plan") est = fx(_planMes_(r.plan, r.auto), c);
+          else if (r.como === "plan") est = fx(_planMes_(r.plan, r.auto, r.banco), c);
         } else if (!mensual && r.est) est = fx(r.est, c);
         if (est) partes.push(est);
         if (partes.length) h.getRange(fila, 2 + c).setFormula("=" + partes.join("+"));
@@ -342,9 +379,14 @@ function _armarPeriodica_(ss, nombre, periodo) {
       }
       fila++;
     });
+    grupos.forEach(function (inicio) {
+      h.getRange(inicio, 1, bancosCuotas.length, colFuente).shiftRowGroupDepth(1);
+      h.getRowGroup(inicio, 1).collapse();
+    });
+    // El detalle ya está dentro de su total: sumarlo otra vez inflaría la deuda.
     var filaTotal = fila;
     h.getRange(fila, 1).setValue("Total " + titulo.replace(/^\d · /, "").toLowerCase()).setFontWeight("bold");
-    for (var c2 = 0; c2 < nCols; c2++) h.getRange(fila, 2 + c2).setFormula("=SUM(" + L(c2) + primera + ":" + L(c2) + (fila - 1) + ")").setFontWeight("bold");
+    for (var c2 = 0; c2 < nCols; c2++) h.getRange(fila, 2 + c2).setFormula("=SUM(" + principales.map(function (r) { return L(c2) + r; }).join(",") + ")").setFontWeight("bold");
     _lineaTotal_(h, fila, colFuente);
     fila += 2;
     return filaTotal;
@@ -479,6 +521,16 @@ function _armarPeriodica_(ss, nombre, periodo) {
   h.setColumnWidth(colFuente, 20);
   h.getRange(primeraBanco, colAcuerdo, ultimoBanco - primeraBanco + 1, 1).setNumberFormat(FORMATO_NUM);
   h.hideColumns(colAcuerdo);          // auxiliar: acuerdo de descubierto por banco
+  if (bancos.length) {
+    var margen = h.getRange(primeraMargen, 2, bancos.length, nCols);
+    margen.setNumberFormat("#,##0;-#,##0;0"); // Cero visible: la línea está agotada.
+    var celda = "B" + primeraMargen;
+    h.setConditionalFormatRules([
+      SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied("=ISNUMBER(" + celda + ")*(" + celda + ">0)").setBackground("#e6f4ea").setFontColor("#137333").setRanges([margen]).build(),
+      SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied("=ISNUMBER(" + celda + ")*(" + celda + "=0)").setBackground("#fef7e0").setFontColor("#8a5700").setRanges([margen]).build(),
+      SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied("=ISNUMBER(" + celda + ")*(" + celda + "<0)").setBackground("#fce8e6").setFontColor("#b3261e").setRanges([margen]).build()
+    ]);
+  }
   h.setFrozenRows(filaFechas + 1);
   h.setFrozenColumns(1);
 }
@@ -657,7 +709,7 @@ function armarInstrucciones() {
   seccion("2 · Cómo se lee una pantalla (las tres tienen la misma estructura)");
   tabla(["Parte", "Qué muestra"], [
     ["Hoy / Último extracto", "B2 es hoy; B3 el último día con extracto. Hasta B3 todo es REAL; desde el día siguiente, ESTIMADO. La fila bajo las fechas lo dice por columna (real · estimado · real + est.)."],
-    ["1 · Bancos", "Saldo real de cada cuenta al cierre del período, arrastrando el último conocido. Vacío hacia adelante: el futuro no se inventa por banco."],
+    ["1 · Bancos", "Saldo real + descubierto acordado: verde si queda margen, ámbar si da cero, rojo si está excedido. Sin acuerdo se suma cero. El total real y los cierres no incluyen el acuerdo. Vacío hacia adelante: el futuro no se inventa por banco."],
     ["Saldo inicial", "El cierre del período anterior. Es el 'saldo inicio' de un cash hecho a mano: de acá se parte cada día / semana / mes."],
     ["2 · Ingresos", "Un renglón por concepto. Real atrás (extracto), estimado adelante (listas). Sin préstamos: los préstamos no son operación."],
     ["3 · Egresos de la operación", "Ídem: proveedores, sueldos, impuestos corrientes, cheques propios, banco, otros."],
@@ -688,7 +740,7 @@ function armarInstrucciones() {
     ["Cheques propios", "cheques debitados (Movimientos · Cheques, egreso)", "en cartera por fecha de pago (Cartera de Cheques)"],
     ["Intereses y gastos bancarios", "Movimientos · Gastos Bancarios", "diario/semanal: promedio de los últimos 90 días · mensual: promedio × inflación"],
     ["Otros (tarjeta, honorarios)", "Movimientos · Otros + Honorarios", "lo proyectado con fecha en Movimientos (salvo sueldos)"],
-    ["Cuotas y tarjetas con débito automático", "cuotas debitadas (Movimientos · Prestamo, egreso)", "diario/semanal: cronograma de Deuda Bancaria (Debito Automatico = Si) · mensual: solapa Plan"],
+    ["Cuotas y tarjetas con débito automático", "cuotas debitadas (Movimientos · Prestamo, egreso)", "diario/semanal: cronograma de Deuda Bancaria (Debito Automatico = Si) · mensual: solapa Plan. Abrir + para ver por banco; al sumar un banco nuevo, Armar solapa Cash actualiza el detalle sin editar código."],
     ["Planes de ARCA con débito automático", "—", "Deuda Impositiva (Debito Automatico = Si) · mensual: solapa Plan"],
     ["Préstamos tomados", "préstamos acreditados (Movimientos · Prestamo, ingreso), restando", "no se proyecta: es una decisión"],
     ["Cuotas que se pagan por decisión", "—", "cronograma (Debito Automatico = No) · mensual: solapa Plan"],
@@ -753,6 +805,21 @@ function armarInstrucciones() {
 
 
 // ================================================================== ayudas
+// Se toma la lista real de deuda (líneas y cronograma) al rearmar las pantallas.
+// Un banco nuevo entra sin editar el código; no se agregan filas mientras alguien mira el cash.
+function _bancosDeuda_(ss) {
+  var h = ss.getSheetByName("Deuda Bancaria"), vistos = {}, bancos = [];
+  [R.dbBanco, R.cuBanco].forEach(function (rango) {
+    h.getRange(rango.split("!")[1]).getValues().forEach(function (r) {
+      var banco = String(r[0] || "").trim(), clave = _n_(banco);
+      if (!banco || vistos[clave]) return;
+      vistos[clave] = true;
+      bancos.push(banco);
+    });
+  });
+  return bancos.sort();
+}
+
 function _bancos_(ss) {
   var h = ss.getSheetByName("Saldos Bancarios");
   var vals = h.getRange(2, 1, Math.max(h.getLastRow() - 1, 1), 7).getValues();
