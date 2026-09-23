@@ -3,12 +3,12 @@
  * Primero correr avisoDiarioPrueba; instalar recién después de revisar el texto.
  * Agregar al menú finauto existente estas tres líneas (acá no hay otro onOpen):
  * .addItem("Ver el aviso de hoy (sin mandar)", "avisoDiarioPrueba")
- * .addItem("Instalar aviso diario 07:30", "instalarAvisoDiario")
+ * .addItem("Instalar aviso diario 09:00", "instalarAvisoDiario")
  * .addItem("Quitar aviso diario", "quitarAvisoDiario")
- * Google ejecuta cerca de las 07:30 (nearMinute tiene un margen de 15 minutos).
+ * Google ejecuta cerca de las 09:00 (nearMinute tiene un margen de 15 minutos).
  * Para probar sin Google, _armarAviso_(ahora, datos) acepta una foto inventada:
  * { entradas: [], publicados: [], retenidos: [], registro: [], log: [],
- *   extracto: Date o null, errores: {} }. Archivos: {nombre, ruta, tipo, fecha}.
+ *   extracto: Date o null, saldos: [{banco, empresa, origen, fecha}], errores: {} }. Archivos: {nombre, ruta, tipo, fecha}.
  * Registro: {fecha, tipo, estado, detalle}. Log: {fecha, texto}.
  * Con esa foto el armado es puro; con solo ahora, primero lee Google.
  */
@@ -33,9 +33,9 @@ function avisoDiarioPrueba() {
 // Deja un solo aviso diario para esta cuenta, con horario de Buenos Aires.
 function instalarAvisoDiario() {
   _borrarDisparadoresAviso_();
-  ScriptApp.newTrigger("avisoDiario").timeBased().atHour(7).nearMinute(30)
+  ScriptApp.newTrigger("avisoDiario").timeBased().atHour(9).nearMinute(0)
     .everyDays(1).inTimezone(AVISO_ZONA).create();
-  _registrar_("sistema", "", "ok", "aviso diario instalado: cerca de las 07:30 de Buenos Aires");
+  _registrar_("sistema", "", "ok", "aviso diario instalado: cerca de las 09:00 de Buenos Aires");
 }
 
 // Quita solamente el aviso; la actualización horaria sigue funcionando.
@@ -64,8 +64,8 @@ function _textoAviso_(texto, limite) {
 
 // Mantiene cada sección corta, pero dice cuántos renglones quedaron afuera.
 function _seccionAviso_(titulo, lineas) {
-  var visibles = lineas.slice(0, 25);
-  if (lineas.length > 25) visibles.push("... y " + (lineas.length - 25) + " más");
+  var visibles = lineas.slice(0, 5);
+  if (lineas.length > 5) visibles.push("... y " + (lineas.length - 5) + " más");
   return titulo + "\n" + (visibles.length ? visibles.join("\n") : "- nada nuevo");
 }
 
@@ -107,7 +107,7 @@ function _archivosAviso_(carpeta, ruta, tipo, recursivo) {
 
 // Lee cada parte por separado: si una falla, las demás igual llegan al mail.
 function _leerDatosAviso_() {
-  var datos = {entradas: [], publicados: [], retenidos: [], registro: [], log: [], extracto: null, errores: {}};
+  var datos = {entradas: [], publicados: [], retenidos: [], registro: [], log: [], extracto: null, saldos: [], errores: {}};
   var raiz, salida;
   // Guarda el problema junto a la sección que no se pudo leer.
   function leer(clave, trabajo) {
@@ -161,8 +161,11 @@ function _leerDatosAviso_() {
     if (!h) throw new Error("Falta Saldos Bancarios");
     var filas = h.getDataRange().getValues(), enc = filas.shift().map(function (v) { return String(v).trim(); });
     var fecha = enc.indexOf("Fecha"), origen = enc.indexOf("Origen");
-    if (fecha < 0 || origen < 0) throw new Error("Faltan las columnas Fecha u Origen");
+    var banco = enc.indexOf("Banco"), empresa = enc.indexOf("Empresa");
+    if ([fecha, origen, banco, empresa].some(function (i) { return i < 0; }))
+      throw new Error("Faltan columnas Fecha, Origen, Banco o Empresa");
     filas.forEach(function (r) {
+      datos.saldos.push({banco: r[banco], empresa: r[empresa], origen: r[origen], fecha: r[fecha]});
       if (String(r[origen]).trim() === "Extracto" && r[fecha] instanceof Date &&
           (!datos.extracto || r[fecha] > datos.extracto)) datos.extracto = r[fecha];
     });
@@ -170,11 +173,91 @@ function _leerDatosAviso_() {
   return datos;
 }
 
+// Cuenta cierres locales, sin depender de la zona de la Sheet ni de la hora de envío.
+function _diaAviso_(fecha) {
+  return fecha instanceof Date && !isNaN(fecha) ? _fechaAviso_(fecha, "yyyy-MM-dd") : "";
+}
+
+// Lunes mira el viernes cerrado. No hay calendario de feriados: hábil = lunes a viernes.
+function _habilAnteriorAviso_(dia) {
+  var fecha = new Date(dia + "T12:00:00Z");
+  do { fecha.setUTCDate(fecha.getUTCDate() - 1); } while ([0, 6].indexOf(fecha.getUTCDay()) >= 0);
+  return fecha.toISOString().slice(0, 10);
+}
+
+// Una copia subida hoy de un export viejo no lo convierte en una foto de hoy.
+function _fechaNombreAviso_(nombre) {
+  var marca = nombre.match(/(?:^|[^0-9])(\d{4}-\d{2}-\d{2})(?=[^0-9]|$)/);
+  if (!marca) return "";
+  var fecha = new Date(marca[1] + "T12:00:00Z");
+  return !isNaN(fecha) && fecha.toISOString().slice(0, 10) === marca[1] ? marca[1] : "";
+}
+
+// Una línea por fuente: no deja que un banco o la empresa A tapen lo que falta de otro.
+function _faltantesAviso_(ahora, datos) {
+  var hoy = _diaAviso_(ahora), cierre = _habilAnteriorAviso_(hoy), lineas = [];
+  function mostrar(dia) { return dia.split("-").reverse().join("/"); }
+  function pedir(nombre, ultima, requerida) {
+    if (!ultima || ultima < requerida) lineas.push("- " + nombre + ": falta actualizar al " + mostrar(requerida) +
+      (ultima ? "; última fecha disponible: " + mostrar(ultima) + "." : "; sin fecha disponible (no se puede determinar desde cuándo falta)."));
+  }
+  if (datos.errores.Extracto || !datos.saldos || !datos.saldos.length) {
+    lineas.push("- Bancos y arqueo de caja AA: no se pudo verificar Saldos Bancarios; revisar la carga y el acceso.");
+  } else {
+    var bancos = {}, arqueo = "";
+    datos.saldos.forEach(function (r) {
+      var banco = _textoAviso_(r.banco), empresa = _textoAviso_(r.empresa).toUpperCase();
+      var origen = _textoAviso_(r.origen).toLowerCase(), dia = _diaAviso_(r.fecha);
+      var caja = /^(\(varios\)|varios|caja)$/i.test(banco);
+      if (empresa === "AA" && caja && origen === "manual" && dia <= hoy && dia > arqueo) arqueo = dia;
+      if (!banco || caja) return;
+      var clave = banco.toLowerCase();
+      if (!bancos[clave]) bancos[clave] = {nombre: banco, fecha: ""};
+      if (origen === "extracto" && dia <= hoy && dia > bancos[clave].fecha) bancos[clave].fecha = dia;
+    });
+    Object.keys(bancos).sort().forEach(function (clave) {
+      pedir("Extracto de " + bancos[clave].nombre, bancos[clave].fecha, cierre);
+    });
+    if (!Object.keys(bancos).length) lineas.push("- Extractos de banco: no hay bancos identificables en Saldos Bancarios; revisar la lista.");
+    pedir("Arqueo de caja AA (carga manual)", arqueo, cierre);
+  }
+  if (datos.errores.Drive) {
+    lineas.push("- Exports de Tango y tesorería AA: no se pudo verificar Drive; revisar el acceso.");
+  } else {
+    var fotos = {}, tesoreria = "";
+    datos.entradas.forEach(function (f) {
+      if (!(f.fecha instanceof Date) || f.fecha > ahora) return;
+      var dia = _fechaNombreAviso_(f.nombre);
+      if (!dia || dia > hoy) return;
+      var nombre = f.nombre.toLowerCase().replace(/_/g, " ");
+      var marca = nombre.match(/^(aa|a)\s+(cobranzas?|pagos?|cheques?)\b/);
+      if (f.tipo === "tango" && marca) {
+        var lista = /^cobranza/.test(marca[2]) ? "cobranzas" : /^pago/.test(marca[2]) ? "pagos" : "cheques";
+        var clave = marca[1].toUpperCase() + " " + lista;
+        if (!fotos[clave] || dia > fotos[clave]) fotos[clave] = dia;
+      }
+      if (f.tipo === "tesoreria_aa" && /^aa\s/.test(nombre) && dia > tesoreria) tesoreria = dia;
+    });
+    ["A", "AA"].forEach(function (empresa) {
+      ["cobranzas", "pagos", "cheques"].forEach(function (lista) {
+        pedir("Tango " + empresa + " — " + lista, fotos[empresa + " " + lista], hoy);
+      });
+    });
+    pedir("Tesorería AA (subida manual)", tesoreria, hoy);
+  }
+  return lineas;
+}
+
 // Arma el mismo resultado para prueba y envío. Una foto opcional permite probar sin Google.
 function _armarAviso_(ahora, datos) {
   datos = datos || _leerDatosAviso_();
   var errores = datos.errores, alertas = [], encabezado = ["NAVAR cash · " + _fechaAviso_(ahora, "dd/MM/yyyy")];
-  var desde = ahora.getTime() - AVISO_DIA;
+  // Desde el cierre anterior (medianoche posterior), no desde las 9 de ayer.
+  // Un lunes arranca el sábado a las 00:00: el último día hábil cerrado fue el viernes.
+  // Bancos/arqueo deben cubrir ese cierre; los exports deben ser fotos de hoy.
+  var cierre = _habilAnteriorAviso_(_diaAviso_(ahora));
+  var desde = new Date(cierre + "T00:00:00-03:00").getTime() + AVISO_DIA;
+  var faltantes = _faltantesAviso_(ahora, datos);
   // La ventana incluye el comienzo y excluye fechas del futuro.
   function reciente(f) { return f.fecha.getTime() >= desde && f.fecha <= ahora; }
   // Ordena una copia para no cambiar la foto usada en las pruebas.
@@ -247,10 +330,10 @@ function _armarAviso_(ahora, datos) {
   });
   if (errores.Registro) importados.unshift(problema("Registro"));
   return {
-    asunto: "NAVAR cash · " + _fechaAviso_(ahora, "dd/MM") + " · " + (alertas.length ? "ATENCIÓN (" + alertas.length + ")" : "al día"),
-    cuerpo: [encabezado.join("\n"), alertas.length ? _seccionAviso_("Alertas", alertas.map(function (a) { return "- " + a; })) :
-      "Sin alertas: el cash está al día.", _seccionAviso_("Llegó a Drive (últimas 24 h)", entradas),
+    asunto: "NAVAR cash · " + _fechaAviso_(ahora, "dd/MM") + " · " + ((alertas.length + faltantes.length) ? "ATENCIÓN (" + (alertas.length + faltantes.length) + ")" : "al día"),
+    cuerpo: ["Qué falta subir hoy\n" + (faltantes.length ? faltantes.join("\n") : "Está todo subido al día de hoy."), encabezado.join("\n"), alertas.length ? _seccionAviso_("Alertas", alertas.map(function (a) { return "- " + a; })) :
+      "Sin alertas del circuito.", _seccionAviso_("Llegó a Drive (desde el cierre anterior)", entradas),
       _seccionAviso_("El vigilante procesó", procesados), _seccionAviso_("La Sheet importó", importados)].join("\n\n"),
-    alertas: alertas
+    alertas: alertas, faltantes: faltantes
   };
 }

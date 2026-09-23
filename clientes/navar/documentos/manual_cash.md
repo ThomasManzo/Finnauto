@@ -121,11 +121,35 @@ vigentes de ARCA = Sí (débito en CBU); el resto de impuestos = No (VEP). Se co
 | 2 | la notebook de la empresa (**vigilante**, cada 15 min) | ve el archivo nuevo y corre el lector que corresponde; deja el `para_pegar_*.xlsx` en `_para la Sheet`; si una lista se achica de golpe, lo retiene | `herramientas/vigilante.py` · log en `privado/vigilante.log` |
 | 3 | la Sheet (**disparador**, cada hora, Apps Script) | ve el `para_pegar` nuevo y lo importa; pisa lo que ese lector cargó antes, no toca fórmulas ni lo cargado a mano | solapa **Registro**: una fila por importación (o el error) |
 | 4 | las pantallas | recalculan solas: B3 avanza, lo real reemplaza lo estimado, la cobranza que entró sale del "a cobrar" | Cash · Cash Semanal · Cash Mensual |
-| cada mañana: el aviso | la Sheet (cerca de las 07:30 de Buenos Aires, una vez instalado) | manda qué llegó, qué procesó el vigilante, qué importó la Sheet y qué necesita atención | `herramientas/aviso_diario.gs` → mail de la empresa |
+| cada mañana: el aviso | la Sheet (cerca de las 09:00 de Buenos Aires, una vez instalado) | primero recuerda qué falta subir por banco y por empresa; después resume el circuito | `herramientas/aviso_diario.gs` → mail de la empresa |
 | a mano | quien hace el arqueo de caja | una fila por arqueo en Saldos Bancarios: fecha, Varios, AA, saldo, Manual | Saldos Bancarios |
 | a mano | la dirección | las decisiones: pagar / refinanciar / posponer, gracia, cuotas, tasa | Plan |
 
-El mail resume las últimas 24 horas y avisa también si no llegó nada. Si el vigilante no procesó, revisar la notebook y `NAVAR - Datos/_para la Sheet/vigilante.log`; si la Sheet no importó, usar finauto → Importar lo nuevo ahora. Si hay un retenido, revisar el export antes de publicarlo; si hay un error de importación o de lectura del aviso, revisar Registro y pedir ayuda a finauto. Si faltan extractos o exports recientes, pedirlos a administración. Primero se revisa con `avisoDiarioPrueba()` (no manda mail); después se instala con `instalarAvisoDiario()`. Google ejecuta cerca de las 07:30, con un margen de 15 minutos.
+El mail empieza con **Qué falta subir hoy**: un renglón por banco atrasado (la lista sale de
+Saldos Bancarios), y por cada export de cobranzas, pagos y cheques de A y AA. Muestra la fecha
+requerida y la última disponible; si no hay fecha, lo dice sin inventar desde cuándo falta.
+Los bancos y el arqueo manual de caja AA deben cubrir el último día hábil cerrado: el lunes
+alcanza con el viernes. Hábil significa lunes a viernes; todavía no contempla feriados.
+Los seis exports y la tesorería AA deben tener **fecha de hoy en el nombre**; subir de nuevo un
+archivo viejo no lo pone al día. Cheques toma el más nuevo entre propios y terceros por empresa
+(según el control de seis combinaciones pedido; no certifica que ambos subtipos estén completos).
+La tesorería se verifica en su carpeta de Drive; el arqueo, por una fila Manual de AA en
+Saldos Bancarios con banco Varios, (varios) o Caja. No se deduce un arqueo de un movimiento de caja.
+
+Después aparecen las alertas y un resumen de hasta cinco líneas por sección de lo recibido,
+procesado e importado **desde el cierre anterior**, no de las últimas 24 horas: desde las 00:00
+de hoy, o desde el sábado a las 00:00 si es lunes. Los pendientes viejos siguen alertando.
+Si no se pudo leer una fuente, se informa sin declararla al día. “Está todo subido al día de hoy”
+solo habla de las fuentes controladas: las alertas posteriores pueden indicar que falta procesar
+o importar. No certifica los importes ni la conciliación del cash.
+
+Si el vigilante no procesó, revisar la notebook y `NAVAR - Datos/_para la Sheet/vigilante.log`;
+si la Sheet no importó, usar finauto → Importar lo nuevo ahora. Si hay un retenido, revisar el
+export antes de publicarlo; ante errores de lectura o importación, revisar Registro y pedir ayuda
+a finauto. Primero revisar `avisoDiarioPrueba()` (no manda mail); después instalar con
+`instalarAvisoDiario()`, desde una sola cuenta. Queda programado a las **09:00 de Buenos Aires**;
+Google lo ejecuta cerca de esa hora, con un margen de 15 minutos. Falta verificarlo e instalarlo
+en la Sheet; este cambio de código por sí solo no crea el disparador.
 
 ### Las carpetas de Drive (`NAVAR - Datos`): una por export
 
