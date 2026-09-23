@@ -22,7 +22,7 @@
  *     del cash viejo (Origen "Manual") no cuentan: son agregados, no movimientos.
  *  3. El saldo de bancos es real hasta el último extracto (por banco, arrastrando el
  *     último saldo conocido). Después: cierre anterior + ingresos − egresos.
- *  4. Lo atrasado (vencido) es un stock: no está en ninguna columna. Se paga por decisión
+ *  4. Lo atrasado (vencido) es un stock: se muestra por vencimiento, fuera de la curva. Se paga por decisión
  *     (solapa Plan → "Regularización de atrasado").
  *
  * Todo es fórmula. Nadie tipea acá: si un número está mal, está mal en la lista. Las
@@ -222,16 +222,28 @@ function _renglones_(periodo) {
     { n: "Impuestos por VEP y planes nuevos", real: "", est: impDec, como: "lista", f: "estimado: Deuda Impositiva sin débito automático, por fecha de vencimiento" },
   ];
   var atrasado = [
-    { n: "Proveedores A vencidos", est: "SUMIFS(" + R.pagPend + "," + R.pagEmp + ",\"A\"," + R.pagVto + ",\"<\"&$B$2," + R.pagEstado + ",\"<>Pagado\"," + R.pagObs + ",\"<>REVISAR*\")", f: "Cuentas a Pagar · vencimiento < hoy · sin la deuda vieja (REVISAR)" },
-    { n: "Proveedores AA vencidos", est: "SUMIFS(" + R.pagPend + "," + R.pagEmp + ",\"AA\"," + R.pagVto + ",\"<\"&$B$2," + R.pagEstado + ",\"<>Pagado\"," + R.pagObs + ",\"<>REVISAR*\")", f: "ídem" },
-    { n: "Cuotas bancarias impagas", est: "SUMIFS(" + R.cuTot + "," + R.cuVto + ",\"<\"&$B$2," + R.cuEstado + ",\"Pendiente\")", f: "Deuda Bancaria · cronograma" },
-    { n: "Impuestos vencidos", est: "SUMIFS(" + R.diImp + "," + R.diVto + ",\"<\"&$B$2," + R.diEstado + ",\"<>Pagado\")", f: "Deuda Impositiva" },
-    { n: "Cheques propios vencidos sin debitar", est: "SUMIFS(" + R.chqImp + "," + R.chqTipo + ",\"Propio*\"," + R.chqEstado + ",\"En Cartera\"," + R.chqFecha + ",\"<\"&$B$2)", f: "Cartera de Cheques · confirmar con el extracto" },
+    { n: "Proveedores A vencidos", fecha: R.pagVto, est: "SUMIFS(" + R.pagPend + "," + R.pagEmp + ",\"A\"," + R.pagVto + ",\"<\"&$B$2," + R.pagEstado + ",\"<>Pagado\"," + R.pagObs + ",\"<>REVISAR*\")", f: "Cuentas a Pagar · vencimiento < hoy · sin la deuda vieja (REVISAR)" },
+    { n: "Proveedores AA vencidos", fecha: R.pagVto, est: "SUMIFS(" + R.pagPend + "," + R.pagEmp + ",\"AA\"," + R.pagVto + ",\"<\"&$B$2," + R.pagEstado + ",\"<>Pagado\"," + R.pagObs + ",\"<>REVISAR*\")", f: "ídem" },
+    { n: "Cuotas bancarias impagas", fecha: R.cuVto, est: "SUMIFS(" + R.cuTot + "," + R.cuVto + ",\"<\"&$B$2," + R.cuEstado + ",\"Pendiente\")", f: "Deuda Bancaria · cronograma" },
+    { n: "Impuestos vencidos", fecha: R.diVto, est: "SUMIFS(" + R.diImp + "," + R.diVto + ",\"<\"&$B$2," + R.diEstado + ",\"<>Pagado\")", f: "Deuda Impositiva" },
+    { n: "Cheques propios vencidos sin debitar", fecha: R.chqFecha, est: "SUMIFS(" + R.chqImp + "," + R.chqTipo + ",\"Propio*\"," + R.chqEstado + ",\"En Cartera\"," + R.chqFecha + ",\"<\"&$B$2)", f: "Cartera de Cheques · confirmar con el extracto" },
     { n: "Vencido a cobrar (informativo, no suma)", est: "SUMIFS(" + R.cobPend + "," + R.cobVto + ",\"<\"&$B$2," + R.cobEstado + ",\"<>Cobrado\"," + R.cobObs + ",\"<>REVISAR*\")", f: "Cuentas a Cobrar", info: true },
   ];
   return { ingresos: ingresos, egresos: egresos, deudaAuto: deudaAuto, deudaDec: deudaDec, atrasado: atrasado };
 }
 
+
+// Parte el mismo stock por vencimiento: conserva los estados, importes y exclusiones
+// del total. No usa el corte del extracto: una obligación vence aunque falte el banco.
+function _atrasadoEntre_(lista, desde, hasta) {
+  return lista.filter(function (r) { return !r.info; }).map(function (r) {
+    // Una fecha vacía o cero no es un vencimiento: queda en el control para revisar.
+    var condiciones = "," + r.fecha + ',">0"';
+    if (desde) condiciones += "," + r.fecha + ',">="&' + desde;
+    if (hasta) condiciones += "," + r.fecha + ',"<"&' + hasta;
+    return r.est.slice(0, -1) + condiciones + ")";
+  }).join("+");
+}
 
 // ================================================================== la solapa (diaria, semanal o mensual)
 function _armarPeriodica_(ss, nombre, periodo) {
@@ -496,7 +508,7 @@ function _armarPeriodica_(ss, nombre, periodo) {
   h.getRange(fila, 1, 1, colFuente).setBackground("#fce8e6");
   fila += 2;
 
-  // ---- 5. atrasado (stock)
+  // ---- 6. atrasado (stock)
   _seccion_(h, fila++, "6 · Atrasado hoy (stock: no está en la curva; se paga por decisión, en Plan)", "#fce8e6", "#a50e0e", colFuente);
   var primeraAtr = fila;
   reng.atrasado.forEach(function (r) {
@@ -507,9 +519,42 @@ function _armarPeriodica_(ss, nombre, periodo) {
   h.getRange(fila, 1).setValue("Total atrasado a pagar").setFontWeight("bold");
   h.getRange(fila, 2).setFormula("=SUM(B" + primeraAtr + ":B" + (fila - 2) + ")").setFontWeight("bold");
   _lineaTotal_(h, fila, colFuente);
+  var filaTotalAtr = fila;
+  fila += 2;
+  h.getRange(fila++, 1).setValue("Detalle del stock por vencimiento original · no mueve la caja").setFontWeight("bold");
+  // Repetimos las fechas acá: los totales de arriba están en B, pero no son del primer día.
+  for (var ca = 0; ca < nCols; ca++) {
+    h.getRange(fila, 2 + ca).setFormula("=" + D(ca)).setNumberFormat(fmt);
+  }
+  var filaFechasAtr = fila++;
+  var filaDetalleAtr = fila;
+  h.getRange(fila, 1).setValue("Venció en ese período y sigue impago hoy");
+  for (var cd = 0; cd < nCols; cd++) {
+    h.getRange(fila, 2 + cd).setFormula("=" + _atrasadoEntre_(reng.atrasado, D(cd), F(cd)));
+  }
+  fila++;
+  var filaAntesAtr = fila;
+  h.getRange(fila, 1).setValue("Venció antes del primer período visible");
+  h.getRange(fila++, 2).setFormula("=" + _atrasadoEntre_(reng.atrasado, null, D(0)));
+  // Si el extracto quedó muy atrás, puede haber vencido deuda después de la última
+  // columna diaria. No la escondemos ni la metemos a la fuerza en otra fecha.
+  var filaDespuesAtr = fila;
+  h.getRange(fila, 1).setValue("Venció después del último período visible");
+  h.getRange(fila++, 2).setFormula("=" + _atrasadoEntre_(reng.atrasado, F(nCols - 1), null));
+  var filaRepartidoAtr = fila;
+  h.getRange(fila, 1).setValue("Total repartido por vencimiento").setFontWeight("bold");
+  h.getRange(fila++, 2).setFormula("=SUM(B" + filaDetalleAtr + ":" + L(nCols - 1) + filaDetalleAtr + ",B" + filaAntesAtr + ",B" + filaDespuesAtr + ")");
+  h.getRange(fila, 1).setValue("Control: total atrasado menos repartido (debe dar 0)")
+    .setNote("Si no da cero, revisar fechas vacías, cero o inválidas en las listas. No se inventa una fecha para hacer cuadrar el detalle. El vencido a cobrar no suma. Los proveedores REVISAR siguen excluidos como en el total.");
+  h.getRange(fila, 2).setFormula("=ROUND(B" + filaTotalAtr + "-B" + filaRepartidoAtr + ",2)");
 
   // ---- formato y colores de columnas (verde real, amarillo estimado; se recalcula al rearmar)
   h.getRange(filaFechas + 2, 2, fila - filaFechas - 1, colFuente - 2).setNumberFormat(FORMATO_NUM);
+  h.getRange(primeraAtr, 2, filaTotalAtr - primeraAtr + 1, 1).setNumberFormat('#,##0.00;[Red]-#,##0.00;""');
+  h.getRange(filaTotalAtr + 2, 1, fila - filaTotalAtr - 1, 1).setWrap(true);
+  h.getRange(filaFechasAtr, 2, 1, nCols).setNumberFormat(fmt).setFontWeight("bold");
+  h.getRange(filaDetalleAtr, 2, fila - filaDetalleAtr + 1, nCols).setNumberFormat('#,##0.00;[Red]-#,##0.00;""');
+  h.getRange(fila, 2).setNumberFormat('#,##0.00;[Red]-#,##0.00;0.00');
   h.getRange(2, 2, 2, 1).setNumberFormat("dd/mm/yyyy");
   for (var i2 = 0; i2 < nCols; i2++) {
     h.getRange(filaFechas, 2 + i2).setNumberFormat(fmt);
@@ -724,7 +769,7 @@ function armarInstrucciones() {
     ["Resultado de la operación pagando lo que vencía", "Lo que hubiera quedado pagando todo lo que venció. Es el número honesto de la operación."],
     ["Descubierto acordado · usado · disponible", "Acordado: lo que cada banco autorizó. Usado: los saldos en negativo. Disponible: acordado − usado, banco por banco (un banco excedido no se compensa con otro en positivo). Hacia adelante, sobre el total."],
     ["Saldo disponible", "Saldos en positivo + descubierto disponible, en los dos escenarios. Negativo = no se cubre lo comprometido ni usando todo el descubierto: hay que elegir."],
-    ["6 · Atrasado hoy", "Lo vencido, por concepto. Es un STOCK: no está en ninguna columna (no arranca la curva en rojo). Se paga por decisión, en Plan."],
+    ["6 · Atrasado hoy", "Stock por concepto y detalle por vencimiento original: cada importe va al día, semana o mes en que venció. Fuera de la curva; no cambia cierres. Antes/después de las fechas visibles se muestra aparte. Total menos repartido debe dar 0; si no, revisar fechas. Excluye vencido a cobrar y conserva los filtros del stock. Baja cuando la lista actualizada registra el pago; no basta el extracto. Se paga por decisión, en Plan."],
   ]);
 
   seccion("3 · Cada renglón: qué es lo real y qué es lo estimado");
