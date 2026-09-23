@@ -29,7 +29,7 @@ cambian solas. Eso es lo que hace que se pueda mantener y automatizar.
 ```
 Hoy · Último día con extracto        ← hasta ahí es REAL; desde el día siguiente, ESTIMADO
 FECHAS                               ← la fila de abajo dice por columna: real · estimado · real + est.
-1 · Bancos                           ← saldo real + descubierto acordado por banco (vacío hacia adelante)
+1 · Bancos                           ← saldo por cuenta + fecha; margen con acuerdo por banco (vacío en el futuro)
 Saldo inicial                        ← el cierre del período anterior: de acá se parte
 2 · Ingresos                         ← un renglón por concepto: real atrás, estimado adelante (SIN préstamos)
 3 · Egresos de la operación
@@ -48,13 +48,37 @@ Saldo disponible (2 escenarios)      ← positivos + descubierto disponible; neg
 6 · Atrasado hoy                     ← lo vencido, por concepto; es un STOCK, no está en la curva; se paga por decisión
 ```
 
-**Bancos (22/09)**: cada banco muestra el saldo real más su descubierto acordado, tomado del
-mismo acuerdo del bloque de descubiertos. Verde si da más de cero; ámbar si da exactamente cero
-(línea agotada, el cero se ve); rojo si da negativo. Un acuerdo vacío vale cero. Por ejemplo,
-saldo −100 M y acuerdo 100 M = 0 ámbar. El **Total saldo real de bancos**, el **Saldo inicial** y
-los **SALDO AL CIERRE** siguen usando solamente los saldos reales. Esos saldos por banco quedan
-en filas auxiliares ocultas: el acuerdo no se suma como si fuera plata que ingresó. El bloque de
-descubierto acordado/usado/disponible conserva su cálculo.
+**Bancos (23/09, arrastre preparado para revisión)**: cada cuenta tiene dos renglones:
+**saldo sin acuerdo** y, justo debajo de cada importe, **fecha y estado**. La cuenta se distingue
+por banco, empresa y número. La última foto se busca hasta el cierre del período pasado o hasta
+hoy en el período actual. Si es anterior a ese corte, ambos renglones quedan **grises y en
+itálica**, con **“ARRASTRADO · al dd/mm/aaaa”**: no es plata confirmada para ese día. Si coincide,
+dice **“Confirmado · al dd/mm/aaaa”** (confirmado por la foto cargada, no por una conciliación).
+Cero se ve como 0; un negativo conserva el signo. Sin foto anterior dice **“Sin saldo previo”**,
+sin traer datos de un día posterior. Una última foto duplicada, vacía o con texto en el importe
+dice **“Revisar saldo”**, sin presentarla como cero.
+
+Después aparece el **margen con acuerdo por banco**: suma los saldos de sus cuentas y agrega
+el acuerdo una sola vez. Si alguna cuenta arrastra, el margen también queda gris e itálico.
+Con todas las fotos al corte: verde si queda margen, ámbar si da cero y rojo si está excedido.
+Un acuerdo vacío vale cero; saldo −100 M y acuerdo 100 M = 0. Si falta un saldo válido, dice
+“Revisar cuentas”. Los períodos que empiezan después de hoy quedan vacíos en este detalle.
+La semana y el mes en curso muestran la foto hasta hoy, no hasta su cierre futuro.
+
+Junto al **Total saldo real de bancos**, un aviso por columna cuenta las cuentas con fecha
+arrastrada y muestra la más vieja; también cuenta las que no tienen saldo previo. Cuenta
+cuentas, no bancos; incluye la caja manual. **El detalle es informativo: el total preexistente,
+Saldo inicial, SALDO AL CIERRE y el neteo del descubierto conservan exactamente su cálculo y
+su corte de extracto.** Las filas auxiliares originales siguen ocultas y alimentan esos
+cálculos. Por eso, después del último extracto el detalle puede mostrar saldos arrastrados
+mientras el total real sigue vacío y el cierre ya es una proyección. No sumar el detalle como
+si fuera una nueva base del cash. Si el detalle por cuenta difiere del total anterior, revisar
+las fuentes; esta mejora de presentación no corrige el cálculo anterior.
+
+Los importes, fechas, leyendas y colores se actualizan por fórmula. Al aparecer una **cuenta
+nueva**, ejecutar **Armar solapa Cash** para crear sus filas. La fecha viene de Saldos Bancarios
+(contenido del extracto), nunca del nombre del archivo. La fila general “real / estimado” sigue
+hablando de los flujos: la confirmación de cada cuenta se lee debajo de su propio importe.
 
 **Detalle de cuotas (22/09)**: el `+` al costado de **Cuotas y tarjetas con débito automático**
 abre una fila por banco en las tres pantallas; arranca plegado. Conserva las mismas fechas,
@@ -101,6 +125,7 @@ vigentes de ARCA = Sí (débito en CBU); el resto de impuestos = No (VEP). Se co
 
 | Renglón | REAL (extracto) | ESTIMADO |
 |---|---|---|
+| Saldo por cuenta (detalle informativo) | última foto hasta el corte; fecha visible, gris e itálica si arrastra | vacío si el período empieza después de hoy; no modifica la proyección |
 | Cobranza acreditada | transferencias y depósitos de clientes | facturas A que vencen (Tango) · mensual: promedio × inflación |
 | Cobranza AA (efectivo) | recibos de AA en la tesorería de Tango (Origen Tango AA) | facturas AA que vencen |
 | Cheques de clientes | depositados + descontados (venta de valores) | cheques en cartera por fecha de cobro · mensual: promedio |
