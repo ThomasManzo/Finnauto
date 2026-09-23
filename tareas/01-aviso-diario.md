@@ -1,5 +1,5 @@
 # Tarea 01 — Aviso diario por mail: qué llegó, qué se procesó, qué falló
-Estado: pendiente
+Estado: lista para revisión
 Rama: tarea/aviso-diario
 
 ## Objetivo
@@ -144,8 +144,119 @@ poner `Estado: lista para revisión`.
 
 ## Qué hice
 
-(lo completa Codex)
+Implementado en la rama `tarea/aviso-diario`. Solo se tocaron los cinco archivos permitidos:
+
+- `aviso_diario.gs`: envío, vista previa sin envío, instalación y retiro del disparador;
+  lectura independiente de entradas, publicados, retenidos, log, Registro y extractos;
+  encabezado, alertas con acciones, fechas en Buenos Aires y topes de líneas. Reutiliza
+  `CARPETA_RAIZ`, `IMPORTS` y `_registrar_`. Las tres líneas de menú quedan en la cabecera;
+  no se agregó `onOpen` ni se modificó el importador.
+- `vigilante.py`: solamente la copia completa del log al finalizar la ejecución, en `finally`
+  y protegida por `try/except`. Copia si cambió el log, incluso ante una excepción del lector;
+  no copia en simulación ni cuando no hubo actividad. No cambia lectores, estado ni decisiones
+  de procesamiento. Si Drive falta o la copia falla, no reemplaza el resultado de la pasada.
+- `manual_cash.md`: fila de aviso matutino en §6 y párrafo con lectura, acciones y prueba.
+- `LEEME.md`: fila del nuevo script en Archivos de trabajo.
+- Esta consigna: estado y detalle de entrega.
+
+**Comprobaciones realizadas (sin datos reales ni dependencias nuevas):**
+
+- Rama verificada con `git branch --show-current`: `tarea/aviso-diario`; estaba limpia al iniciar.
+- No hay `node` ni `python` en el PATH. Se intentó `node --check` sobre una copia temporal `.js`,
+  pero no pudo correr. Como alternativa, se compiló el código con `new Function` en el motor
+  JavaScript de la herramienta y se ejecutaron pruebas con una foto inventada y un reemplazo
+  de `Utilities.formatDate` basado en `Intl.DateTimeFormat`, siempre con Buenos Aires.
+- Pasaron los tres casos de abajo, el límite exacto de 2 horas (todavía no alerta), un Registro
+  `ERROR` que no acredita importación, un fallo de lectura de Registro, retenidos y fallos del
+  log, el máximo de 5 líneas de log y sus 160 caracteres, y el corte de 30 líneas en 25 + aviso
+  de 5 más. No son pruebas del servicio real de Google.
+- `PYTHONPYCACHEPREFIX=/tmp/navar-pycache python3 -m py_compile clientes/navar/herramientas/vigilante.py`
+  pasó. La caché se dejó fuera del repo.
+- Se ejecutó el bloque final del vigilante aislado con Python, carpetas temporales y un `main`
+  inventado: copia completa al trabajar; copia ante excepción del lector; sin copia cuando no
+  cambia el log; sin copia en simulación; error de copia contenido sin interrumpir la salida.
+- Búsqueda de los nombres prohibidos con `rg -n -i` y la expresión de la consigna: vacía.
+- `git diff --check` pasó; revisión del diff de Python: el único cambio es la publicación del
+  log en el bloque de entrada. Las nuevas filas Markdown tienen el mismo número de columnas
+  que sus tablas. No se abrió ni creó nada en `privado/`.
+
+**Ejemplos para revisar a mano:** usar `ahora = 2026-09-22T07:30:00-03:00`.
+En todos, salvo que se diga lo contrario: último export Tango del 21/09, publicado hace 25 h,
+con Registro `ok` posterior (hace 24,5 h), sin retenidos ni errores. Así no hay novedades en
+las últimas 24 h y tampoco una importación pendiente por el export usado en el encabezado.
+
+1. Nada nuevo y extracto del 14/09: asunto `NAVAR cash · 22/09 · ATENCIÓN (1)`;
+   alerta `Hace 8 días que no llega un extracto de banco. Pedirlo.`; las tres secciones
+   de actividad dicen `- nada nuevo`.
+2. Extracto del 21/09, `Bancos/ejemplo/extracto.pdf` llegado hace 3 h, sin publicado bancario:
+   asunto `NAVAR cash · 22/09 · ATENCIÓN (1)`; alerta `El vigilante no procesó
+   Bancos/ejemplo/extracto.pdf. Revisar que la notebook esté prendida y vigilante.log.`
+3. Extracto del 21/09 y sin pendientes: asunto `NAVAR cash · 22/09 · al día`, sin alertas;
+   cuerpo con `Sin alertas: el cash está al día.` y `- nada nuevo` en actividad.
+
+**Commit bloqueado por permisos del entorno:** se intentaron `git add` de los cinco archivos y
+`git commit -m 'Agrega el aviso diario y comparte el log para detectar trabas del cash'`.
+Ambos fallaron con `Unable to create .../Finnauto/.git/worktrees/Finnauto-tarea01/index.lock:
+Operation not permitted`. El índice del worktree vive fuera de la raíz donde este entorno
+permite escribir; no está habilitado pedir permisos ampliados. Los cambios están guardados,
+pero **no quedaron staged ni commiteados**. Falta ejecutar esos comandos desde un entorno con
+acceso a los metadatos de Git. No se intentó sortear esa restricción.
+
+**Decisiones, límites y pendientes para revisión:**
+
+- Hay una tensión en la consigna entre una función pura que recibe solo `ahora` y la necesidad
+  de leer Drive/Sheet. Se conservó `_armarAviso_(ahora)` para uso normal y se agregó un segundo
+  parámetro opcional `datos`: con la foto suministrada no lee ni modifica servicios y devuelve
+  siempre el mismo texto. La lectura está separada en `_leerDatosAviso_`; el formato de fecha
+  sigue usando `Utilities.formatDate` (reemplazable en pruebas).
+- Para considerar importado se exige Registro `ok` posterior; un `ERROR` posterior no tapa
+  una traba. Se revisan pendientes también anteriores a 24 h para que no desaparezcan al día
+  siguiente. El listado de actividad sí se limita a las últimas 24 h.
+- La ausencia total de extractos o de un export Tango con fecha reconocible también alerta;
+  no se declara al día un cash sin esas referencias. Las últimas fallas/retenciones del log
+  suman una alerta agrupada, además de las alertas específicas que correspondan.
+- El último Tango se toma del publicado de ese tipo con modificación más reciente, y su fecha
+  se obtiene del nombre; los retenidos no cuentan como publicación. El log actual no trae zona:
+  se interpreta como hora de Buenos Aires de la notebook. Si la notebook usa otra zona, revisar.
+- `nearMinute(30)` programa cerca de las 07:30, con margen de 15 minutos de Apps Script;
+  no promete puntualidad al minuto. Instalar/quitar afecta los disparadores de la cuenta que
+  ejecuta: instalar una sola vez desde la cuenta que deba enviar el mail.
+- No se probó acceso real a Drive/Sheet, sincronización en la notebook, permisos de MailApp,
+  envío, ventanas de Google ni ejecución de disparadores. No se instaló ni envió nada.
+  En revisión: pegar el `.gs`, agregar las tres líneas al menú, correr `avisoDiarioPrueba`,
+  contrastar el texto con Drive/Registro y recién entonces instalar desde la cuenta indicada.
+  No se modificaron `main`, los importadores ni los lectores; no se hizo push.
 
 ## Revisión
+
+Claude, 22/09/2026 (de noche). Leí el diff completo de los 5 archivos y el informe "Qué hice".
+
+**Verificado (leyendo, no ejecutando: Apps Script no corre acá):**
+- `vigilante.py`: el único cambio es la copia del log en un `finally` con `try/except`; no publica en
+  `--simular`, copia solo si el log cambió, y un fallo de Drive no tapa el resultado de la pasada. ✔
+- `aviso_diario.gs`: reusa `CARPETA_RAIZ`, `IMPORTS` (los tipos coinciden con las claves reales:
+  tango / bancos / tesoreria_aa / impuestos / deuda) y `_registrar_`; no define `onOpen`. Las fechas
+  se comparan como instantes (independiente de la zona de la Sheet) y se muestran en Buenos Aires. Las
+  7 alertas de la consigna están; cada lectura va en su `try`, y si una falla el mail sale igual. Los
+  ejemplos a mano (a)(b)(c) dan lo que la consigna pedía. Sin nombres propios. ✔
+- Manual y LEEME: filas con el formato de sus tablas. ✔
+
+**Corregido por Claude en la rama:**
+- `avisoDiarioPrueba()` llamaba a `SpreadsheetApp.getUi().alert` sin protección: corrido desde el
+  editor de Apps Script (sin la Sheet abierta) tira error. Quedó en `try/catch`; el Logger ya lo muestra.
+- Agregadas las tres líneas del menú `finauto` en `importar_cashflow.gs` (tarea de Claude según la consigna).
+- El commit en la rama lo hizo Claude: el sandbox de Codex no llega al índice de git del worktree
+  (`.git/worktrees/...` vive en el repo principal). Para las próximas tareas, resolverlo o dejar que Claude commitee.
+
+**Observación (no bloquea):** si suben solo `cobranzas` sin `pagos` (o al revés), el vigilante no corre
+Tango a propósito (necesita las dos) y el aviso dirá "El vigilante no procesó ..." sugiriendo revisar la
+notebook, cuando en realidad falta el otro archivo. Se puede afinar después con el texto del log.
+
+**Falta, y lo hace Claude con Thomas mañana:** pegar `aviso_diario.gs` en el proyecto de Apps Script de la
+Sheet (y las tres líneas del menú), correr "Ver el aviso de hoy (sin mandar)", comparar el texto con
+Drive/Registro, y recién ahí "Instalar aviso diario 07:30" (Google pide autorizar mail + Drive: un clic de Thomas).
+En la notebook, `actualizar.ps1` para que el vigilante empiece a copiar su log a Drive.
+
+**Estado**: lista para revisión → falta el OK de Thomas para mergear a `main` (pasa a `aprobada`).
 
 (lo completa Claude)
