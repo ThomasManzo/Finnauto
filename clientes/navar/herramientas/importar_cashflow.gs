@@ -124,6 +124,7 @@ function onOpen() {
     .addSeparator()
     .addItem("Armar solapa Cash (Cash, Semanal, Mensual)", "armarCash")
     .addItem("Armar solapa Plan (pisa las decisiones cargadas)", "armarPlan")
+    .addItem("Arreglar los desplegables (Origen, Banco, Categoria)", "arreglarValidaciones")   // crear_cash.gs
     .addToUi();
 }
 
