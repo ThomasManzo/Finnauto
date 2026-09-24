@@ -15,6 +15,19 @@ financiera, y finauto es la herramienta con la que se hace.
 | `privado/` | Planillas, PDFs generados, capturas y el diagnóstico con montos reales. | **No** (está en `.gitignore`) |
 | `memoria/` | Las fotos de cada proyección, para conciliar después. Se crea sola al correr `finauto.py`. | No |
 
+## El tablero (la URL que ve NAVAR)
+
+**https://script.google.com/macros/s/AKfycbwj83jJ691gpSoD46ptTYnbzzjQ1nlWIWDdU3kG4MgXniCWEWO5s4wYUTVKeWZC5YbM/exec**
+
+La sirve `herramientas/tablero_web.gs` (en el proyecto de Apps Script se llama `Código.gs`) leyendo
+el último `finauto.html` de `NAVAR - Datos/Tablero/`. **La URL no cambia**: para actualizar el
+tablero alcanza con dejar un `finauto.html` nuevo en esa carpeta. Sólo entran las cuentas de Google
+que estén en la lista `PERMITIDOS` del script (ya tiene las de NAVAR).
+
+Para regenerarlo: bajar la Sheet como Excel a `privado/`, correr `lector/cash_limpio.py` y después
+`finauto.py --contrato ... --salidas privado/salidas`, y copiar `salidas/finauto.html` a la carpeta
+`Tablero` de Drive.
+
 ## La Sheet (la fuente de verdad)
 
 **"NAVAR - Cash Flow"** en el Drive de Thomas (id `1u9CfWz_MntC2xO_gcDGaohEVMZNUNbHv0WoFSqKK7e8`).
