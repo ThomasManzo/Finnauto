@@ -1,5 +1,5 @@
 # Tarea 17 — Dejar listo el bot de Galicia para NAVAR
-Estado: pendiente
+Estado: lista para revisión
 Rama: tarea/galicia-navar
 
 ## Objetivo
@@ -59,5 +59,52 @@ No tocar los lectores, `crear_cash.gs`, `importar_cashflow.gs` ni `vigilante.py`
 4. `grep` de nombres propios de personas vacío. Commit en la rama.
 
 ## Qué hice
+
+- Trabajé en el worktree y rama `tarea/galicia-navar`, sin datos privados, acceso al banco ni cambios en producción.
+- `clientes/navar/perfil.json`: empresa NAVAR SA, cuenta 0005459-5 070-1, nombre Excel
+  `Movimientos GALICIA <fecha y hora>.xlsx`, destino documentado `NAVAR - Datos/Bancos/galicia`,
+  corte hasta ayer. La ruta absoluta queda vacía porque depende del montaje de la notebook:
+  completarla allí en `bancos.galicia.carpeta_drive_destino`. No inventé letra de unidad.
+  Sigue `activo: false` para no sumarlo a corridas generales sin validación; el comando explícito sí corre.
+- `bots/galicia/navar.py`: variante aislada para NAVAR. Era necesario porque el original elige
+  el primer monto y descarga CSV, que el lector de NAVAR no toma. Confirma empresa normalizada,
+  busca la cuenta exacta, exige filtro de fechas confirmado, solicita XLSX, verifica cuenta en
+  el contenido y lectura con el lector existente, y controla fechas antes de publicar por
+  copia temporal. Si no hay movimientos legibles frena. No cambié el bot original ni el núcleo.
+- `orquestador/correr.py`: conecta esa variante sólo para NAVAR/Galicia, toma el destino del
+  bloque bancario y frena antes del llavero si falta. Devuelve error si el recorrido falla o
+  queda sin empresas, en lugar de aparentar éxito.
+- `clientes/navar/documentos/instalar_notebook.md`: credenciales en la notebook, primera
+  corrida supervisada, controles, capturas, programación 07:00 y pasada posterior del
+  vigilante. Aclara que modo prueba publica; pausar vigilante durante la validación inicial.
+  Diagnóstico de selectores, segundo factor, usuario conectado, cambio de empresa y descarga.
+- `bots/galicia/test_navar.py`: prueba reproducible con Excel ficticio y llamadas reemplazadas
+  para no entrar al banco. Acepta ejemplo compatible; rechaza otra cuenta, fecha fuera de
+  rango, encabezado incompatible, filtro no confirmado y destino vacío antes del llavero;
+  normaliza nombre con puntos. Comando: `python -m unittest bots.galicia.test_navar`.
+- Verificado con el Python del entorno existente del repo principal (sin instalar nada):
+  unittest OK; `python -m py_compile orquestador/correr.py bots/galicia/navar.py bots/galicia/test_navar.py`
+  OK; JSON válido; `git diff --check` limpio. Búsqueda de nombres de personas conocidos en
+  líneas agregadas y archivos nuevos: sin coincidencias.
+- `python orquestador/correr.py --cliente navar --banco galicia --simular`: código 2,
+  argumento no reconocido. **No existe ese modo**, no se implementó una simulación parcial.
+  No abrió navegador ni pidió credenciales.
+- **Pendiente real:** confirmar que el número de cuenta sea clickeable, que el menú ofrezca
+  XLSX y que su contenido traiga cuenta y encabezados compatibles. Son supuestos explícitos,
+  protegidos con errores; los tests ficticios no prueban el DOM ni el export del banco.
+  Tampoco se probaron login, segundo factor, sesión ya conectada, cambio de empresa,
+  permisos, sincronización, horarios ni importación en la Sheet. No está certificado para
+  producción; requiere primera prueba supervisada. El lector atribuye cuenta fija y no
+  concilia saldos: la comparación contra el banco sigue siendo necesaria.
+- Fragilidades heredadas: esperas fijas, reconocimiento heurístico de empresa en header/body,
+  alternativas por coordenadas, ausencia de confirmación explícita de login. El calendario
+  depende de clases/textos. No hay resolución automática de segundo factor ni sesión previa.
+  El rango inicial cubre ayer; la historia previa debe conservarse. El programador y Drive
+  requieren comprobarse en la notebook. No se tocaron lectores, vigilante ni scripts de Sheet.
+
+
+- Commit intentado, pero el sandbox impidió crear `Finnauto/.git/worktrees/Finnauto-tarea17/index.lock`
+  (`Operation not permitted`). Los cambios quedan sin commit en este worktree para que
+  el revisor los agregue y commitee, según el circuito de tareas/LEEME.md.
 
 ## Revisión
