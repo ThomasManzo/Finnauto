@@ -50,6 +50,42 @@ USD 400/mes desde el mes 2, revisable a los 3 meses contra el acierto medido.
 La presentación (PDF de propuesta + vista rápida del tablero + la Sheet) fue
 lo que cerró. Primer peso cobrado de finauto.
 
+## Dónde estamos (24/09/2026, madrugada) — listo para automatizar
+
+El circuito quedó andando de punta a punta y con los frenos puestos. Lo hecho el 23-24/09:
+
+- **Cash**: una fila por banco con el **margen** (saldo + descubierto acordado) y semáforo:
+  negro = no toca el descubierto · ámbar = lo usa dentro del acuerdo (hoy Galicia y Macro) ·
+  rojo = excedido (Corrientes y Nación). El color va en el **formato condicional escrito con el
+  separador de la planilla** (`;`): con `,` las reglas son inválidas y no pintan. Ese fue el bug.
+- **Hoy existe**: cada origen corre hasta SU fecha (`$B$3` extracto bancario, `$B$5` caja de AA),
+  así lo real de AA del día suma aunque el banco venga atrasado. Los bancos arrastran el último
+  saldo conocido hasta hoy, sin filas de texto.
+- **Caja AA calculada**: último arqueo + movimientos de tesorería posteriores. Igual en la
+  planilla y en el tablero (27.675.788 al 23/09).
+- **Lectores tolerantes**: un archivo ilegible ya no tumba la corrida de los cinco bancos
+  (lo que pasó con el BBVA del 23/09, que cambió `Detalle` por `Saldo Parcial`).
+- **Importador a prueba de filtros**, con verificación de lo escrito. **Requiere el servicio
+  "Google Sheets API" habilitado en el proyecto de Apps Script** (Servicios → +): sin eso aborta
+  toda importación. Ya está habilitado.
+- **Aviso diario instalado**, 09:00 de Buenos Aires, a la casilla de la empresa.
+- Los `.gs` al día viven en Drive `NAVAR - Datos/Scripts/`. **Pegarlos desde ahí**: el editor de
+  Apps Script no guarda de forma confiable cuando se automatiza el pegado.
+
+### Lo que sigue (las automatizaciones)
+1. **Tango por API**: el token ya existe. `ingestas/tango_live.py` contra los 5 procesos
+   (17952 cobranzas · 17696 pagos · 11583 cheques terceros · 11584 propios · 11591 tesorería AA)
+   y las 2 empresas (13 = A, 56 = AA). Falta la respuesta de soporte de Tango.
+2. **Bots de banco**: esperan el operador de consulta de cada banco.
+3. **El tablero web nunca se implementó**: `tablero_web.gs` (Código.gs) está pegado pero sin
+   deployment, así que no hay URL para compartir. PERMITIDOS ya tiene los mails de NAVAR.
+4. **Agujero conocido**: las cuotas bancarias no se dan de baja solas. Proveedores, impuestos y
+   cheques sí (cada export de Tango es la foto de lo pendiente: lo pagado deja de venir). Las
+   cuotas salen del mapa de deuda, que se actualiza a mano. Cerrarlo cruzando el débito del
+   extracto contra el cronograma.
+5. **Pregunta abierta al banco**: el export de BBVA del 23/09 trae dos saldos que no coinciden
+   (−8.040.751 en "Saldo Parcial" y −3.502.551 en el encabezado). El lector lo marca REVISAR.
+
 ## Próximos pasos (al 22/09/2026, 3 a.m.) — para retomar en un chat nuevo
 
 0. **(22/09, de noche)** Hoy no llegó nada nuevo a Drive: el 23/09 Thomas pide los extractos de los 5 bancos (18/09 → hoy) y baja de nuevo los exports de Tango; recién ahí corre el circuito y se regenera el PDF. Detalle visto: las horas de la solapa **Registro** están 4 hs atrás (la Sheet quedó en zona horaria del Pacífico); se arregla en la Sheet: Archivo → Configuración → Zona horaria → Buenos Aires. El informe (`informe_situacion.py`) ya sale sin nombres propios. Hay un `AGENTS.md` en la raíz para que Codex u otro agente lea las mismas reglas.
