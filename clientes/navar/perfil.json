@@ -21,11 +21,17 @@
     "galicia": {
       "activo": false,
       "empresas_excluir": [],
-      "solo_estas_empresas": [],
+      "solo_estas_empresas": [
+        "NAVAR SA"
+      ],
       "solo_empresa_activa": false,
-      "nombre_archivo": "cuit",
-      "prefijo_archivo": "",
-      "_nota": "Unico banco con adaptador listo (el de MAGA). Unico con API a Tango. El que menos usan."
+      "nombre_archivo": "excel_navar",
+      "prefijo_archivo": "Movimientos GALICIA",
+      "_nota": "Preparado, sin validar en el banco. Activo false evita corridas generales; la invocación explícita sí corre. Completar carpeta_drive_destino con la ruta local absoluta a NAVAR - Datos/Bancos/galicia. Empresa normalizada sin puntos ni espacios; confirmar nombre en la notebook.",
+      "cuenta": "0005459-5 070-1",
+      "carpeta_drive_destino": "",
+      "carpeta_drive_relativa": "Bancos/galicia",
+      "incluir_hoy": false
     },
     "nacion": {
       "activo": false,
