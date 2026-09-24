@@ -8,7 +8,7 @@
  * Google ejecuta cerca de las 09:00 (nearMinute tiene un margen de 15 minutos).
  * Para probar sin Google, _armarAviso_(ahora, datos) acepta una foto inventada:
  * { entradas: [], publicados: [], retenidos: [], registro: [], log: [],
- *   extracto: Date o null, saldos: [{banco, empresa, origen, fecha}], errores: {} }. Archivos: {nombre, ruta, tipo, fecha}.
+ *   ultimaPasada: Date o null, extracto: Date o null, saldos: [{banco, empresa, origen, fecha}], errores: {} }. Archivos: {nombre, ruta, tipo, fecha}.
  * Registro: {fecha, tipo, estado, detalle}. Log: {fecha, texto}.
  * Con esa foto el armado es puro; con solo ahora, primero lee Google.
  */
@@ -117,7 +117,7 @@ function _archivosAviso_(carpeta, ruta, tipo, recursivo) {
 
 // Lee cada parte por separado: si una falla, las demás igual llegan al mail.
 function _leerDatosAviso_() {
-  var datos = {entradas: [], publicados: [], retenidos: [], registro: [], log: [], extracto: null, saldos: [], errores: {}};
+  var datos = {entradas: [], publicados: [], retenidos: [], registro: [], log: [], ultimaPasada: null, extracto: null, saldos: [], errores: {}};
   var raiz, salida;
   // Guarda el problema junto a la sección que no se pudo leer.
   function leer(clave, trabajo) {
@@ -144,6 +144,19 @@ function _leerDatosAviso_() {
     salida = carpetas.next();
     datos.publicados = _archivosAviso_(salida, "_para la Sheet", "", false)
       .filter(function (f) { return /^para_pegar_.*\.xlsx$/i.test(f.nombre); });
+  });
+  leer("Latido", function () {
+    if (!salida) throw new Error("No pude abrir _para la Sheet");
+    var archivos = salida.getFilesByName("vigilante_ultima_pasada.txt");
+    if (!archivos.hasNext()) throw new Error("Falta la marca de vida");
+    var texto = archivos.next().getBlob().getDataAsString("UTF-8").trim();
+    if (archivos.hasNext()) throw new Error("Hay más de una marca de vida; revisar duplicados en Drive");
+    // Se lee la fecha escrita por la notebook, no la hora en que Drive sincronizó.
+    var fecha = new Date(texto);
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+00:00$/.test(texto) ||
+        isNaN(fecha) || fecha.toISOString().slice(0, 19) !== texto.slice(0, 19))
+      throw new Error("La marca de vida no tiene una fecha UTC válida");
+    datos.ultimaPasada = fecha;
   });
   leer("Retenidos", function () {
     if (!salida) throw new Error("No pude abrir _para la Sheet");
@@ -269,6 +282,26 @@ function _faltantesAviso_(ahora, datos) {
 function _armarAviso_(ahora, datos) {
   datos = datos || _leerDatosAviso_();
   var errores = datos.errores, alertas = [], encabezado = ["NAVAR cash · " + _fechaAviso_(ahora, "dd/MM/yyyy")];
+  // La señal de vida va antes de cualquier otra alerta; no certifica que los lectores salieron bien.
+  var pasada = datos.ultimaPasada, alertaVida = "";
+  if (errores.Latido || !(pasada instanceof Date) || isNaN(pasada)) {
+    alertaVida = "No se pudo verificar si la notebook está procesando: " +
+      (errores.Latido || "sin marca de vida") + ". Revisar el vigilante y la sincronización de Drive.";
+  } else if (pasada > ahora) {
+    alertaVida = "La marca de vida está en el futuro. Revisar el reloj de la notebook; no se puede confirmar la última pasada.";
+  } else {
+    var diaPasada = _diaAviso_(pasada), hoyVida = _diaAviso_(ahora);
+    var ayerVida = new Date(hoyVida + "T12:00:00Z");
+    ayerVida.setUTCDate(ayerVida.getUTCDate() - 1);
+    var cuando = diaPasada === hoyVida ? "de hoy" :
+      diaPasada === ayerVida.toISOString().slice(0, 10) ? "de ayer" : "del " + _fechaAviso_(pasada, "dd/MM/yyyy");
+    var ultima = "última pasada a las " + _fechaAviso_(pasada, "HH:mm") + " " + cuando;
+    if (ahora - pasada > 60 * 60 * 1000) {
+      alertaVida = "La notebook no está procesando: " + ultima +
+        ". Revisar que esté prendida y que la tarea programada corra. Revisar también la sincronización de Drive.";
+    } else encabezado.push("Vigilante: " + ultima + ". Es señal de vida, no de procesamiento correcto.");
+  }
+  if (alertaVida) alertas.push(alertaVida);
   // Desde el cierre anterior (medianoche posterior), no desde las 9 de ayer.
   // Un lunes arranca el sábado a las 00:00: el último día hábil cerrado fue el viernes.
   // Bancos/arqueo deben cubrir ese cierre; los exports deben ser fotos de hoy.
@@ -282,6 +315,7 @@ function _armarAviso_(ahora, datos) {
   // Hace visible una lectura fallida también dentro de su propia sección.
   function problema(clave) { return "(no pude leer esto: " + errores[clave] + ")"; }
   Object.keys(errores).forEach(function (clave) {
+    if (clave === "Latido") return; // Ya quedó primero, sin repetir el mismo problema.
     alertas.push(clave + ": " + problema(clave) + ". Pedir a finauto que revise el acceso y vuelva a probar el aviso.");
   });
   encabezado.push("Último extracto cargado: " + (errores.Extracto ? problema("Extracto") :
@@ -350,9 +384,9 @@ function _armarAviso_(ahora, datos) {
   if (errores.Registro) importados.unshift(problema("Registro"));
   return {
     asunto: "NAVAR cash · " + _fechaAviso_(ahora, "dd/MM") + " · " + ((alertas.length + faltantes.length) ? "ATENCIÓN (" + (alertas.length + faltantes.length) + ")" : "al día"),
-    cuerpo: ["Qué falta subir hoy\n" + (faltantes.length ? faltantes.join("\n") : "Está todo subido al día de hoy."), encabezado.join("\n"), alertas.length ? _seccionAviso_("Alertas", alertas.map(function (a) { return "- " + a; })) :
+    cuerpo: (alertaVida ? ["Estado del vigilante\n" + alertaVida] : []).concat(["Qué falta subir hoy\n" + (faltantes.length ? faltantes.join("\n") : "Está todo subido al día de hoy."), encabezado.join("\n"), alertas.length ? _seccionAviso_("Alertas", alertas.map(function (a) { return "- " + a; })) :
       "Sin alertas del circuito.", _seccionAviso_("Llegó a Drive (desde el cierre anterior)", entradas),
-      _seccionAviso_("El vigilante procesó", procesados), _seccionAviso_("La Sheet importó", importados)].join("\n\n"),
+      _seccionAviso_("El vigilante procesó", procesados), _seccionAviso_("La Sheet importó", importados)]).join("\n\n"),
     alertas: alertas, faltantes: faltantes
   };
 }
