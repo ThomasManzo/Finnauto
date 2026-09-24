@@ -976,8 +976,8 @@ function _bancos_(ss) {
     if (!banco || vistos[banco]) return;
     vistos[banco] = true;
     var manual = String(r[5] || "").toLowerCase().indexOf("manual") !== -1;
-    out.push({ nombre: banco, manual: manual, etiqueta: banco.toLowerCase().indexOf("vario") !== -1 ? "AA · caja en efectivo (carga manual)" : banco,
-               fuente: manual ? "Saldos Bancarios · carga manual: se arrastra hasta que se cargue otro" : "Saldos Bancarios · extracto · se arrastra el último saldo conocido" });
+    out.push({ nombre: banco, manual: manual, etiqueta: banco.toLowerCase().indexOf("vario") !== -1 ? "AA · caja en efectivo (calculada desde el arqueo)" : banco,
+               fuente: manual ? "Saldos Bancarios · último arqueo + movimientos reales de Tango AA posteriores, hasta hoy" : "Saldos Bancarios · extracto · se arrastra el último saldo conocido" });
   });
   return out;
 }

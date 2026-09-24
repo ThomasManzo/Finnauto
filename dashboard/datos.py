@@ -88,6 +88,8 @@ def kpis(contrato, unidad, dias=7):
     p = r["puente"]
     return {
         "caja": p["caja"],
+        "sin_arqueo": (contrato.get("caja_aa", {}).get("estado") == "sin arqueo"
+                        and u in (None, "AA")),
         "efectivo_sin_asignar": p.get("efectivo_sin_asignar") or 0,
         "vencido": r["vencido"],
         "por_vencer": r["por_vencer_en_ventana"],
@@ -1102,6 +1104,9 @@ def faltantes(contrato):
         if est:
             out.append("<b>Cuotas estimadas, no informadas por el banco:</b> %s. Se calcularon con el saldo y la "
                        "tasa; pedir la tabla de amortización." % ", ".join(est))
+    if contrato.get("caja_aa", {}).get("estado") == "sin arqueo":
+        out.append("<b>Caja AA: sin arqueo.</b> Falta cargar la foto inicial en Saldos Bancarios; "
+                   "los totales y las proyecciones no incluyen esa caja.")
     # La caja: que cuentas estan al dia y cuales siguen con la carga manual.
     hoy = D.hoy_de(contrato)
     viejos = OrderedDict()
@@ -1228,7 +1233,8 @@ def armar(contrato, cliente="maga"):
     # La estimación por kg fue dada de baja en NAVAR. Filtramos una copia
     # antes de TODOS los cálculos del tablero; el contrato original no se toca.
     if cliente == "navar":
-        contrato = dict(contrato)
+        from lector.cash_limpio import actualizar_caja_aa
+        contrato = actualizar_caja_aa(contrato, D.hoy_de(contrato))
         contrato["cobros_previstos"] = [x for x in contrato.get("cobros_previstos", [])
             if x.get("fuente") != "COBRANZA_PROYECTADA"]
     hoy = D.hoy_de(contrato)

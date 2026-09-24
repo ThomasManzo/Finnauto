@@ -121,6 +121,8 @@ Regla: préstamos, tarjetas e hipotecas = Sí (el banco lo debita si hay fondos)
 vigentes de ARCA = Sí (débito en CBU); el resto de impuestos = No (VEP). Se corrige por producto en
 `catalogo.json → debito_automatico`.
 
+**Caja AA (planilla y tablero):** último arqueo Manual + suma con signo de Movimientos con Origen `Tango AA*` y Estado `Real`, posteriores al arqueo y hasta hoy; un nuevo arqueo reemplaza la base y, si falta, dice **sin arqueo**.
+
 ## 4. Cada renglón: real y estimado
 
 | Renglón | REAL (extracto) | ESTIMADO |
