@@ -910,21 +910,16 @@ function _cuentasVistaBancos_(ss) {
 function _colorearBancos_(h, bancos, margen, auxiliares, colAcuerdo, nCols, D, L) {
   // Una fila por banco con el margen: saldo (arrastrado si el banco no mandó extracto ese día)
   // más el descubierto acordado. Sin filas de texto: el número y el color dicen todo.
-  var reglas = [];
   bancos.forEach(function (b, i) {
     var r = margen + i, aux = auxiliares + i;
     for (var c = 0; c < nCols; c++) {
       h.getRange(r, 2 + c).setFormula('=IF(' + D(c) + '>$B$2,"",' + L(c) + aux + '+N($' + _colLetra_(colAcuerdo) + aux + '))');
     }
-    var celda = "B" + r, rango = h.getRange(r, 2, 1, nCols);
-    [[">0", "#e6f4ea", "#137333"], ["=0", "#fef7e0", "#8a5700"], ["<0", "#fce8e6", "#b3261e"]].forEach(function (color) {
-      reglas.push(SpreadsheetApp.newConditionalFormatRule()
-        .whenFormulaSatisfied('=AND(ISNUMBER(' + celda + '),' + celda + color[0] + ')')
-        .setBackground(color[1]).setFontColor(color[2]).setRanges([rango]).build());
-    });
-    h.getRange(r, 2, 1, nCols).setNumberFormat("#,##0;-#,##0;0");
+    // El color va en el FORMATO DE NÚMERO, no en formato condicional: las reglas condicionales
+    // no pintaban (el rango arranca en la columna separadora) y esto además viaja al exportar.
+    // Verde = le queda aire · rojo = excedido · ámbar = usó justo todo el acuerdo.
+    h.getRange(r, 2, 1, nCols).setNumberFormat("[Green]#,##0;[Red]-#,##0;[Color45]0").setFontWeight("bold");
   });
-  h.setConditionalFormatRules(reglas);
 }
 
 function _bancos_(ss) {
