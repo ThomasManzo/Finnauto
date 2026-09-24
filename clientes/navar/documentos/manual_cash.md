@@ -175,11 +175,11 @@ los filtros del bloque 6 y no usa promedios, inflación ni cuotas decididas en P
 | 2 | la notebook de la empresa (**vigilante**, cada 15 min) | ve el archivo nuevo y corre el lector que corresponde; deja el `para_pegar_*.xlsx` en `_para la Sheet`; si una lista se achica o crece de golpe, lo retiene | `herramientas/vigilante.py` · log en `privado/vigilante.log` |
 | 3 | la Sheet (**disparador**, cada hora, Apps Script) | ve el `para_pegar` nuevo y lo importa; pisa lo que ese lector cargó antes, no toca fórmulas ni lo cargado a mano | solapa **Registro**: una fila por importación (o el error) |
 | 4 | las pantallas | recalculan solas: B3 avanza, lo real reemplaza lo estimado, la cobranza que entró sale del "a cobrar" | Cash · Cash Semanal · Cash Mensual |
-| cada mañana: el aviso | la Sheet (cerca de las 09:00 de Buenos Aires, una vez instalado) | primero recuerda qué falta subir por banco y por empresa; después resume el circuito | `herramientas/aviso_diario.gs` → mail de la empresa |
+| cada mañana: el aviso | la Sheet (cerca de las 09:00 de Buenos Aires, una vez instalado) | prioriza una señal de vida atrasada o no verificable; recuerda qué falta subir y resume el circuito | `herramientas/aviso_diario.gs` → mail de la empresa |
 | a mano | quien hace el arqueo de caja | una fila por arqueo en Saldos Bancarios: fecha, Varios, AA, saldo, Manual | Saldos Bancarios |
 | a mano | la dirección | las decisiones: pagar / refinanciar / posponer, gracia, cuotas, tasa | Plan |
 
-El mail empieza con **Qué falta subir hoy**: un renglón por banco atrasado (la lista sale de
+Si la señal de vida está fresca, el mail empieza con **Qué falta subir hoy**: un renglón por banco atrasado (la lista sale de
 Saldos Bancarios, del banco que acompaña a `Extracto` en Origen), y por cada export de cobranzas, pagos y cheques de A y AA. Muestra la fecha
 requerida y la última disponible; para cada banco también dice cuántos días corridos tiene
 el último extracto. Reconoce tanto `Extracto BANCO` como el formato viejo `Extracto` (en ese
@@ -206,6 +206,40 @@ a finauto. Primero revisar `avisoDiarioPrueba()` (no manda mail); después insta
 `instalarAvisoDiario()`, desde una sola cuenta. Queda programado a las **09:00 de Buenos Aires**;
 Google lo ejecuta cerca de esa hora, con un margen de 15 minutos. Falta verificarlo e instalarlo
 en la Sheet; este cambio de código por sí solo no crea el disparador.
+
+### Señal de vida del vigilante (tarea 16, preparada para revisión)
+
+Cada pasada reemplaza `_para la Sheet/vigilante_ultima_pasada.txt` con una sola fecha UTC
+(por ejemplo `2026-09-24T11:45:00+00:00`). No acumula líneas en el log. Se escribe al comenzar
+la revisión, antes de leer el estado o ejecutar lectores: también queda si no hay entradas,
+si falla un lector o si se usa `--simular`. La simulación actualiza esta señal, aunque no corre
+lectores. `--hoy` no modifica la marca: siempre usa el reloj real de la máquina.
+
+El aviso muestra la hora en Buenos Aires. Si pasaron **más de 60 minutos**, abre con
+**Estado del vigilante**, antes de los faltantes, y pone el corte como primera alerta.
+Con exactamente 60 minutos aún se considera fresca. Para hoy y ayer usa esas palabras;
+para días anteriores muestra la fecha completa. Una marca fresca confirma que el vigilante
+arrancó recientemente, **no que terminó ni que los lectores salieron bien**: siguen valiendo
+las alertas del log y de Registro.
+
+Si falta la marca, está mal escrita, hay duplicados, no se puede leer o indica una hora futura,
+el mail dice que no se puede verificar la señal; no inventa una última pasada. Una marca vieja
+puede deberse a que no corre la notebook **o a una sincronización de Drive detenida**. Revisar
+ambas cosas. Si Drive no está montado o no permite escribir, no habrá una marca nueva en la
+nube; una marca local por sí sola no prueba que Google la haya recibido.
+
+En el Programador de tareas de Windows, revisar la última ejecución, el resultado y si está
+seleccionado **“Ejecutar solo cuando el usuario haya iniciado sesión”**. Comprobar qué pasa
+al desconectar escritorio remoto, bloquear la sesión y cerrar sesión: no asumir que son lo
+mismo ni que explican por sí solos el corte. Revisar además suspensión de la notebook y que
+Drive para escritorio siga disponible en la sesión que ejecuta la tarea. No cambiar esa opción
+sin probar el acceso a Drive desde la sesión resultante.
+
+Para ponerlo en uso hay que actualizar `vigilante.py` en la notebook y `aviso_diario.gs` en
+Apps Script. Verificar primero que la marca avance localmente y en Drive tras una pasada sin
+entradas; después revisar `avisoDiarioPrueba()` sin mandar mail. Repetir desconectando escritorio
+remoto y revisar las ejecuciones siguientes. **Estas comprobaciones en la notebook y Google
+siguen pendientes**; las pruebas locales no certifican la instalación ni explican el corte real.
 
 ### Importación y filtros (cambio preparado el 22/09, pendiente de probar en la Sheet)
 

@@ -87,6 +87,29 @@ def log(msg):
         f.write(linea + "\n")
 
 
+def marcar_vida():
+    """Deja una sola fecha: arrancó la revisión, aunque después falle un lector."""
+    import tempfile
+    temporal = None
+    try:
+        os.makedirs(SALIDA, exist_ok=True)
+        # Primero se termina de escribir y después se reemplaza: no dejar media fecha.
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=SALIDA,
+                                         prefix=".latido_", delete=False) as f:
+            temporal = f.name
+            f.write(datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds") + "\n")
+        os.replace(temporal, os.path.join(SALIDA, "vigilante_ultima_pasada.txt"))
+    except OSError as e:
+        # La marca no debe frenar a los lectores si Drive no permite escribirla.
+        print("No pude escribir la marca de vida en Drive: %s" % e)
+    finally:
+        if temporal and os.path.exists(temporal):
+            try:
+                os.unlink(temporal)
+            except OSError:
+                pass
+
+
 def archivos_de(carpeta, recursivo=True):
     """[(ruta, mtime)] de los archivos de datos (sin los que generan los lectores)."""
     out = []
@@ -322,7 +345,7 @@ def fuentes(hoy):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--forzar", default=None, help="correr esa fuente aunque no haya nada nuevo")
-    ap.add_argument("--simular", action="store_true", help="decir qué haría, sin correr nada")
+    ap.add_argument("--simular", action="store_true", help="decir qué haría sin correr lectores; actualiza la marca de vida")
     ap.add_argument("--hoy", default=None)
     a = ap.parse_args()
     hoy = datetime.date.fromisoformat(a.hoy) if a.hoy else datetime.date.today()
@@ -330,6 +353,7 @@ def main():
     if not DRIVE or not os.path.isdir(DRIVE):
         log("no encuentro 'NAVAR - Datos' en el Drive montado (¿Google Drive para escritorio está corriendo? ¿o fijar FINAUTO_DRIVE?)")
         return 1
+    marcar_vida()  # También en simulación y antes de cualquier lector o lectura del estado.
     estado = {}
     if os.path.exists(ESTADO):
         estado = json.load(open(ESTADO))
@@ -375,7 +399,7 @@ def main():
 
 if __name__ == "__main__":
     # Si hubo actividad, comparte el log incluso cuando la pasada termina con un error.
-    # La simulación no publica nada y una falla de Drive no tapa el error del lector.
+    # La simulación sólo publica la marca de vida; una falla de Drive no tapa el error del lector.
     try:
         log_antes = os.stat(LOG).st_mtime_ns if os.path.exists(LOG) else None
     except OSError:
