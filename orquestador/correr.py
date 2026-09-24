@@ -53,11 +53,24 @@ def correr_banco(cliente, banco, modo_forzado=None):
     bot = REGISTRO_BANCOS[banco]()
     ctx.banco_nombre = bot.nombre  # nombre lindo para _ESTADO_/_SALDOS_
 
+    if cliente == "navar" and banco == "galicia":
+        from bots.galicia.navar import BotGaliciaNavar
+        bot = BotGaliciaNavar(cfg_banco)
+        ctx.carpeta_drive = cfg_banco.get("carpeta_drive_destino", "").strip()
+        # También en prueba: no abrir el banco si no sabemos dónde publicar.
+        if not os.path.isabs(ctx.carpeta_drive) or not os.path.isdir(ctx.carpeta_drive):
+            raise SystemExit("Completar bancos.galicia.carpeta_drive_destino con la ruta local "
+                             "existente a NAVAR - Datos/Bancos/galicia.")
+
     usuario, clave = _cred.cargar(BASE_REPO, cliente, banco)
 
     log("=== finauto :: cliente=%s banco=%s modo=%s ===" % (
         ctx.cliente_nombre, bot.nombre, "visible" if ctx.modo_visible else "invisible"))
-    return _loop.correr(bot, ctx, usuario, clave)
+    resultado = _loop.correr(bot, ctx, usuario, clave)
+    if cliente == "navar" and banco == "galicia":
+        if resultado["fallaron"] or not (resultado["ok"] or resultado["sin_novedades"]):
+            raise RuntimeError("Galicia NAVAR no terminó bien; revisar log y capturas.")
+    return resultado
 
 
 
