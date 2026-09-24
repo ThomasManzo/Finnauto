@@ -111,4 +111,22 @@ Apps Script no corre en el worktree. Entonces, en "Qué hice":
 
 ## Qué hice
 
+La hizo Claude, no Codex (se quedó sin créditos en la mitad de la función del arrastre; su rama
+`tarea/hoy-en-el-cash` quedó a medias y NO se mergeó). Lo aplicado y verificado en producción el
+23/09, en `crear_cash.gs`:
+
+- `$B$5` = último día con caja de AA. Cada origen corre hasta SU fecha (`CORTE_REAL`), así lo real
+  de AA del 23/09 suma aunque el extracto del banco sea del 22.
+- Los bancos arrastran hasta HOY (antes `IF(D>$B$3,"")` dejaba la columna de hoy vacía).
+- La caja de AA se calcula: último arqueo + movimientos de caja posteriores.
+- Lo estimado de AA arranca después de `$B$5`, para no pisar días con movimiento real.
+- `arreglarValidaciones()`: Origen sin lista, Categoria y Medio de Pago completos.
+
+Verificado con el export del 23/09: bancos arrastrados con su fecha (ARRASTRADO · al 15/09 … al
+22/09), Cobranza AA 16.085.411 (= 1.085.411 + 15.000.000), Proveedores AA 372.623 (= 310.000 +
+62.623), caja AA 27.675.788 (= 12.800.000 − 487.000 + 15.362.788), total bancos −157.747.412,
+cero celdas con error en las 16 solapas. De paso se corrigió el método de copiado: los acentos
+salían rotos ("√öltimo d√≠a").
+
+
 ## Revisión
