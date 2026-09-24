@@ -137,6 +137,12 @@ function armarCash() {
 // estimada da 0, en las futuras la parte real da 0, y en la columna que tiene al
 // último extracto adentro suman las dos.
 var HASTA_REAL = "MIN({F},$B$3+1)", DESDE_EST = "MAX({D},$B$3+1)";
+// Los datos no llegan todos juntos: el extracto de un banco puede ser del 22 y la caja de AA
+// del 23. Si hubiera un solo corte para todo (el del banco), lo real de AA cargado después se
+// perdería. Por eso cada origen tiene su propia fecha de corte, y su propio arranque de lo
+// estimado: $B$3 = último extracto bancario · $B$5 = último día con caja de AA.
+var CORTE_REAL = { "Extracto*": "$B$3", "Tango AA*": "$B$5" };
+var DESDE_EST_AA = "MAX({D},$B$5+1)";
 
 // Lo real viene de dos lados: el extracto de los bancos (Origen "Extracto…") y, para AA, la
 // tesorería de Tango en efectivo (Origen "Tango AA…"). Las filas migradas ("Manual") no cuentan.
@@ -148,12 +154,15 @@ function _criterioBanco_(banco) {
 function _real_(tipo, cat, banco) {
   // entre paréntesis: los renglones de egreso le anteponen "-" y tiene que negar la suma entera
   return "(" + ORIGENES_REALES.map(function (origen) {
-    return "SUMIFS(" + R.movImp + "," + R.movFecha + ",\">=\"&{D}," + R.movFecha + ",\"<\"&" + HASTA_REAL + "," + R.movTipo + ",\"" + tipo + "\"," +
+    var hasta = "MIN({F}," + (CORTE_REAL[origen] || "$B$3") + "+1)";
+    return "SUMIFS(" + R.movImp + "," + R.movFecha + ",\">=\"&{D}," + R.movFecha + ",\"<\"&" + hasta + "," + R.movTipo + ",\"" + tipo + "\"," +
       R.movEstado + ",\"Real\"," + R.movOrigen + ",\"" + origen + "\"" + (cat ? "," + R.movCat + ",\"" + cat + "\"" : "") + (banco !== undefined ? "," + R.movBanco + "," + _criterioBanco_(banco) : "") + ")";
   }).join("+") + ")";
 }
-function _lista_(imp, fecha, extra) {
-  return "SUMIFS(" + imp + "," + fecha + ",\">=\"&" + DESDE_EST + "," + fecha + ",\"<\"&{F}" + extra + ")";
+function _lista_(imp, fecha, extra, desde) {
+  // "desde" sólo se pasa para los renglones de AA: lo estimado de AA no puede pisar días que
+  // ya tienen movimiento real de caja cargado.
+  return "SUMIFS(" + imp + "," + fecha + ",\">=\"&" + (desde || DESDE_EST) + "," + fecha + ",\"<\"&{F}" + extra + ")";
 }
 function _proy_(cat, distinto) {
   return "SUMIFS(" + R.movImp + "," + R.movFecha + ",\">=\"&" + DESDE_EST + "," + R.movFecha + ",\"<\"&{F}," + R.movTipo + ",\"Egreso\"," +
@@ -170,10 +179,10 @@ function _planMes_(tipo, auto, banco) {
 function _renglones_(periodo) {
   var mensual = periodo === "mes";
   var cobA = _lista_(R.cobPend, R.cobVto, "," + R.cobEmp + ",\"A\"," + R.cobEstado + ",\"<>Cobrado\"," + R.cobObs + ",\"<>REVISAR*\"");
-  var cobAA = _lista_(R.cobPend, R.cobVto, "," + R.cobEmp + ",\"AA\"," + R.cobEstado + ",\"<>Cobrado\"," + R.cobObs + ",\"<>REVISAR*\"");
+  var cobAA = _lista_(R.cobPend, R.cobVto, "," + R.cobEmp + ",\"AA\"," + R.cobEstado + ",\"<>Cobrado\"," + R.cobObs + ",\"<>REVISAR*\"", DESDE_EST_AA);
   var chqT = _lista_(R.chqImp, R.chqFecha, "," + R.chqTipo + ",\"Terceros*\"," + R.chqEstado + ",\"En Cartera\"," + R.chqObs + ",\"<>REVISAR*\"");
   var pagA = _lista_(R.pagPend, R.pagVto, "," + R.pagEmp + ",\"A\"," + R.pagEstado + ",\"<>Pagado\"," + R.pagObs + ",\"<>REVISAR*\"");
-  var pagAA = _lista_(R.pagPend, R.pagVto, "," + R.pagEmp + ",\"AA\"," + R.pagEstado + ",\"<>Pagado\"," + R.pagObs + ",\"<>REVISAR*\"");
+  var pagAA = _lista_(R.pagPend, R.pagVto, "," + R.pagEmp + ",\"AA\"," + R.pagEstado + ",\"<>Pagado\"," + R.pagObs + ",\"<>REVISAR*\"", DESDE_EST_AA);
   var cuotasAuto = _lista_(R.cuTot, R.cuVto, "," + R.cuEstado + ",\"Pendiente\"," + R.cuAuto + ",\"Si\"");
   var cuotasDec = _lista_(R.cuTot, R.cuVto, "," + R.cuEstado + ",\"Pendiente\"," + R.cuAuto + ",\"<>Si\"");
   var impAuto = _lista_(R.diImp, R.diVto, "," + R.diEstado + ",\"<>Pagado\"," + R.diAuto + ",\"Si\"");
@@ -264,6 +273,11 @@ function _armarPeriodica_(ss, nombre, periodo) {
   h.getRange(2, 1).setValue("Hoy"); h.getRange(2, 2).setFormula("=TODAY()").setNumberFormat("dd/mm/yyyy");
   h.getRange(3, 1).setValue("Último día con extracto (real hasta acá)"); h.getRange(3, 2).setFormula("=MAXIFS(" + R.movFecha + "," + R.movOrigen + ",\"Extracto*\")").setNumberFormat("dd/mm/yyyy");
   h.getRange(3, 3).setValue("en $ · verde = real (extracto) · amarillo = estimado (listas con fecha) · qué es cada renglón y de dónde sale: solapa Instrucciones").setFontStyle("italic").setFontColor("#5f6368");
+  // La caja de AA no depende del banco: puede estar más al día que el extracto. Cada origen
+  // corre hasta su propia fecha, así lo real de hoy suma aunque el banco venga atrasado.
+  h.getRange(5, 1).setValue("Último día con caja de AA (efectivo)");
+  h.getRange(5, 2).setFormula("=MAXIFS(" + R.movFecha + "," + R.movOrigen + ",\"Tango AA*\")").setNumberFormat("dd/mm/yyyy");
+  h.getRange(5, 3).setValue("la caja de AA sale de la tesorería de Tango; lo real de cada origen suma por su fecha, no por la del banco").setFontStyle("italic").setFontColor("#5f6368");
   if (mensual) {
     h.getRange(4, 1).setValue("Inflación mensual (editable)"); h.getRange(4, 2).setValue(INFLACION_MENSUAL).setNumberFormat("0.0%").setBackground("#fff8e1");
     h.getRange(4, 3).setValue("← cambiá este número y se recalcula lo estimado. Base: promedio de los 3 meses cerrados × (1 + inflación)^n; lo que tiene fecha va por su fecha; las cuotas y planes salen de la solapa Plan.").setFontStyle("italic").setFontColor("#5f6368");
@@ -329,12 +343,19 @@ function _armarPeriodica_(ss, nombre, periodo) {
     h.getRange(fila, colAcuerdo).setFormula("=SUMIFS(" + R.dbOrig + "," + R.dbBanco + ",\"" + b.nombre + "\"," + R.dbLinea + ",\"*escubierto*\")");
     for (var c = 0; c < nCols; c++) {
       // la caja AA se carga a mano y puede ser más nueva que el último extracto: llega hasta hoy
-      var corte = "MIN(" + F(c) + "-1," + (b.manual ? "$B$2" : "$B$3") + ")";
+      // hasta HOY: si el banco no mandó extracto, el saldo es el último conocido, no un vacío
+      var corte = "MIN(" + F(c) + "-1,$B$2)";
       var cond = R.salBanco + ",\"" + b.nombre + "\"";
       var ult = "MAXIFS(" + R.salFecha + "," + cond + "," + R.salFecha + ",\"<=\"&" + corte + ")";
       var primero = "MINIFS(" + R.salFecha + "," + cond + ")";
       // si no hay saldo anterior al corte (la caja AA se cargó el 31/08), se toma el primero conocido
-      h.getRange(fila, 2 + c).setFormula("=IF(" + D(c) + ">$B$3,\"\",SUMIFS(" + R.salImp + "," + cond + "," + R.salFecha + ",IF(" + ult + "=0," + primero + "," + ult + ")))");
+      // La caja de AA se calcula sola: último arqueo cargado + los movimientos de caja
+      // posteriores (la tesorería de AA ya está en Movimientos con su fecha y su signo).
+      var base = "SUMIFS(" + R.salImp + "," + cond + "," + R.salFecha + ",IF(" + ult + "=0," + primero + "," + ult + "))";
+      var desdeArqueo = "IF(" + ult + "=0," + primero + "," + ult + ")";
+      var movCaja = "SUMIFS(" + R.movImp + "," + R.movOrigen + ",\"Tango AA*\"," + R.movEstado + ",\"Real\"," +
+                    R.movFecha + ",\">\"&" + desdeArqueo + "," + R.movFecha + ",\"<=\"&" + corte + ")";
+      h.getRange(fila, 2 + c).setFormula("=IF(" + D(c) + ">$B$2,\"\"," + base + (b.manual ? "+" + movCaja : "") + ")");
     }
     fila++;
   });
@@ -342,7 +363,7 @@ function _armarPeriodica_(ss, nombre, periodo) {
   if (bancos.length) h.hideRows(primeraBanco, bancos.length);
   var filaSaldoReal = fila, ultimoBanco = fila - 1;
   h.getRange(fila, 1).setValue("Total saldo real de bancos").setFontWeight("bold");
-  for (var c1 = 0; c1 < nCols; c1++) h.getRange(fila, 2 + c1).setFormula("=IF(" + D(c1) + ">$B$3,\"\",SUM(" + L(c1) + primeraBanco + ":" + L(c1) + (fila - 1) + "))").setFontWeight("bold");
+  for (var c1 = 0; c1 < nCols; c1++) h.getRange(fila, 2 + c1).setFormula("=IF(" + D(c1) + ">$B$2,\"\",SUM(" + L(c1) + primeraBanco + ":" + L(c1) + (fila - 1) + "))").setFontWeight("bold");
   _lineaTotal_(h, fila, colFuente);
   fila++;
   var filaAvisoArrastre = fila++;
@@ -1368,4 +1389,44 @@ function _mnCaja_(h, s, r) {
   h.getRange(58, 2).setFormula('=IFERROR(IF(B60="",' + calculo + ',"—"),"—")').setNumberFormat('#,##0.00;[Red]-#,##0.00;0.00');
   h.getRange(59, 2).setFormula('=IFERROR(MIN(MAP(' + lista + ',LAMBDA(clave,' + fecha + '))),"—")').setNumberFormat('dd/mm/yyyy');
   h.getRange(60, 2, 1, 12).merge().setWrap(true); h.setRowHeight(60, 42);
+}
+
+
+// ==================================================================================
+// arreglarValidaciones — las listas desplegables de Movimientos quedaron viejas y hoy
+// marcan en rojo casi todo lo que carga el importador. Medido el 23/09/2026:
+//
+//   Origen (J)        3.153 de 3.252 filas rechazadas  ("Extracto MACRO", "Tango AA · …")
+//   Medio de Pago (H) 1.617 rechazadas                 ("Débito automático" vs "Debito Automatico")
+//   Categoria (E)       721 rechazadas                 (Gastos Bancarios, Transferencia Interna,
+//                                                       Cobranza AA, Descuento de Cheques)
+//
+// Una validación que rechaza el 97 % de las filas no protege nada: sólo ensucia la pantalla
+// y enseña a ignorar el triangulito rojo. Entonces:
+//   · Origen: se saca la lista. El valor lo escribe el lector y lleva el banco o el archivo
+//     adentro ("Extracto MACRO"), así que no hay lista posible. Las fórmulas lo leen por
+//     prefijo ("Extracto*", "Tango AA*").
+//   · Categoria y Medio de Pago: se completan con los valores que realmente se usan, para que
+//     el desplegable siga sirviendo a quien carga una fila a mano.
+// Se corre desde el menú finauto cuando hace falta; no lo llama el armado del cash.
+// ==================================================================================
+function arreglarValidaciones() {
+  var h = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Movimientos");
+  if (!h) throw new Error("No encontré la solapa Movimientos");
+  var n = Math.max(h.getMaxRows() - 1, 1);
+  h.getRange(2, 10, n, 1).clearDataValidations();               // J · Origen: sin lista
+  _lista_validacion_(h, 5, n, ["Cobranza Facturas", "Cobranza Canchada", "Cobranza AA",
+    "Descuento de Cheques", "Cheques", "Prestamo", "Proveedores MP y Logist.", "Proveedores AA",
+    "Hoja Verde", "Insumos", "Cosecha", "Sueldos y Jornales", "Impuestos", "Honorarios y Dividendos",
+    "Gastos Bancarios", "Estampillas", "Transferencia Interna", "Otros"]);
+  _lista_validacion_(h, 8, n, ["Efectivo", "Transferencia", "Cheque Propio", "Cheque de Terceros",
+    "Débito automático", "Debito Automatico"]);
+  SpreadsheetApp.getActiveSpreadsheet().toast(
+    "Validaciones al día: Origen sin lista (lo escribe el lector), Categoria y Medio de Pago completos.", "finauto", 8);
+}
+
+function _lista_validacion_(h, col, n, valores) {
+  var regla = SpreadsheetApp.newDataValidation().requireValueInList(valores, true)
+    .setAllowInvalid(true).build();          // avisa, pero no bloquea una carga a mano
+  h.getRange(2, col, n, 1).setDataValidation(regla);
 }
