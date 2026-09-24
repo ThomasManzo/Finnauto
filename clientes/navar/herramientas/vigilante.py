@@ -182,6 +182,82 @@ def control_contra_anterior(nuevo):
     return "; ".join(problemas) or None
 
 
+def conservar_bancos_con_errores(nuevo):
+    """Recupera del último publicado lo que hoy no se pudo releer.
+
+    La Sheet reemplaza todos los extractos juntos. Sin este respaldo, saltear un
+    banco borraría su historia o frenaría a los demás por el control de achicamiento.
+    Las fechas originales se conservan: un saldo viejo no pasa a ser saldo de hoy.
+    """
+    import re
+    from collections import Counter
+    import openpyxl
+    from lector.extractos import BANCOS
+
+    if not os.path.basename(nuevo).startswith("para_pegar_bancos_"):
+        return
+    resumen = nuevo.replace("para_pegar_bancos_", "resumen_bancos_").rsplit(".", 1)[0] + ".md"
+    if not os.path.exists(resumen):
+        return
+    with open(resumen, encoding="utf-8") as f:
+        texto = f.read()
+    claves = set(re.findall(r"^- no pude leer ([^/\\]+)[/\\]", texto, re.M))
+    bancos = {BANCOS[k]["nombre"] for k in claves if k in BANCOS}
+    if not bancos:
+        return
+    previos = sorted(glob.glob(os.path.join(SALIDA, "para_pegar_bancos_*.xlsx")))
+    if not previos:
+        log("bancos: sin publicación anterior para recuperar los bancos con errores: " + ", ".join(sorted(bancos)))
+        return
+    wb = openpyxl.load_workbook(nuevo)
+    anterior = openpyxl.load_workbook(previos[-1], data_only=True)
+    recuperadas = 0
+    try:
+        for nombre in ("Saldos Bancarios", "Movimientos"):
+            ws, previa = wb[nombre], anterior[nombre]
+            enc = [c.value for c in ws[1]]
+            enc_previa = [c.value for c in previa[1]]
+            es_saldo = nombre == "Saldos Bancarios"
+
+            def clave(fila):
+                fecha = fila.get("Fecha")
+                if isinstance(fecha, datetime.datetime):
+                    fecha = fecha.date()
+                if es_saldo:
+                    return (fecha, fila.get("Empresa"), fila.get("Banco"), fila.get("Cuenta / Nro"))
+                return (fecha, fila.get("Empresa"), fila.get("Banco / Cuenta"), fila.get("Importe"))
+
+            # Se cuenta cada repetición: dos pagos iguales pueden ser dos pagos reales.
+            presentes = Counter(clave(dict(zip(enc, r))) for r in ws.iter_rows(min_row=2, values_only=True))
+            vistos = Counter()
+            for r in previa.iter_rows(min_row=2, values_only=True):
+                fila = dict(zip(enc_previa, r))
+                banco = str(fila.get("Banco") if es_saldo else fila.get("Banco / Cuenta") or "").split(" ")[0]
+                if banco not in bancos:
+                    continue
+                k = clave(fila)
+                vistos[k] += 1
+                if vistos[k] <= presentes[k]:
+                    continue
+                ws.append([fila.get(c) for c in enc])
+                recuperadas += 1
+                for c in ws[ws.max_row]:
+                    if isinstance(c.value, (datetime.datetime, datetime.date)):
+                        c.number_format = "DD/MM/YYYY"
+            if not es_saldo:
+                for i in range(2, ws.max_row + 1):
+                    ws.cell(i, enc.index("ID") + 1, i - 1)
+        wb.save(nuevo)
+    finally:
+        wb.close()
+        anterior.close()
+    aviso = ("bancos: %d filas recuperadas del último publicado para %s; conservan su fecha original. "
+             "Los archivos ilegibles siguen pendientes de revisión." % (recuperadas, ", ".join(sorted(bancos))))
+    with open(resumen, "a", encoding="utf-8") as f:
+        f.write("\n" + aviso + "\n")
+    log(aviso)
+
+
 def mover_salidas(desde):
     """Lleva lo que generó un lector (para_pegar_*, resumen_*) a _para la Sheet, salvo que el
     control contra el anterior diga que algo se achicó o creció de golpe: entonces va a _retenido."""
@@ -189,6 +265,7 @@ def mover_salidas(desde):
     os.makedirs(SALIDA, exist_ok=True)
     retenido = None
     for r in glob.glob(os.path.join(desde, "para_pegar_*.xlsx")):
+        conservar_bancos_con_errores(r)
         problema = control_contra_anterior(r)
         if problema:
             # Un archivo sano no levanta la retención de otro que falló en la misma tanda.
@@ -280,6 +357,9 @@ def main():
         log("%s: %d archivo(s) nuevos o cambiados → %s" % (n, len(f["archivos"]), os.path.basename(cmd[1])))
         r = subprocess.run(cmd, cwd=BASE_REPO, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=1800, env=os.environ.copy())
         if r.returncode == 0:
+            for linea in r.stdout.splitlines():
+                if linea.startswith("- no pude leer ") or "REVISAR saldo:" in linea:
+                    log("%s: %s" % (n, linea))
             ret = mover_salidas(f["salidas"]())
             estado[n] = fa            # no se reintenta el mismo archivo; cuando suban uno nuevo, se vuelve a mirar
             log("%s: %s. %s" % (n, "RETENIDO" if ret else "OK", (r.stdout.strip().splitlines() or [""])[-1][:200]))

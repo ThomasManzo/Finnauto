@@ -534,3 +534,36 @@ necesiten calendarios propios. Confirmar fecha de entrada en vigencia, actualiza
 tratamiento de inflación y quién guarda cada versión. Después, con una tarea aparte, cambiar la
 fuente operativa de Cash Mensual y acordar cómo aplica las decisiones de Plan, con un puente entre
 real y proyectado. **Esta tarea no hace ese reemplazo.**
+
+## 9. Extractos ilegibles y columnas cambiadas (tarea 15, preparado para revisión)
+
+Un archivo ilegible se saltea entero, se cuenta y se informa como **“no pude leer archivo:
+motivo”** en el resumen de bancos. El resto sigue. Si ninguno se pudo leer, queda el resumen
+pero no se genera una publicación vacía. Un extracto sin movimientos ni saldos reconocibles
+se marca para revisar; no se toma como una confirmación de que la cuenta está vacía.
+
+BBVA, Macro y Galicia buscan las columnas por nombre, admitiendo acentos, espacios,
+mayúsculas y las alternativas conocidas. Referencias, leyendas y saldos opcionales pueden
+faltar; fecha, concepto e importes no se adivinan. Macro ya no depende del lugar de la columna.
+
+BBVA admite **Detalle / Saldo Disponible** y **Saldo Parcial**, y referencias con **Número
+Documento / Nro de cheque**. En el formato viejo se mantiene el saldo diario que ya se había
+contrastado con el PDF. En el nuevo, si el último Saldo Parcial no coincide con el encabezado
+(o falta ese encabezado), entran los movimientos pero **no se publica ese saldo**: queda
+**REVISAR**. No se afirma que uno sea disponible y otro contable sin evidencia. Si coinciden,
+se usan los saldos parciales diarios, respetando el orden del export (más nuevo primero).
+Para el archivo del 23/09 se conserva la última foto válida anterior, con su fecha original.
+
+El vigilante deja los errores en su log. Antes de publicar, recupera del último
+`para_pegar_bancos` publicado las filas faltantes de los bancos con archivos fallidos,
+sin duplicar movimientos ni pisar saldos recién leídos. **No cambia las fechas antiguas**.
+El resumen indica cuántas filas recuperó; sus totales por banco describen la lectura nueva,
+antes de esa recuperación. Así la importación completa no borra la historia de un banco que
+hoy no se pudo leer. Los controles de achicamiento y crecimiento siguen funcionando.
+Sin publicación anterior no se puede recuperar historia: se publica lo legible y se avisa.
+Un saldo no confirmado no se convierte en cero ni en saldo actualizado.
+
+Los archivos fallidos requieren corrección o una nueva descarga; al cambiar las fuentes el
+vigilante vuelve a procesar. Para reintentar después de arreglar el entorno de OCR sin cambiar
+los archivos se puede usar `--forzar bancos`. Esta mejora está probada sobre copias y ejemplos;
+no significa que ya esté instalada en la notebook ni importada en la Sheet.

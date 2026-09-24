@@ -138,6 +138,61 @@ def _mov(fecha, concepto, importe, saldo, cuenta, fuente, ref=None):
             "saldo": saldo, "cuenta": cuenta, "fuente": fuente, "ref": ref}
 
 
+def _filas_planilla(ruta):
+    """Abre los dos tipos de Excel y cierra el archivo antes de seguir."""
+    if str(ruta).lower().endswith(".xlsx"):
+        wb = openpyxl.load_workbook(ruta, data_only=True)
+        try:
+            return list(wb.active.values)
+        finally:
+            wb.close()
+    import xlrd
+    wb = xlrd.open_workbook(ruta)
+    try:
+        sh = wb.sheets()[0]
+        return [[xlrd.xldate_as_datetime(c.value, wb.datemode) if c.ctype == xlrd.XL_CELL_DATE
+                 else c.value for c in sh.row(r)] for r in range(sh.nrows)]
+    finally:
+        wb.release_resources()
+
+
+def _columnas(filas, alternativas, obligatorias):
+    # No adivinamos por posición: una columna corrida podría cambiar un importe.
+    for n, fila in enumerate(filas):
+        nombres = {_norm(v): i for i, v in enumerate(fila) if v}
+        if "FECHA" not in nombres:
+            continue
+        ix = {k: next((nombres[_norm(a)] for a in opciones if _norm(a) in nombres), None)
+              for k, opciones in alternativas.items()}
+        faltan = [k for k in obligatorias if ix[k] is None]
+        if faltan:
+            raise ValueError("faltan columnas imprescindibles: " + ", ".join(faltan))
+        return n, ix
+    raise ValueError("no encuentro el encabezado Fecha")
+
+
+def _celda(fila, ix, clave):
+    i = ix.get(clave)
+    return fila[i] if i is not None and i < len(fila) else None
+
+
+def _numero(v):
+    return float(v) if isinstance(v, (int, float)) else _ar(v)
+
+
+def _fecha_planilla(v):
+    if isinstance(v, datetime.datetime):
+        return v.date()
+    if isinstance(v, datetime.date):
+        return v
+    for formato in ("%d-%m-%Y", "%d/%m/%Y", "%d/%m/%y"):
+        try:
+            return datetime.datetime.strptime(str(v).strip(), formato).date()
+        except ValueError:
+            pass
+    raise ValueError("fecha de movimiento ilegible: %s" % v)
+
+
 # ================================================================== BBVA
 def leer_pdf_bbva(ruta):
     txt = _texto_pdf(ruta)
@@ -157,38 +212,57 @@ def leer_pdf_bbva(ruta):
 
 
 def leer_planilla_bbva(ruta):
-    import xlrd
-    sh = xlrd.open_workbook(ruta).sheets()[0]
-    cab = {str(sh.cell_value(r, 0)).strip(": "): str(sh.cell_value(r, 1)).strip() for r in range(6)}
-    cuit = re.search(r'\((\d{11})\)', cab.get("Empresa", ""))
-    cuenta = re.search(r'(\d{3}-\d{6}/\d)', cab.get("Cuenta", ""))
+    filas = _filas_planilla(ruta)
+    n, ix = _columnas(filas, {
+        "Fecha": ("Fecha",), "Concepto": ("Concepto", "Descripción"),
+        "Crédito": ("Crédito", "Créditos"), "Débito": ("Débito", "Débitos"),
+        "Detalle": ("Detalle",), "Saldo Parcial": ("Saldo Parcial",),
+        "Codigo": ("Codigo",), "Documento": ("Número Documento", "Nro de cheque"),
+    }, ("Fecha", "Concepto", "Crédito", "Débito"))
+    cab = {_norm(r[0]).strip(": "): r[1] for r in filas[:n] if len(r) > 1}
+    cuit = re.search(r'\((\d{11})\)', str(cab.get("EMPRESA", "")))
+    cuenta = re.search(r'(\d{3}-\d{6}/\d)', str(cab.get("CUENTA", "")))
     cuenta = cuenta.group(1) if cuenta else "?"
-    saldo_encabezado = _ar(cab.get("Saldo", "0"))
-    enc = [str(sh.cell_value(6, c)).strip() for c in range(sh.ncols)]
-    ix = {e: i for i, e in enumerate(enc)}
-    movs, disp = [], OrderedDict()
-    for r in range(7, sh.nrows):
-        f = str(sh.cell_value(r, ix["Fecha"]))
-        if not re.match(r'\d\d-\d\d-\d{4}', f):
+    encabezado = cab.get("SALDO")
+    saldo_encabezado = _numero(encabezado) if encabezado not in (None, "") else None
+    movs, disp, parciales = [], OrderedDict(), OrderedDict()
+    for r in filas[n + 1:]:
+        valor_fecha = _celda(r, ix, "Fecha")
+        if valor_fecha in (None, ""):
             continue
-        fecha = datetime.date(int(f[6:10]), int(f[3:5]), int(f[:2]))
-        cr, db = sh.cell_value(r, ix["Crédito"]), sh.cell_value(r, ix["Débito"])
-        importe = float(cr or 0) if cr not in ("", None) else float(db or 0)
+        fecha = _fecha_planilla(valor_fecha)
+        cr, db = _celda(r, ix, "Crédito"), _celda(r, ix, "Débito")
+        importe = _numero(cr or 0) - abs(_numero(db or 0))
         if not importe:
             continue
-        extra = " ".join(str(sh.cell_value(r, c)) for c in range(ix["Detalle"], sh.ncols))
-        m = re.search(r'Saldo Disponible:\s*(' + NUM_AR + ')', extra)
-        if m and fecha not in disp:
-            disp[fecha] = _ar(m.group(1))           # primera fila del día = cierre del día
-        movs.append(_mov(fecha, sh.cell_value(r, ix["Concepto"]), importe, None, cuenta, "xls",
-                         ref=str(sh.cell_value(r, ix["Codigo"])).strip()))
-    hoy_disp = next(iter(disp.values()), None)
-    pendiente = (hoy_disp - saldo_encabezado) if hoy_disp is not None else 0.0
+        if ix["Detalle"] is not None:
+            extra = " ".join(str(v or "") for v in r[ix["Detalle"]:])
+            m = re.search(r'Saldo Disponible:\s*(' + NUM_AR + ')', extra)
+            if m:
+                disp.setdefault(fecha, _ar(m.group(1)))
+        parcial = _celda(r, ix, "Saldo Parcial")
+        if parcial not in (None, ""):
+            parciales.setdefault(fecha, _numero(parcial))
+        movs.append(_mov(fecha, _celda(r, ix, "Concepto"), importe, None, cuenta, "xls",
+                         ref=str(_celda(r, ix, "Documento") or _celda(r, ix, "Codigo") or "") or None))
+    notas = []
+    if parciales:
+        cierre = parciales[max(parciales)]
+        # El formato nuevo no demuestra qué saldo es contable. Ante duda entran
+        # los movimientos, pero el saldo anterior sigue siendo la última foto válida.
+        if saldo_encabezado is None or abs(cierre - saldo_encabezado) >= 0.01:
+            notas.append("REVISAR saldo: Saldo Parcial %s; encabezado %s. No se publica el saldo parcial: "
+                         "no se puede confirmar el cierre" % (cierre, saldo_encabezado))
+        else:
+            for fecha, saldo in parciales.items():
+                disp.setdefault(fecha, saldo)
+    if not disp:
+        notas.append("REVISAR: sin saldo diario confirmado; se conservan los movimientos")
+    elif saldo_encabezado is not None and abs(disp[max(disp)] - saldo_encabezado) > 1:
+        notas.append("REVISAR: el encabezado y el saldo diario difieren; se usa Saldo Disponible "
+                     "del formato viejo, ya contrastado con el PDF")
     return {"cuenta": cuenta, "cuit": cuit.group(1) if cuit else None, "movimientos": movs,
-            "saldos_por_dia": dict(disp), "archivo": os.path.basename(ruta),
-            "nota": ("el encabezado dice %s y la cadena de saldos %s: hay ~%s de operaciones pendientes que el "
-                     "banco ya descuenta (confirmar en el home banking)" % (_m(saldo_encabezado), _m(hoy_disp), _m(pendiente)))
-                    if abs(pendiente) > 1 else ""}
+            "saldos_por_dia": dict(disp), "archivo": os.path.basename(ruta), "nota": "; ".join(notas)}
 
 
 # ================================================================== GALICIA
@@ -209,24 +283,26 @@ def leer_pdf_galicia(ruta):
 
 
 def leer_planilla_galicia(ruta):
-    wb = openpyxl.load_workbook(ruta, data_only=True)
-    ws = wb.active
-    filas = [r for r in ws.iter_rows(values_only=True)]
-    enc = [str(c).strip() if c else "" for c in filas[0]]
-    ix = {e: i for i, e in enumerate(enc)}
+    filas = _filas_planilla(ruta)
+    n, ix = _columnas(filas, {
+        "Fecha": ("Fecha",), "Descripción": ("Descripción", "Concepto"),
+        "Débitos": ("Débitos", "Débito"), "Créditos": ("Créditos", "Crédito"),
+        "Saldo": ("Saldo", "Saldo Parcial"),
+        "Referencia": ("Número de Comprobante", "Nro. de Comprobante"),
+        "Extra1": ("Leyendas Adicionales 1",), "Extra2": ("Leyendas Adicionales 2",),
+    }, ("Fecha", "Descripción", "Débitos", "Créditos"))
     movs = []
-    for r in filas[1:]:
-        f = r[ix["Fecha"]]
-        if not isinstance(f, datetime.datetime):
+    for r in filas[n + 1:]:
+        if _celda(r, ix, "Fecha") in (None, ""):
             continue
-        deb, cre = float(r[ix["Débitos"]] or 0), float(r[ix["Créditos"]] or 0)
-        importe = cre if cre else -deb
+        f = _fecha_planilla(_celda(r, ix, "Fecha"))
+        importe = _numero(_celda(r, ix, "Créditos") or 0) - abs(_numero(_celda(r, ix, "Débitos") or 0))
         if not importe:
             continue
-        extras = [str(r[ix[k]]) for k in ("Leyendas Adicionales 1", "Leyendas Adicionales 2") if r[ix[k]]]
-        con = " ".join([str(r[ix["Descripción"]])] + extras)
-        movs.append(_mov(f.date(), con, importe, float(r[ix["Saldo"]]) if r[ix["Saldo"]] is not None else None,
-                         "0005459-5 070-1", "xlsx", ref=str(r[ix["Número de Comprobante"]] or "") or None))
+        con = " ".join(str(_celda(r, ix, k) or "") for k in ("Descripción", "Extra1", "Extra2"))
+        saldo = _celda(r, ix, "Saldo")
+        movs.append(_mov(f, con, importe, _numero(saldo) if saldo not in (None, "") else None,
+                         "0005459-5 070-1", "xlsx", ref=_celda(r, ix, "Referencia")))
     return {"cuenta": "0005459-5 070-1", "movimientos": movs, "archivo": os.path.basename(ruta)}
 
 
@@ -271,26 +347,27 @@ def leer_pdf_macro(ruta):
 
 
 def leer_planilla_macro(ruta):
-    import xlrd
-    wb = xlrd.open_workbook(ruta)
-    sh = wb.sheets()[0]
-    numero = None
-    for r in range(min(10, sh.nrows)):
-        if str(sh.cell_value(r, 0)).strip() == "Número":
-            numero = str(sh.cell_value(r, 2)).strip()
+    filas = _filas_planilla(ruta)
+    n, ix = _columnas(filas, {
+        "Fecha": ("Fecha",), "Concepto": ("Concepto", "Descripción"),
+        "Importe": ("Importe", "Monto"), "Saldo": ("Saldo", "Saldo Parcial"),
+        "Referencia": ("Nro. de Referencia", "Número de Referencia"),
+    }, ("Fecha", "Concepto", "Importe"))
+    numero = next((str(r[2]).strip() for r in filas[:n] if len(r) > 2 and _norm(r[0]) == "NUMERO"), None)
     cuenta = "3-033-0000083019-1" if numero and numero.endswith("830191") else (numero or "?")
     movs = []
-    for r in range(sh.nrows):
-        v = sh.cell_value(r, 0)
-        if not isinstance(v, float):
+    for r in filas[n + 1:]:
+        if _celda(r, ix, "Fecha") in (None, ""):
             continue
-        fecha = datetime.date(*xlrd.xldate_as_tuple(v, wb.datemode)[:3])
-        importe = sh.cell_value(r, 6)
-        if importe in ("", None):
+        if _norm(_celda(r, ix, "Fecha")).startswith("FECHA DE DESCARGA:"):
+            break  # Desde acá viene el pie del export, no operaciones del banco.
+        fecha = _fecha_planilla(_celda(r, ix, "Fecha"))
+        importe, saldo = _celda(r, ix, "Importe"), _celda(r, ix, "Saldo")
+        if importe in (None, ""):
             continue
-        saldo = sh.cell_value(r, 10)
-        movs.append(_mov(fecha, sh.cell_value(r, 5), float(importe), float(saldo) if saldo not in ("", None) else None,
-                         cuenta, "xls", ref=str(sh.cell_value(r, 3)).strip() or None))
+        movs.append(_mov(fecha, _celda(r, ix, "Concepto"), _numero(importe),
+                         _numero(saldo) if saldo not in (None, "") else None,
+                         cuenta, "xls", ref=_celda(r, ix, "Referencia")))
     return {"cuenta": cuenta, "movimientos": movs, "archivo": os.path.basename(ruta)}
 
 
@@ -361,6 +438,8 @@ def _ocr_pdf(ruta):
                 continue
             nombre, x, y, w, h, _conf, texto = partes[:7]
             paginas.setdefault(nombre, []).append((float(x), float(y), float(w), float(h), texto.strip()))
+    if not paginas:
+        raise ValueError("el OCR no devolvió texto del PDF escaneado; revisar la caché .ocr o pedir otro export")
     return list(paginas.values())
 
 
@@ -710,7 +789,7 @@ REGLAS_INGRESO = [
     ("CUENTA PROPIA", "Transferencia Interna", "Transferencia", True),
     ("TRANSF INMED CP", "Transferencia Interna", "Transferencia", True),
     ("TR.NE", "Transferencia Interna", "Transferencia", True),
-    # Priscilla (18/09/2026): descontar cheques es la forma normal de meter plata en las
+    # administración (18/09/2026): descontar cheques es la forma normal de meter plata en las
     # cuentas; "N/C DEUD. PUBLICA-P.PREVIO" del Macro son transferencias de clientes.
     ("DESCUENTO DOCUMENTO", "Descuento de Cheques", "Transferencia", False),
     ("CHEQUES DESCONTADOS", "Descuento de Cheques", "Transferencia", False),
@@ -752,7 +831,7 @@ NOTAS = {
     "ALTA PRESTAMO": "préstamo nuevo (documentos) acreditado: financiación, no cobranza",
     "NUMERO DE OPERACION": "depósito por número de operación: ¿cobranza? revisar",
     "CCERR": "cheque de cámara acreditado (circuito cerrado)",
-    "DEUD. PUBLICA": "transferencia de un cliente (Priscilla 18/09: p.ej. la del 01/07 es de Kerps)",
+    "DEUD. PUBLICA": "transferencia de un cliente (confirmado por administración el 18/09)",
     "EFECTIVO": "depósito en efectivo: ¿cobranza en efectivo o plata de la caja propia? revisar",
     "DEPOSITO": "depósito: ¿cobranza o plata de la caja propia? revisar",
     "ATM": "depósito en cajero: ¿cobranza o caja propia? revisar",
@@ -768,8 +847,8 @@ def clasificar(mov, cuit_propio):
     if cuit_propio and re.search(r'\b' + re.escape(cuit_propio) + r'\b', c.replace("-", "")):
         return (tipo, "Transferencia Interna", "Transferencia", True, "al/del CUIT propio (otra cuenta de NAVAR)")
     if re.fullmatch(r'\d{18,}', c) and v > 0:
-        # Macro acredita la venta de valores (descuento de cheques) solo con el número de operación (Priscilla, 18/09).
-        return (tipo, "Descuento de Cheques", "Transferencia", False, "venta de valores Macro (descuento de cheques de clientes), según Priscilla 18/09")
+        # Macro acredita la venta de valores (descuento de cheques) solo con el número de operación (administración, 18/09).
+        return (tipo, "Descuento de Cheques", "Transferencia", False, "venta de valores Macro (descuento de cheques de clientes), según administración 18/09")
     for texto, cat, medio, interno in (REGLAS_INGRESO if v > 0 else REGLAS_EGRESO):
         if texto in c:
             nota = NOTAS.get(texto, "")
@@ -792,18 +871,35 @@ def _ordenar_cronologico(movs):
 
 def procesar(carpeta, empresa="A"):
     bancos, cuit = [], None
+    errores = []
+
+    def leer(ruta, lector):
+        # Cada archivo es independiente: si falla, no entra ninguna de sus filas.
+        try:
+            lectura = lector(ruta)
+            if not lectura["movimientos"] and not lectura.get("saldos_por_dia"):
+                raise ValueError("no se reconocieron movimientos ni saldos; revisar el formato o si el extracto está vacío")
+            return lectura
+        except Exception as e:
+            errores.append({"archivo": os.path.relpath(ruta, carpeta).replace(os.sep, "/"),
+                            "motivo": "%s: %s" % (type(e).__name__, e)})
+            return None
     for clave, cfg in BANCOS.items():
         sub = os.path.join(carpeta, clave)
         if not os.path.isdir(sub):
             continue
         lecturas = []
         for ruta in sorted(glob.glob(os.path.join(sub, "*.pdf"))):
-            lecturas.append(cfg["pdf"](ruta))
+            lectura = leer(ruta, cfg["pdf"])
+            if lectura is not None:
+                lecturas.append(lectura)
         if cfg["planilla"]:
             for ruta in sorted(glob.glob(os.path.join(sub, "*.xls")) + glob.glob(os.path.join(sub, "*.xlsx"))):
                 if os.path.basename(ruta).startswith(("para_pegar", "~$")):
                     continue
-                lecturas.append(cfg["planilla"](ruta))
+                lectura = leer(ruta, cfg["planilla"])
+                if lectura is not None:
+                    lecturas.append(lectura)
         for l in lecturas:
             cuit = cuit or l.get("cuit")
         bancos.append({"clave": clave, "nombre": cfg["nombre"], "lecturas": lecturas})
@@ -866,7 +962,8 @@ def procesar(carpeta, empresa="A"):
         ]))
         por_cat[(m["banco"], tipo, cat, interno)][0] += 1
         por_cat[(m["banco"], tipo, cat, interno)][1] += m["importe"]
-    return {"cuit": cuit, "bancos": resumen_bancos, "saldos": saldos, "movimientos": filas, "por_cat": por_cat}
+    return {"errores": errores, "leidos": sum(len(b["lecturas"]) for b in bancos),
+            "cuit": cuit, "bancos": resumen_bancos, "saldos": saldos, "movimientos": filas, "por_cat": por_cat}
 
 
 def escribir_para_pegar(res, carpeta, hoy, empresa="A"):
@@ -958,6 +1055,10 @@ def resumen(res, ruta_pegar, hoy):
     L = ["# Extractos → Cashflow · %s" % hoy.strftime("%d/%m/%Y"), ""]
     L.append("CUIT de la empresa: **%s**" % (res["cuit"] or "?"))
     L.append("")
+    L.append("Archivos leídos: %d; salteados: %d." % (res["leidos"], len(res["errores"])))
+    for error in res["errores"]:
+        L.append("- no pude leer %s: %s" % (error["archivo"], error["motivo"]))
+    L.append("")
     L.append("## Por banco")
     total_hoy = 0.0
     for b in res["bancos"]:
@@ -1000,6 +1101,14 @@ def main():
     a = ap.parse_args()
     hoy = datetime.date.fromisoformat(a.hoy) if a.hoy else datetime.date.today()
     res = procesar(a.carpeta, a.empresa)
+    if not res["leidos"]:
+        txt = resumen(res, "no generado (ningún archivo legible)", hoy)
+        with io.open(os.path.join(a.carpeta, "resumen_bancos_%s.md" % hoy.isoformat()), "w", encoding="utf-8") as f:
+            f.write(txt + "\n")
+        print(txt)
+        for error in res["errores"]:
+            print("no pude leer %(archivo)s: %(motivo)s" % error, file=sys.stderr)
+        raise RuntimeError("no se pudo leer ningún archivo; no se genera una publicación vacía")
     ruta = escribir_para_pegar(res, a.carpeta, hoy, a.empresa)
     txt = resumen(res, ruta, hoy)
     if a.sheet:

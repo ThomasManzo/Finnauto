@@ -1,5 +1,5 @@
 # Tarea 15 — Un export con otras columnas frena la lectura de TODOS los bancos
-Estado: pendiente
+Estado: lista para revisión
 Rama: tarea/bancos-tolerantes
 
 ## Objetivo
@@ -93,5 +93,81 @@ No tocar `lector/cash_limpio.py` ni `dashboard/` (los está tocando la tarea 14)
 4. `grep` de nombres propios de personas vacío. Commit en la rama.
 
 ## Qué hice
+
+- Estado inicial cambiado a `en curso`; trabajo en el worktree provisto, rama
+  `tarea/bancos-tolerantes`. No se escribió en Drive ni se usó `clientes/*/privado/`.
+- `lector/extractos.py`: cada archivo se lee de forma independiente; si falla se descarta
+  entero, se cuenta y se informa el motivo. También avisa si no reconoció ninguna fila.
+  Si todos fallan, deja resumen pero no genera un Excel vacío. BBVA acepta ambos formatos;
+  Macro y Galicia resuelven columnas por nombre y alternativas; las opcionales no cortan.
+  Se mantiene la deduplicación entre PDF y Excel. Se quitaron nombres de personas de notas
+  existentes del lector y se dejó un error claro cuando el OCR devuelve texto vacío.
+- `clientes/navar/herramientas/vigilante.py`: registra errores parciales y recupera del último
+  publicado las filas faltantes de los bancos con errores antes de aplicar los controles y
+  publicar. Esto evita borrar su historia o frenar a los otros bancos por el achicamiento.
+  Conserva fechas, saldos nuevos y pagos repetidos reales. Admite rutas Windows y Mac.
+- `lector/pruebas/test_extractos_tolerantes.py`: 10 pruebas con Excel inventados y carpetas
+  temporales. Cubren ambos BBVA, columna imprescindible ausente, referencias opcionales,
+  columnas reordenadas, saldo contradictorio, archivos PDF/Excel corruptos, fallo a mitad
+  de lectura, publicación con un banco fallido, recuperación repetida sin duplicar,
+  recuperación de saldos con fechas originales, publicación previa del mismo día,
+  ausencia de publicación previa y rechazo de una salida totalmente vacía.
+- `clientes/navar/documentos/manual_cash.md`: explicado qué se saltea, cómo se conserva
+  historia y cuándo un saldo queda para revisar. No se instalaron dependencias nuevas.
+
+### Corrida sobre la copia real
+
+Se usó exclusivamente la carpeta temporal indicada en Comprobaciones, que ya existía.
+Intérprete: `/Users/thomasmanzo/Documents/Finnauto/.venv/bin/python` (el worktree no trae .venv).
+Comando: `python lector/extractos.py --carpeta <copia indicada> --cliente navar --hoy 2026-09-24`.
+
+**Resultado final: salida 0; 24 archivos leídos, 2 salteados; 2.230 movimientos.**
+Se generaron `para_pegar_bancos_2026-09-24.xlsx` y `resumen_bancos_2026-09-24.md` en esa copia.
+Los dos salteados son `nacion/Nacion Saldo 18-09.pdf` y `nacion/nacion movimientos.pdf`:
+el OCR no devolvió texto. Al primer intento Swift no pudo usar su caché habitual; se reintentó
+con `SWIFT_MODULECACHE_PATH=/private/tmp/t15-swift` y
+`CLANG_MODULE_CACHE_PATH=/private/tmp/t15-clang`. Swift terminó, pero sin texto reconocido.
+No se inventó un saldo de Nación ni se buscó en Drive otra fuente. La falla queda aislada y
+los otros cuatro bancos entran. La librería PDF además emite avisos sobre `fontTools` ausente;
+no impidieron esta lectura y no se instaló esa dependencia.
+
+Última foto leída (importes verificados en el Excel generado, con centavos):
+
+| Banco / cuenta | Fecha | Saldo |
+|---|---|---:|
+| BBVA principal | 21/09/2026 | $7.642.055,79 |
+| BBVA recaudación | 16/09/2026 | $0,00 |
+| Galicia | 22/09/2026 | -$9.998.348,83 |
+| Macro | 23/09/2026 | -$43.392.742,64 |
+| Corrientes | 16/09/2026 | -$45.306.818,06 |
+| Nación | sin lectura válida en esta corrida | sin saldo nuevo |
+
+**BBVA 23/09:** se leyó el movimiento de $4.538.200. No se tomó como cierre ni
+-$8.040.751,25 de Saldo Parcial ni -$3.502.551,25 del encabezado: la diferencia no prueba
+cuál es contable/disponible. El resumen dice REVISAR y se conserva la foto del 21/09.
+No se extrapoló un saldo a partir del importe del movimiento.
+
+### Validación y límites
+
+- `python -m unittest lector.pruebas.test_extractos_tolerantes lector.pruebas.test_cheques_en_cartera -q`:
+  **16 pruebas OK** (10 nuevas y 6 existentes; incluye controles de retención del vigilante).
+- `python -m py_compile lector/extractos.py clientes/navar/herramientas/vigilante.py lector/pruebas/test_extractos_tolerantes.py`: OK.
+- `git diff --check`: OK. Búsqueda de nombres de personas del contexto en los archivos
+  tocados: sin coincidencias.
+- La publicación del vigilante se probó en carpetas temporales con ejemplos inventados,
+  incluso caída de más de la mitad de las filas y un banco entero ilegible. La corrida real
+  fue del lector sobre la copia, sin ejecutar el vigilante productivo ni importar la Sheet.
+  El resumen refleja los saldos de la lectura nueva; si el vigilante recupera historia,
+  agrega un aviso de filas recuperadas (no recalcula ese resumen histórico).
+- Pendiente para producción: revisión e instalación de la rama en la notebook, recuperación
+  o regeneración del OCR de Nación y confirmación del cierre BBVA. No se tocó Apps Script.
+
+
+- **Commit pendiente por sandbox:** `git add` fue rechazado al crear
+  `/Users/thomasmanzo/Documents/Finnauto/.git/worktrees/Finnauto-tarea15/index.lock`
+  (`Operation not permitted`). Los cinco archivos quedaron en el worktree, sin stage ni
+  commit, como contempla `tareas/LEEME.md`. Para la revisión, usar `git diff` y revisar también
+  el archivo nuevo `lector/pruebas/test_extractos_tolerantes.py`; `git diff main..rama`
+  todavía no incluye estos cambios. No se intentó eludir la restricción.
 
 ## Revisión
