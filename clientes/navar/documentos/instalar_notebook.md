@@ -90,7 +90,7 @@ tal cual. Si aparece un escaneado nuevo sin caché, el lector de bancos corta co
 La primera corrida en la notebook relee las cuatro fuentes (no tiene memoria de qué procesó):
 es normal y el control "se achicó de golpe" protege la Sheet.
 
-## 5. Tango Live por API (cuando Miriam habilite el usuario finauto) (10 min)
+## 5. Tango Live por API (cuando soporte habilite el usuario finauto) (10 min)
 
 1. En la notebook, entrar a Tango Live **con el usuario finauto**, abrir cualquiera de las
    cuatro consultas → Apertura → API → **Obtener token**. Copiar el token.
@@ -115,24 +115,75 @@ es normal y el control "se achicó de golpe" protege la Sheet.
    Deja los siete Excel en sus carpetas de Drive; el vigilante hace el resto. Se programa a
    las 7:30 en el Programador de tareas (misma receta que el vigilante, una vez por día).
 
-## 6. Bots de banco (cuando haya operador de consulta) (por banco, 1–2 h la primera vez)
+## 6. Galicia: preparación y primera prueba en la notebook
 
-1. **Alguien de NAVAR** carga el usuario y la clave del operador de consulta en el llavero
-   (vos mirás para otro lado; la clave no se ve al tipear):
+**Preparado para revisar, todavía no validado contra Galicia.** El adaptador original baja
+CSV y el lector de NAVAR sólo toma Excel/PDF. La variante de NAVAR pide XLSX y frena si
+no confirma empresa, cuenta, fechas o un Excel legible. No se comprobó que el menú actual
+ofrezca esa opción ni que el número de cuenta sea un enlace: se debe mirar la primera vez.
+
+1. Con el mismo usuario de Windows que correrá la tarea, desde `C:\finauto`, cargar las
+   credenciales **en la notebook**. La administración las tipea sin compartirlas:
    ```powershell
    .\.venv\Scripts\python.exe setup_credenciales.py --cliente navar --banco galicia
    ```
-2. En `clientes\navar\perfil.json` poner `"activo": true` en ese banco y
-   `"carpeta_drive_destino"` = la carpeta `Bancos\<banco>` del Drive montado.
-3. Primera corrida **en modo visible**, mirando por AnyDesk:
+   Es el equivalente a `python setup_credenciales.py --cliente navar --banco galicia` con
+   el entorno elegido. Quedan en el llavero `finauto:navar:galicia` de esa máquina y usuario.
+2. En `clientes/navar/perfil.json`, completar **bancos.galicia.carpeta_drive_destino** con
+   la ruta absoluta existente a `NAVAR - Datos/Bancos/galicia`. Ejemplo JSON, sólo si coincide
+   con el Explorador: `"G:\\Mi unidad\\NAVAR - Datos\\Bancos\\galicia"`.
+   Puede estar en un acceso directo de Drive; usar la ruta comprobada en el punto 3.
+   `carpeta_drive_relativa` documenta el destino, no se resuelve sola.
+   Se espera empresa **NAVAR SA** (se admiten puntos y espacios) y cuenta **0005459-5 070-1**.
+   No incluye otras empresas ni otras cuentas. `activo: false` evita las corridas generales;
+   **el comando con --banco explícito sí corre aunque esté en false**.
+3. **No existe --simular en este orquestador.** No usar `--modo prueba` como simulación:
+   entra al banco, descarga, publica y guarda estado. Para la primera prueba supervisada,
+   pausar temporalmente la tarea del vigilante y ejecutar:
    ```powershell
    .\.venv\Scripts\python.exe orquestador\correr.py --cliente navar --banco galicia --modo prueba
    ```
-   Si el banco cambió una pantalla, el bot deja capturas en `clientes\navar\.run\galicia\`; con
-   eso se ajustan los selectores (eso lo hace Claude, no vos).
-4. Cuando corre entera, tarea programada a las 7:00, modo producción:
-   `orquestador\correr.py --cliente navar --banco galicia --modo produccion`.
-5. Siguiente banco. Orden: Galicia (adaptador listo) → Macro → BBVA → Nación → Corrientes.
+   Log: `clientes/navar/.run/galicia/log.txt`. Capturas:
+   `clientes/navar/.run/galicia/capturas/`. No subirlas a git: pueden contener datos reales.
+4. Revisar el Excel y compararlo contra el banco antes de reanudar el vigilante: empresa,
+   cuenta, fechas, movimientos y saldos. Sale como `Movimientos GALICIA AAAA-MM-DD_HHMMSS_microsegundos.xlsx`
+   en `Bancos/galicia`. La fecha del nombre es la descarga; las fechas del extracto mandan.
+   Se valida con el lector existente antes de publicar; no se convierte CSV ni se inventan saldos.
+   Si falla, el Excel queda local en `.run/galicia/descargas_temp/galicia_por_validar.xlsx`.
+   Un extracto sin movimientos también frena: ese caso necesita validación manual.
+   El rango termina ayer (`incluir_hoy: false`), arranca ayer en la primera corrida, y después
+   retoma desde el último cierre guardado. No recupera historia anterior por sí solo; conservar
+   los extractos previos. Estado: `.run/galicia/estado_descargas.json`; no borrarlo a ciegas.
+5. Sólo cuando pase la comparación, reanudar el vigilante y revisar su log y Registro en la
+   Sheet. En el Programador de tareas, crear **finauto NAVAR Galicia**, a las **07:00 cada día**:
+   - Usuario: el mismo que cargó las claves y tiene Drive abierto; ejecutar sólo con sesión iniciada.
+   - Programa: `C:\finauto\.venv\Scripts\python.exe`.
+   - Argumentos: `orquestador\correr.py --cliente navar --banco galicia --modo produccion`.
+   - Iniciar en: `C:\finauto`.
+   - No iniciar otra instancia si ya está corriendo. Notebook encendida, sin suspensión y con Drive montado.
+   - Revisar las próximas horas del vigilante y dejar una pasada posterior, por ejemplo 07:15.
+     Corre cada 15 minutos: los horarios no garantizan que Galicia haya terminado. El Excel se
+     publica al terminar la copia; si tarda, lo recoge una pasada posterior.
+   Probar la tarea con «Ejecutar» y comprobar el archivo, log y Registro; el horario solo no
+   certifica funcionamiento. El comando explícito no requiere activar las corridas generales.
+
+### Qué puede fallar la primera vez
+
+| Señal | Qué revisar |
+|---|---|
+| Login no avanza / segundo factor | `pantalla_login`, `post_login`, `ERROR_login`. No hay resolución automática de token ni espera interactiva prevista. Revisar con administración. |
+| «Usuario ya conectado» | `post_login` y último error. Cerrar la sesión anterior de forma normal; el bot no fuerza su cierre. |
+| Empresa no reconocida o cambio fallido | `modal_empresas`, `ERROR_menu_no_abrio`, `empresa_*`, `ERROR_*`. El original busca nombres en header/body y usa alternativas por coordenadas: son frágiles. Confirmar nombre y pantalla antes de ajustar. |
+| Cuenta no encontrada / no abre | `listado_cuentas` y `movimientos`. El texto exacto y su click son supuestos pendientes de comprobar; no se elige otra cuenta como reemplazo. |
+| Fechas no confirmadas | `panel_filtros`, `calendario_abierto`, `fechas_seleccionadas`, `movimientos_filtrados`. El calendario depende de clases y textos de la web. No se publica si devuelve una verificación fallida. |
+| No hay XLSX o no pasa el lector | `menu_descarga`, `ERROR_*` y Excel local. Revisar opción disponible, encabezados, número de cuenta dentro del archivo y fechas. No renombrar CSV a XLSX. |
+| Drive o tarea fallan | Ruta local, usuario de Windows, sesión iniciada, Drive montado y `log.txt`. Un error de configuración puede aparecer sólo en consola antes de crear log. |
+
+El código heredado usa esperas fijas y no confirma el login al enviarlo; una falla puede
+aparecer recién como error de empresa o cuenta. Revisar las capturas en orden. Las capturas
+pueden pisarse entre corridas: conservar la evidencia local antes de repetir. No se probaron
+acceso real, segundo factor, empresa, cuenta, export, permisos del usuario, sincronización de
+Drive ni tarea programada. Los otros bancos siguen desactivados y sin adaptación en esta tarea.
 
 ## Qué queda corriendo, en orden, cada mañana
 
@@ -143,5 +194,5 @@ es normal y el control "se achicó de golpe" protege la Sheet.
 | cada 15 min | vigilante → lectores | `_para la Sheet\` |
 | cada hora | disparador de la Sheet | solapas de la Sheet + Registro |
 
-Si algo falla, queda en `vigilante.log` y en la solapa Registro. El aviso por mail (qué llegó y
-qué no) es el paso siguiente.
+Los errores del bot se revisan en su `log.txt` y capturas; pueden ocurrir antes de que el
+vigilante vea un archivo. Los del procesamiento se revisan en `vigilante.log` y Registro.
