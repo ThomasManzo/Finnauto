@@ -30,6 +30,7 @@ import openpyxl
 from openpyxl.utils import get_column_letter
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.pivot.cache import CacheDefinition, CacheSource, WorksheetSource, CacheField, SharedItems
+from openpyxl.pivot.record import RecordList, Record, Text as RText, Number as RNumber, Missing as RMissing, Index as RIndex
 from openpyxl.pivot.table import (TableDefinition, Location, PivotField, RowColField, DataField,
                                   FieldItem, RowColItem, PivotTableStyle)
 
@@ -103,20 +104,59 @@ def hoja_resumen(wb, ws, enc, col_fecha, col_importe, col_quien):
 
 
 def agregar_pivot(wb, ws, enc, col_importe, campos_fila):
+    """La dinámica necesita su propia copia de los datos (la "caché"): si se guarda vacía,
+    Excel la abre sin nada hasta que alguien le da Actualizar. Así que se escriben la lista de
+    valores distintos de cada campo de fila y un registro por cada renglón de la tabla."""
     ref = "A1:%s%d" % (get_column_letter(ws.max_column), ws.max_row)
-    cache = CacheDefinition(
-        cacheSource=CacheSource(type="worksheet", worksheetSource=WorksheetSource(ref=ref, sheet=ws.title)),
-        cacheFields=[CacheField(name=h, sharedItems=SharedItems()) for h in enc],
-        recordCount=0, saveData=False, refreshOnLoad=True,      # Excel la llena al abrir el archivo
-        createdVersion=5, refreshedVersion=6, minRefreshableVersion=3)
-    cache.records = None
     idx = [enc.index(c) for c in campos_fila]
     i_imp = enc.index(col_importe)
+    filas = [r for r in ws.iter_rows(min_row=2, values_only=True) if any(v is not None for v in r)]
+
+    # valores distintos de cada campo de fila, en orden (así se ven ordenados en la dinámica)
+    distintos, pos = {}, {}
+    for k in idx:
+        vals = sorted({str(r[k]) for r in filas if r[k] is not None})
+        distintos[k] = vals
+        pos[k] = dict((v, i) for i, v in enumerate(vals))
+
+    cfields = []
+    for k, h in enumerate(enc):
+        if k in idx:
+            cfields.append(CacheField(name=h, sharedItems=SharedItems(
+                _fields=[RText(v=v) for v in distintos[k]], count=len(distintos[k]),
+                containsSemiMixedTypes=None, containsString=True, containsNonDate=None, containsBlank=True)))
+        else:
+            cfields.append(CacheField(name=h, sharedItems=SharedItems()))
+
+    registros = []
+    for r in filas:
+        campos_r = []
+        for k in range(len(enc)):
+            v = r[k] if k < len(r) else None
+            if k in idx:
+                campos_r.append(RIndex(v=pos[k].get(str(v), 0)) if v is not None else RMissing())
+            elif isinstance(v, (int, float)):
+                campos_r.append(RNumber(v=float(v)))
+            elif v is None:
+                campos_r.append(RMissing())
+            elif isinstance(v, datetime.datetime):
+                campos_r.append(RText(v=v.strftime("%d/%m/%Y")))
+            else:
+                campos_r.append(RText(v=str(v)))
+        registros.append(Record(_fields=campos_r))
+
+    cache = CacheDefinition(
+        cacheSource=CacheSource(type="worksheet", worksheetSource=WorksheetSource(ref=ref, sheet=ws.title)),
+        cacheFields=cfields, recordCount=len(registros), saveData=True, refreshOnLoad=True,
+        createdVersion=5, refreshedVersion=6, minRefreshableVersion=3)
+    cache.records = RecordList(count=len(registros), r=registros)
+
     campos = []
     for k in range(len(enc)):
         if k in idx:
+            items = [FieldItem(x=i) for i in range(len(distintos[k]))] + [FieldItem(t="default")]
             campos.append(PivotField(axis="axisRow", showAll=False, defaultSubtotal=True,
-                                     compact=False, outline=False, items=[FieldItem(t="default")]))
+                                     compact=False, outline=False, items=items))
         elif k == i_imp:
             campos.append(PivotField(dataField=True, showAll=False, defaultSubtotal=False, compact=False, outline=False))
         else:
