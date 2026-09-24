@@ -526,7 +526,8 @@ function verPosicion(){
   // ventana, o sea tres cosas mezcladas en un numero sin unidad clara. Un KPI
   // que hay que explicar no es un KPI.
   var c = el('div', 'kpis');
-  [['Caja de hoy', pesos(k.caja, true), k.efectivo_sin_asignar
+  [['Caja de hoy', k.sin_arqueo ? 'sin arqueo' : pesos(k.caja, true), k.sin_arqueo
+      ? 'Falta el arqueo de AA; totales y proyecciones incompletos' : k.efectivo_sin_asignar
       ? '+ ' + pesos(k.efectivo_sin_asignar, true) + ' de efectivo del grupo, sin asignar'
       : 'banco + efectivo', ''],
    ['Vencido con ' + V.proveedores, pesos(k.vencido, true),
