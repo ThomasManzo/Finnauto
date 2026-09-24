@@ -208,7 +208,9 @@ function _renglones_(periodo) {
     { n: "Impuestos corrientes", real: _real_("Egreso", "Impuestos"), est: "", como: "prom",
       f: "real: extracto · estimado: " + (mensual ? "promedio × inflación" : "no se estima día a día; ver Cash Mensual") },
     { n: "Cheques propios", real: _real_("Egreso", "Cheques"), est: chqP, como: "lista", lista: chqP, f: "real: debitados (extracto) · estimado: en cartera por fecha de pago" },
-    { n: "Intereses y gastos bancarios", real: _real_("Egreso", "Gastos Bancarios"), est: mensual ? "" : interes90, como: "prom",
+    // No se estima día a día: repetía el mismo importe todos los días y no había pasado.
+    // Aparece cuando el extracto lo trae clasificado. En el mensual sí va el promedio.
+    { n: "Intereses y gastos bancarios", real: _real_("Egreso", "Gastos Bancarios"), est: "", como: "prom",
       f: "real: extracto · estimado: " + (mensual ? "promedio × inflación" : "promedio de los últimos 90 días") },
     { n: "Otros (tarjeta, honorarios)", real: _real_("Egreso", "Otros") + "+" + _real_("Egreso", "Honorarios y Dividendos"), est: "-" + _proy_("Sueldos y Jornales", true), como: "lista", lista: "-" + _proy_("Sueldos y Jornales", true),
       f: "real: extracto · estimado: lo proyectado con fecha en Movimientos (salvo sueldos)" },
@@ -324,12 +326,8 @@ function _armarPeriodica_(ss, nombre, periodo) {
 
   // ---- 1. margen por banco. El saldo real queda aparte: el acuerdo no es plata ingresada.
   _seccion_(h, fila++, "1 · Bancos (saldo real + descubierto acordado)", "#e8f0fe", "#174ea6", colFuente);
-  var primeraCuentaVista = fila;
-  fila += 2 * cuentasVista.length;
   var bancos = _bancos_(ss), primeraMargen = fila;
   fila += bancos.length;
-  var primeraFechaVista = fila;
-  fila += cuentasVista.length;
   var primeraBanco = fila;
   // Al rearmar, las filas antes ocultas pueden haber cambiado de lugar.
   h.showRows(1, h.getMaxRows());
@@ -337,8 +335,10 @@ function _armarPeriodica_(ss, nombre, periodo) {
   var colAcuerdo = colFuente + 1;            // auxiliar oculta: acuerdo de descubierto de cada banco
   bancos.forEach(function (b, indice) {
     var filaMargen = primeraMargen + indice;
-    h.getRange(filaMargen, 1).setValue(b.etiqueta + " · margen con acuerdo");
-    h.getRange(filaMargen, 1).setNote("Saldo real + descubierto acordado. Gris e itálica: alguna cuenta arrastra un saldo anterior; ver la fecha debajo de cada saldo. Con fotos al corte: verde si queda margen, ámbar si está agotado y rojo si está excedido. Sin acuerdo informado se suma cero. No modifica los cierres.");
+    // Una sola fila por banco: el margen (saldo + descubierto acordado), con color.
+    // Es lo que se quiere leer de un vistazo: cuánto aire le queda a esa cuenta.
+    h.getRange(filaMargen, 1).setValue(b.etiqueta);
+    h.getRange(filaMargen, 1).setNote("Saldo del banco más su descubierto acordado: cuánto aire le queda. Verde si le queda margen, ámbar si lo usó todo, rojo si está excedido. Sin acuerdo informado se suma cero. El saldo del día que el banco no mandó extracto es el último conocido. No modifica los cierres.");
     h.getRange(fila, 1).setValue(b.etiqueta + " · saldo real (auxiliar)");
     h.getRange(fila, colAcuerdo).setFormula("=SUMIFS(" + R.dbOrig + "," + R.dbBanco + ",\"" + b.nombre + "\"," + R.dbLinea + ",\"*escubierto*\")");
     for (var c = 0; c < nCols; c++) {
@@ -366,7 +366,6 @@ function _armarPeriodica_(ss, nombre, periodo) {
   for (var c1 = 0; c1 < nCols; c1++) h.getRange(fila, 2 + c1).setFormula("=IF(" + D(c1) + ">$B$2,\"\",SUM(" + L(c1) + primeraBanco + ":" + L(c1) + (fila - 1) + "))").setFontWeight("bold");
   _lineaTotal_(h, fila, colFuente);
   fila++;
-  var filaAvisoArrastre = fila++;
   // Saldo inicial del período = cierre del anterior (como el "Saldo inicio" de un cash a mano).
   // Se llena después, cuando se sepa en qué fila queda el cierre.
   var filaInicial = fila;
@@ -593,8 +592,7 @@ function _armarPeriodica_(ss, nombre, periodo) {
   h.getRange(primeraBanco, colAcuerdo, ultimoBanco - primeraBanco + 1, 1).setNumberFormat(FORMATO_NUM);
   h.hideColumns(colAcuerdo);          // auxiliar: acuerdo de descubierto por banco
   // El detalle nuevo sólo muestra datos: ninguna fórmula de cierre lo toma como base.
-  _mostrarArrastreBancos_(h, cuentasVista, bancos, primeraCuentaVista, primeraFechaVista,
-    primeraMargen, primeraBanco, filaAvisoArrastre, colAcuerdo, nCols, D, F, L);
+  _colorearBancos_(h, bancos, primeraMargen, primeraBanco, colAcuerdo, nCols, D, L);
   h.setFrozenRows(filaFechas + 1);
   h.setFrozenColumns(1);
 }
@@ -773,7 +771,7 @@ function armarInstrucciones() {
   seccion("2 · Cómo se lee una pantalla (las tres tienen la misma estructura)");
   tabla(["Parte", "Qué muestra"], [
     ["Hoy / Último extracto", "B2 es hoy; B3 el último día con extracto. Hasta B3 todo es REAL; desde el día siguiente, ESTIMADO. La fila bajo las fechas lo dice por columna (real · estimado · real + est.)."],
-    ["1 · Bancos", "Saldo real + descubierto acordado: verde si queda margen, ámbar si da cero, rojo si está excedido. Sin acuerdo se suma cero. El total real y los cierres no incluyen el acuerdo. El detalle por cuenta muestra saldo sin acuerdo y debajo su fecha: ARRASTRADO en gris e itálica si es anterior al corte (hoy o fin del período pasado); Confirmado si coincide. El margen con acuerdo también queda gris si arrastra alguna cuenta. Sin foto previa se avisa. El aviso junto al total cuenta las cuentas arrastradas y su fecha más vieja; el total conserva su corte de extracto. Vacío en períodos futuros: no se inventa saldo por banco."],
+    ["1 · Bancos", "Una fila por banco con el margen: saldo más descubierto acordado. Verde si le queda aire, ámbar si lo usó todo, rojo si está excedido (ej.: saldo -101,7 M con acuerdo de 100 M muestra -1,7 M en rojo). El día que un banco no manda extracto se arrastra su último saldo conocido. El total y los cierres van sobre el saldo real, sin el acuerdo. Vacío en períodos futuros: no se inventa saldo."],
     ["Saldo inicial", "El cierre del período anterior. Es el 'saldo inicio' de un cash hecho a mano: de acá se parte cada día / semana / mes."],
     ["2 · Ingresos", "Un renglón por concepto. Real atrás (extracto), estimado adelante (listas). Sin préstamos: los préstamos no son operación."],
     ["3 · Egresos de la operación", "Ídem: proveedores, sueldos, impuestos corrientes, cheques propios, banco, otros."],
@@ -909,61 +907,23 @@ function _cuentasVistaBancos_(ss) {
   return cuentas;
 }
 
-function _mostrarArrastreBancos_(h, cuentas, bancos, primera, fechas, margen, auxiliares, aviso, colAcuerdo, nCols, D, F, L) {
+function _colorearBancos_(h, bancos, margen, auxiliares, colAcuerdo, nCols, D, L) {
+  // Una fila por banco con el margen: saldo (arrastrado si el banco no mandó extracto ese día)
+  // más el descubierto acordado. Sin filas de texto: el número y el color dicen todo.
   var reglas = [];
-  cuentas.forEach(function (cuenta, i) {
-    var r = primera + 2 * i, rf = fechas + i;
-    h.getRange(r, 1).setValue(cuenta.etiqueta + " · saldo sin acuerdo");
-    h.getRange(r + 1, 1).setValue("↳ Fecha y estado del saldo de arriba");
-    h.getRange(r, 2, 2, nCols).setWrap(true).setNumberFormat("#,##0;-#,##0;0");
-    h.setRowHeight(r + 1, 64);
-    for (var c = 0; c < nCols; c++) {
-      var fecha = L(c) + rf, saldo = L(c) + r, corte = "MIN(" + F(c) + "-1,$B$2)";
-      // Nunca buscamos después de hoy ni traemos la primera foto hacia días anteriores.
-      h.getRange(rf, 2 + c).setFormula('=IF(' + D(c) + '>$B$2,0,MAXIFS(' + R.salFecha + ',' + cuenta.cond + ',' + R.salFecha + ',"<="&' + corte + ',' + R.salFecha + ',">0"))');
-      var condFecha = cuenta.cond + ',' + R.salFecha + ',' + fecha;
-      // Una foto duplicada o sin importe no se convierte en cero ni en un saldo confirmado.
-      var valor = 'SUMIFS(' + R.salImp + ',' + condFecha + ')';
-      var vacios = 'COUNTIFS(' + condFecha + ',' + R.salImp + ',"=")';
-      var textos = 'COUNTIFS(' + condFecha + ',' + R.salImp + ',"*")';
-      h.getRange(r, 2 + c).setFormula('=IF(' + D(c) + '>$B$2,"",IF(' + fecha + '=0,"Sin saldo previo",IF(OR(COUNTIFS(' + condFecha + ')<>1,' + vacios + '>0,' + textos + '>0),"Revisar saldo",' + valor + ')))');
-      h.getRange(r + 1, 2 + c).setFormula('=IF(' + D(c) + '>$B$2,"",IF(' + fecha + '=0,"Sin saldo previo",IF(ISNUMBER(' + saldo + '),IF(' + fecha + '<' + corte + ',"ARRASTRADO · al ","Confirmado · al "),"REVISAR · al ")&TEXT(' + fecha + ',"dd/mm/yyyy")))');
-    }
-    var rango = h.getRange(r, 2, 2, nCols), f = 'B$' + rf;
-    reglas.push(SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=AND(' + f + '>0,' + f + '<MIN(' + F(0) + '-1,$B$2))').setBackground("#f1f3f4").setFontColor("#5f6368").setItalic(true).setRanges([rango]).build());
-  });
-  if (cuentas.length) h.hideRows(fechas, cuentas.length);
-  // El acuerdo sigue siendo uno por banco, aunque haya varias cuentas en ese banco.
   bancos.forEach(function (b, i) {
-    var indices = [];
-    cuentas.forEach(function (cuenta, j) { if (cuenta.banco === b.nombre) indices.push(j); });
-    var r = margen + i;
+    var r = margen + i, aux = auxiliares + i;
     for (var c = 0; c < nCols; c++) {
-      var saldos = indices.map(function (j) { return L(c) + (primera + 2 * j); }).join(",");
-      if (!indices.length) continue;
-      h.getRange(r, 2 + c).setFormula('=IF(' + D(c) + '>$B$2,"",IF(COUNT(' + saldos + ')<>' + indices.length + ',"Revisar cuentas",SUM(' + saldos + ')+N($' + _colLetra_(colAcuerdo) + (auxiliares + i) + ')))');
+      h.getRange(r, 2 + c).setFormula('=IF(' + D(c) + '>$B$2,"",' + L(c) + aux + '+N($' + _colLetra_(colAcuerdo) + aux + '))');
     }
     var celda = "B" + r, rango = h.getRange(r, 2, 1, nCols);
-    var ff = indices.map(function (j) { return "B" + (fechas + j); }).join(",");
-    if (indices.length) {
-      // Gris gana a los colores del margen: un saldo viejo nunca parece recién confirmado.
-      reglas.push(SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=AND(ISNUMBER(' + celda + '),MIN(' + ff + ')<MIN(' + F(0) + '-1,$B$2))').setBackground("#f1f3f4").setFontColor("#5f6368").setItalic(true).setRanges([rango]).build());
-      [[">0", "#e6f4ea", "#137333"], ["=0", "#fef7e0", "#8a5700"], ["<0", "#fce8e6", "#b3261e"]].forEach(function (color) {
-        reglas.push(SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=AND(ISNUMBER(' + celda + '),' + celda + color[0] + ')').setBackground(color[1]).setFontColor(color[2]).setRanges([rango]).build());
-      });
-    }
-    h.getRange(r, 2, 1, nCols).setNumberFormat("#,##0;-#,##0;0").setWrap(true);
+    [[">0", "#e6f4ea", "#137333"], ["=0", "#fef7e0", "#8a5700"], ["<0", "#fce8e6", "#b3261e"]].forEach(function (color) {
+      reglas.push(SpreadsheetApp.newConditionalFormatRule()
+        .whenFormulaSatisfied('=AND(ISNUMBER(' + celda + '),' + celda + color[0] + ')')
+        .setBackground(color[1]).setFontColor(color[2]).setRanges([rango]).build());
+    });
+    h.getRange(r, 2, 1, nCols).setNumberFormat("#,##0;-#,##0;0");
   });
-  h.getRange(aviso, 1).setValue("Antigüedad del detalle de cuentas · total y cierres conservan su corte de extracto");
-  h.getRange(aviso, 1, 1, nCols + 1).setWrap(true).setFontSize(9);
-  h.setRowHeight(aviso, 150);
-  for (var c = 0; c < nCols; c++) {
-    if (!cuentas.length) { h.getRange(aviso, 2 + c).setValue("Sin cuentas"); continue; }
-    var rangoFechas = L(c) + fechas + ':' + L(c) + (fechas + cuentas.length - 1);
-    var corte = 'MIN(' + F(c) + '-1,$B$2)';
-    var cantidad = 'COUNTIFS(' + rangoFechas + ',">0",' + rangoFechas + ',"<"&' + corte + ')';
-    h.getRange(aviso, 2 + c).setFormula('=IF(' + D(c) + '>$B$2,"",' + cantidad + '&" cuentas con saldo arrastrado"&IF(' + cantidad + '>0," · más viejo al "&TEXT(MINIFS(' + rangoFechas + ',' + rangoFechas + ',">0"),"dd/mm/yyyy"),"")&IF(COUNTIF(' + rangoFechas + ',0)>0," · "&COUNTIF(' + rangoFechas + ',0)&" sin saldo previo",""))');
-  }
   h.setConditionalFormatRules(reglas);
 }
 
@@ -976,7 +936,8 @@ function _bancos_(ss) {
     if (!banco || vistos[banco]) return;
     vistos[banco] = true;
     var manual = String(r[5] || "").toLowerCase().indexOf("manual") !== -1;
-    out.push({ nombre: banco, manual: manual, etiqueta: banco.toLowerCase().indexOf("vario") !== -1 ? "AA · caja en efectivo (carga manual)" : banco,
+    var esCaja = /vario|caja aa/i.test(banco);
+    out.push({ nombre: banco, manual: manual || esCaja, etiqueta: esCaja ? "Caja AA (efectivo)" : banco,
                fuente: manual ? "Saldos Bancarios · carga manual: se arrastra hasta que se cargue otro" : "Saldos Bancarios · extracto · se arrastra el último saldo conocido" });
   });
   return out;
@@ -1411,7 +1372,9 @@ function _mnCaja_(h, s, r) {
 // Se corre desde el menú finauto cuando hace falta; no lo llama el armado del cash.
 // ==================================================================================
 function arreglarValidaciones() {
-  var h = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Movimientos");
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  _validacionesSaldos_(ss);
+  var h = ss.getSheetByName("Movimientos");
   if (!h) throw new Error("No encontré la solapa Movimientos");
   var n = Math.max(h.getMaxRows() - 1, 1);
   h.getRange(2, 10, n, 1).clearDataValidations();               // J · Origen: sin lista
@@ -1423,6 +1386,32 @@ function arreglarValidaciones() {
     "Débito automático", "Debito Automatico"]);
   SpreadsheetApp.getActiveSpreadsheet().toast(
     "Validaciones al día: Origen sin lista (lo escribe el lector), Categoria y Medio de Pago completos.", "finauto", 8);
+}
+
+// Saldos Bancarios tenía la lista de bancos en minúscula ("Nacion, Corrientes…") y los lectores
+// escriben en mayúscula ("NACION"), así que marcaba TODAS las filas como inválidas. Y el Origen
+// trae el banco adentro ("Extracto MACRO"), que tampoco entra en una lista. Además la caja de AA
+// figuraba como "Varios": se renombra a "Caja AA", que es lo que es.
+function _validacionesSaldos_(ss) {
+  var h = ss.getSheetByName("Saldos Bancarios");
+  if (!h) return;
+  var n = Math.max(h.getLastRow() - 1, 1);
+  var datos = h.getRange(2, 1, n, 7).getValues();
+  var bancos = {}, renombradas = 0;
+  datos.forEach(function (r, i) {
+    var b = String(r[1] || "").trim();
+    if (!b) return;
+    if (/^vario/i.test(b)) {
+      h.getRange(i + 2, 2).setValue("Caja AA");
+      h.getRange(i + 2, 7).setValue("se calcula con los movimientos de tesorería");
+      b = "Caja AA"; renombradas++;
+    }
+    bancos[b] = true;
+  });
+  h.getRange(2, 6, n, 1).clearDataValidations();                 // F · Origen: lo escribe el lector
+  _lista_validacion_(h, 2, n, Object.keys(bancos).sort());       // B · Banco: los que realmente hay
+  if (renombradas) SpreadsheetApp.getActiveSpreadsheet().toast(
+    "Caja AA renombrada en " + renombradas + " fila(s) de Saldos Bancarios.", "finauto", 6);
 }
 
 function _lista_validacion_(h, col, n, valores) {
