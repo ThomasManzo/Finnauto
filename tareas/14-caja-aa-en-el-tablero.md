@@ -1,5 +1,5 @@
 # Tarea 14 — La caja de AA dice dos cosas distintas según dónde se mire
-Estado: pendiente
+Estado: lista para revisión
 Rama: tarea/caja-aa-tablero
 
 ## Objetivo
@@ -82,5 +82,62 @@ No tocar `importar_cashflow.gs`, `aviso_diario.gs`, `vigilante.py` ni los otros 
 4. `grep` de nombres propios de personas vacío. Commit en la rama.
 
 ## Qué hice
+
+- `lector/cash_limpio.py`: agregué `actualizar_caja_aa`, compartida por el lector y el tablero.
+  Parte del último arqueo Manual de AA hasta hoy y suma sólo Tango AA real posterior.
+  Conserva el arqueo original para que abrir de nuevo un contrato no duplique movimientos.
+  Los contratos nuevos guardan Origen del saldo y signo/estado originales del movimiento.
+- `dashboard/datos.py`: aplica esa misma función al abrir contratos anteriores, antes de calcular
+  todos los números. El contrato del 23/09 no guardaba Origen: para ese formato del lector,
+  reconoce la caja AA por Varios, (varios) o Caja; no toma cuentas bancarias como arqueos.
+- `dashboard/app.py`: sin arqueo, Posición muestra **sin arqueo** en AA y grupo, y avisa que
+  los totales y proyecciones están incompletos. El importe de caja AA queda como desconocido
+  (`null` en `caja_aa.saldo`); los cálculos internos conservan sólo los saldos conocidos.
+- `crear_cash.gs`: únicamente el rótulo de caja AA y su nota. Comparación completa contra HEAD
+  con esas dos sustituciones: coincide; **ninguna fórmula cambió**.
+- `manual_cash.md`: una línea con el criterio compartido. No se tocaron otros archivos ni
+  se instalaron dependencias. Trabajo en la rama `tarea/caja-aa-tablero` del worktree asignado.
+
+### Comprobación con el contrato real (lectura solamente)
+
+Regeneré el HTML mediante `dashboard.datos.armar` y `dashboard.app.render`, con fecha del contrato
+23/09. Salida temporal, sin guardar memoria ni publicar:
+`/var/folders/fl/cfk7wrws1md5k8f64_bn18mh0000gn/T/tarea14-0rszwojh/finauto.html`.
+
+| Dato | Tablero, con centavos | Redondeado | Planilla indicada en la consigna |
+|---|---:|---:|---:|
+| Caja AA | $27.675.787,50 | $27.675.788 | $27.675.788 |
+| Caja total | −$157.747.412,34 | −$157.747.412 | −$157.747.412 |
+| Bancos de A, conservados | −$185.423.199,84 | −$185.423.200 | — |
+
+La comparación usa los valores de la planilla informados en la consigna; no se accedió a la
+Sheet ni a carpetas privadas. El contrato original quedó intacto.
+
+### Pruebas
+
+Con planillas inventadas temporales y el lector completo:
+
+- Arqueo 100 del 21/09, movimiento −7 del 22/09 y +25 del 23/09: caja AA **118**.
+  Banco A −40: total **78**.
+- Movimientos anteriores o del mismo día del arqueo, futuros, de otro origen, proyectados
+  o con estado vacío: no se suman.
+- Sin arqueo: saldo desconocido, leyenda **sin arqueo** en AA/grupo y aviso de faltante;
+  el banco A conserva su presentación. HTML de este caso en la misma carpeta temporal.
+- Arqueo nuevo 200 del 23/09: manda **200**; no suma de nuevo movimientos anteriores ni de ese día.
+- Arqueo futuro del 24/09: se conserva el del 21/09 y el resultado es **118**.
+- Arqueo válido en cero: **0**, distinto de sin arqueo.
+- Reaplicar la función al contrato actualizado: resultado idéntico, sin doble conteo.
+
+`python -m py_compile lector/cash_limpio.py dashboard/datos.py dashboard/app.py`: OK.
+`python tests/test_lector.py`: todas las pruebas pasan. El intento inicial con unittest no
+recolectaba pruebas; este archivo tiene su propio ejecutor y se corrió directamente.
+Se usó el Python del entorno existente de Finnauto. `git diff --check`: OK.
+Búsqueda de nombres propios de personas en líneas agregadas: vacía.
+No se ejecutó Apps Script ni se publicó el tablero; queda para revisión.
+
+**Commit pendiente por sandbox:** `git add` falló al crear
+`/Users/thomasmanzo/Documents/Finnauto/.git/worktrees/Finnauto-tarea14/index.lock`
+con `Operation not permitted`. Los cambios quedan en este worktree para que el revisor los
+commitee, como prevé `tareas/LEEME.md`. No quedan dudas sobre el criterio aplicado.
 
 ## Revisión
