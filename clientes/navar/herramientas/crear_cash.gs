@@ -918,7 +918,8 @@ function _colorearBancos_(h, bancos, margen, auxiliares, colAcuerdo, nCols, D, L
     // El color va en el FORMATO DE NÚMERO, no en formato condicional: las reglas condicionales
     // no pintaban (el rango arranca en la columna separadora) y esto además viaja al exportar.
     // Verde = le queda aire · rojo = excedido · ámbar = usó justo todo el acuerdo.
-    h.getRange(r, 2, 1, nCols).setNumberFormat("[Green]#,##0;[Red]-#,##0;[Color45]0").setFontWeight("bold");
+    // Negro = le queda aire · ámbar = justo en el límite del acuerdo · rojo = excedido.
+    h.getRange(r, 2, 1, nCols).setNumberFormat("[Black]#,##0;[Red]-#,##0;[Color45]0");
   });
 }
 
