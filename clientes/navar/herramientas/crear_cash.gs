@@ -910,6 +910,7 @@ function _cuentasVistaBancos_(ss) {
 function _colorearBancos_(h, bancos, margen, auxiliares, colAcuerdo, nCols, D, L) {
   // Una fila por banco con el margen: saldo (arrastrado si el banco no mandó extracto ese día)
   // más el descubierto acordado. Sin filas de texto: el número y el color dicen todo.
+  var reglas = [], sep = _separadorDeEstaPlanilla_(h);
   bancos.forEach(function (b, i) {
     var r = margen + i, aux = auxiliares + i;
     for (var c = 0; c < nCols; c++) {
@@ -918,9 +919,22 @@ function _colorearBancos_(h, bancos, margen, auxiliares, colAcuerdo, nCols, D, L
     // El color va en el FORMATO DE NÚMERO, no en formato condicional: las reglas condicionales
     // no pintaban (el rango arranca en la columna separadora) y esto además viaja al exportar.
     // Verde = le queda aire · rojo = excedido · ámbar = usó justo todo el acuerdo.
-    // Negro = le queda aire · ámbar = justo en el límite del acuerdo · rojo = excedido.
-    h.getRange(r, 2, 1, nCols).setNumberFormat("[Black]#,##0;[Red]-#,##0;[Color45]0");
+    h.getRange(r, 2, 1, nCols).setNumberFormat("#,##0;-#,##0;0");
+    // El semáforo mira DOS cosas, así que va por formato condicional y no por formato de número:
+    //   rojo    = el margen quedó negativo → se pasó del acuerdo
+    //   ámbar   = el saldo del banco es negativo pero el acuerdo lo cubre → está usando el descubierto
+    //   negro   = no toca el descubierto (es el formato de base, sin regla)
+    // Ojo: las reglas se escriben con el separador de ESTA planilla (en español es ";"),
+    // porque _separadorLocal_ arregla las fórmulas de las celdas pero no las de las reglas.
+    var y = _colLetra_(2), margen1 = y + r, saldo1 = y + aux, rango = h.getRange(r, 2, 1, nCols);
+    reglas.push(SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied("=AND(ISNUMBER(" + margen1 + ")" + sep + margen1 + "<0)")
+      .setFontColor("#b3261e").setRanges([rango]).build());
+    reglas.push(SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied("=AND(ISNUMBER(" + margen1 + ")" + sep + saldo1 + "<0)")
+      .setFontColor("#b06000").setRanges([rango]).build());
   });
+  h.setConditionalFormatRules(reglas);
 }
 
 function _bancos_(ss) {
@@ -971,6 +985,17 @@ function _colLetra_(n) {
 }
 
 // ---- La Sheet está en español: la coma es el decimal y los argumentos van con ";".
+// Devuelve "," o ";" segun lo que acepte esta planilla. Lo mismo que hace _separadorLocal_ con
+// las celdas, pero hace falta ANTES, para escribir las reglas de formato condicional.
+function _separadorDeEstaPlanilla_(h) {
+  var prueba = h.getRange(1, 40);
+  prueba.setFormula("=MAX(1,2)");
+  SpreadsheetApp.flush();
+  var conComa = (prueba.getValue() === 2);
+  prueba.clearContent();
+  return conComa ? "," : ";";
+}
+
 function _separadorLocal_(ss, h) {
   var prueba = h.getRange(1, 40);
   prueba.setFormula("=MAX(1,2)");
