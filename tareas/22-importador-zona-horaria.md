@@ -1,5 +1,5 @@
 # Tarea 22 — El importador corre las fechas 4 horas si la Sheet no está en la hora del Pacífico
-Estado: lista para revisión
+Estado: aprobada (mergeada 25/09)
 Rama: tarea/importador-zona-horaria
 
 ## Objetivo
@@ -97,3 +97,15 @@ Apps Script real no se puede ejecutar desde este entorno. Para revisar la instal
    condición de fecha.
 
 ## Revisión
+
+**Claude, 25/09/2026.** Leí el diff completo. Aprobado.
+- La temporal recibe la zona del destino **antes** de cualquier lectura. Es la causa real, porque
+  `getValues()` interpreta las fechas con la zona de la planilla que se lee.
+- La lista `fechas` por solapa es explícita, y la normalización usa `Utilities.formatDate` y
+  `parseDate` en la zona del destino (sin restar horas a mano). También alcanza a las filas
+  conservadas (`vivas`), que son de día.
+- La verificación frena con "fechas corridas por zona horaria". Queda como red de seguridad: con
+  la temporal igualada, no debería dispararse.
+- Costo: dos llamadas a `Utilities` por fecha al escribir y otras dos al verificar. Con Movimientos
+  (~2.500 filas) sigue lejos del límite de 6 minutos.
+- En esta Mac no hay `node`: la prueba `.cjs` no la corrí yo; Codex informa que pasa.
