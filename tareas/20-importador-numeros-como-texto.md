@@ -37,9 +37,19 @@ Pasó el 25/09/2026, con la primera bajada de Tango por API:
 ## Resultado esperado
 
 1. En la configuración de cada solapa (`IMPORTS`), una lista **explícita** de columnas que son
-   identificadores y se escriben como texto. Como mínimo: Cartera de Cheques → `Nro Cheque`;
-   Cuentas a Cobrar → `Nro Factura`; Cuentas a Pagar → `Nro Factura / OC`; Movimientos →
-   `Referencia`. Revisar las demás solapas del archivo y anotar en "Qué hice" si hay otras.
+   identificadores o texto libre y se escriben como texto (por ejemplo `texto: [...]`). Claude
+   revisó el 25/09 los `para_pegar_*` de la semana: estas columnas traen textos que son **solo
+   dígitos**, y la Sheet los convertiría a número.
+   - Cartera de Cheques → `Nro Cheque` (el que falló).
+   - Saldos Bancarios → `Cuenta / Nro` (ej. `130559`, `19477890007728`).
+   - Movimientos (bancos y tesorería AA) → `Referencia` y `Concepto / Detalle`. Hay referencias de
+     **30 dígitos** (Macro: `033000953674800000000011381061`). Convertidas a número pierden
+     precisión y el dato queda **roto**, no solo mal verificado.
+   - Por las dudas, aunque hoy no fallan: Cuentas a Cobrar → `Nro Factura`; Cuentas a Pagar →
+     `Nro Factura / OC`.
+   Revisar las solapas de impuestos y deuda y anotar en "Qué hice" si hay otras.
+   No se sabe por qué las de bancos no frenaron hasta ahora. Puede ser que esas columnas ya estén
+   en formato texto en la Sheet. Para la tarea no importa: se fuerza el formato igual.
 2. Antes de escribir esas columnas, ponerles formato de texto (`setNumberFormat("@")`) en el rango
    que se va a escribir, **y en el que se limpia abajo**. Así una fila futura tampoco se convierte.
 3. `_mismoDato_`: además de fechas, considerar iguales un número y un texto que la Sheet habría
