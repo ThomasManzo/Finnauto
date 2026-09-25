@@ -1,5 +1,5 @@
 # Tarea 18 — Que la bajada de Tango por API funcione de verdad
-Estado: lista para revisión
+Estado: aprobada (mergeada 25/09)
 Rama: tarea/tango-api
 
 ## Objetivo
