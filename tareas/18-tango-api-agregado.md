@@ -31,9 +31,17 @@ contra el export a mano del 23/09.
 2. **Sin `customQuery` no se baja.** Si una (empresa, consulta) no tiene número, error claro para
    esa bajada ("falta la consulta personalizada en perfil.json"); no volver a la vista por
    defecto, porque le faltan columnas.
-3. **Fechas vacías**: `fromDate=` y `toDate=` **vacíos** (así lo arma la propia pantalla de Live, y
-   con eso trae todo sin filtro de fecha). Esto reemplaza el rango 01/01/1990 → +5 años del
-   punto 1 de "Resultado esperado".
+3. **Fechas**: esto reemplaza el rango 01/01/1990 → +5 años del punto 1 de "Resultado esperado".
+   - Todas las consultas, **menos cheques propios**: `fromDate=` y `toDate=` **vacíos**. Así lo
+     arma la propia pantalla de Live y trae todo sin filtro de fecha.
+   - **cheques_propios**: `fromDate` = **hoy − 60 días** (DD/MM/AAAA, calculado desde `--hoy`) y
+     `toDate` vacío. Por qué: Tango nunca marca como debitado un cheque propio, así que "Al Cobro"
+     junta todo desde 1995 (21.951 cheques); lo único que separa lo pendiente es la fecha.
+     **Comprobado el 25/09**: con `fromDate=26/08/2026` vinieron 19 cheques con FECHA_DEL_CHEQUE
+     del 27/08/2026 al 25/05/2027 y FECHA_DE_EMISION desde 10/2025. O sea, **filtra por fecha
+     del cheque**, no por emisión: los diferidos emitidos hace meses entran igual. El lector usa
+     de hoy − 30 en adelante, así que 60 deja margen. Los 60 días van en `perfil.json`
+     (ej. `"dias_atras": {"cheques_propios": 60}`), no fijos en el código.
 4. **Columnas que devuelve cada consulta personalizada** (comprobado) y a qué encabezado del export
    a mano se traducen:
 
@@ -66,8 +74,10 @@ contra el export a mano del 23/09.
    Los ID_* no tienen equivalente: van al final con su nombre, como dice la consigna.
 5. **Códigos: ahora confirmados** (ya no son "inferidos"):
    - cheques_propios: **E = Al Cobro**. La API dio 39 cheques E por $582.964.152,10 y el
-     export a mano del 23/09 tenía 39 "Al Cobro" por el mismo importe, al centavo. R = Rechazado y
-     X = Anulado siguen inferidos: la consulta guardada filtra y no los trae.
+     export a mano del 23/09 tenía 39 "Al Cobro" por el mismo importe, al centavo. La consulta
+     guardada (13) ahora filtra **Estado = Al Cobro o Diferido**, así que R/X ya no vienen. El
+     código de "Diferido" no se vio nunca: si aparece, queda `"(código X sin traducir)"` y se ve
+     en el resumen.
    - movimientos_tesoreria: **1 = Cobros, 2 = Pagos, 4 = Otros movimientos de bancos y carteras,
      6 = Rechazo de cheques de terceros**. API 25/09: 1206 / 4255 / 308 / 9. A mano 23/09: 1204 /
      4252 / 308 / 9.
@@ -79,6 +89,5 @@ contra el export a mano del 23/09.
 
 ## Números para la corrida supervisada (no son para los tests)
 
-cobranzas A 345 / pendiente 413.697.844,58 · pagos A 425 / 638.905.653,94 · cheques propios A 39 /
-582.964.152,10 · cobranzas AA 33 / 88.852.823,49 · pagos AA 119 / 176.429.819,12 · cheques
+cobranzas A 345 / pendiente 413.697.844,58 · pagos A 425 / 638.905.653,94 · cheques propios A 19 desde el 26/08 (cambia con la fecha) · cobranzas AA 33 / 88.852.823,49 · pagos AA 119 / 176.429.819,12 · cheques
 terceros AA 268 (C = 14) · tesorería AA 5.778.
