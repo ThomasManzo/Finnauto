@@ -104,3 +104,23 @@ No se puede ejecutar Apps Script desde este entorno. Para la revisión:
    nuevo si cambiaron.
 
 ## Revisión
+
+**Claude, 25/09/2026.** Leí el diff completo. Aprobado, con una prueba ajustada y un control extra
+en la Sheet.
+
+- Bien: la lista `texto` es explícita por solapa y cubre las seis columnas (incluidas las dos
+  fuentes de Movimientos). El formato `@` se pone **antes** de escribir y sobre toda la altura
+  (filas nuevas y cola que se borra). `_mismoDato_` acepta `"55"`/`55` y rechaza `"0055"`/`55` y los
+  números fuera de la precisión segura, que es justo el caso de la referencia de 30 dígitos del
+  Macro. Las fechas siguen igual.
+- Filas conservadas (cargadas a mano) que hoy son número: `setValues` las vuelve a escribir como
+  número aunque la celda sea texto, y el control compara número con número. No rompe.
+- **Ajuste de Claude:** `lector/pruebas/probar_importador_filtros.cjs` esperaba
+  `_mismoDato_(10,'10') === false` (el comportamiento viejo). Quedó en `true`, más dos casos que
+  tienen que seguir distintos (`"0055"` y la referencia de 30 dígitos). En esta Mac no hay `node`:
+  no la pude correr. Codex dice que corrió la misma prueba con la expectativa nueva y pasó.
+- **Control extra al probar en la Sheet:** `crear_cash.gs → _cuentasVistaBancos_` arma las filas por
+  cuenta con condiciones `"=130559"` sobre `Cuenta / Nro`. Con la tarea, esa columna pasa de número
+  a texto. Después de pegar el `.gs`, correr también **Importar Bancos** y confirmar en **Cash** que
+  cada banco sigue mostrando su saldo (Nación −97,8 M, Macro −49,8 M, BBVA +12,0 M). Si alguna fila
+  queda vacía, correr **Armar solapa Cash** para regenerar las condiciones.
