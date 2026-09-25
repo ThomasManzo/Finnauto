@@ -86,7 +86,7 @@ exports a mano del 23/09 en todo lo que no cambió en dos días. Log de la bajad
   bajada pide solo fecha del cheque desde hoy − 60 días (`dias_atras`).
 - **Hallazgo 25/09**: con la API entran 19 cheques propios por $210,4 M (todos a Envasando SRL),
   contra 9 por $85,9 M del export a mano. Los 10 de más tienen fecha en 2027, y el filtro "año
-  actual" del export a mano los dejaba afuera. **Confirmar con NAVAR antes de mostrarlo.**
+  actual" del export a mano los dejaba afuera. **Confirmado con NAVAR el 25/09: son reales.**
 - **Hallazgo 25/09**: con los exports a mano, "Nro Cheque" de terceros de A mostraba el CUIT del
   cheque (esa columna no venía). Con la API es el número real. Eso destapó que el importador
   frenaba con números como texto: arreglo manual (columna D de Cartera de Cheques en "Texto sin
@@ -94,9 +94,9 @@ exports a mano del 23/09 en todo lo que no cambió en dos días. Log de la bajad
 - Estado `X` en cheques de terceros de A (107, históricos): no se sabe qué es; queda afuera.
 - Plan B si la API falla: exportar a mano como antes y dejar el Excel en la misma carpeta de Drive.
 
-**Pendiente de Tango**: certificar la tarea de las 07:30 (mirar el log del 26/09) · generar token
-nuevo (el actual quedó en un chat) · borrar la consulta vieja 12 en Live · tarea 20 (Codex) y
-pegar el `.gs` · zona horaria de la Sheet → Buenos Aires (Registro marca 3 hs de menos).
+**Pendiente de Tango**: certificar la tarea de las 07:30 (mirar el log del 26/09) · tarea 20 (Codex)
+y pegar el `.gs`. Hecho el 25/09: consulta vieja 12 borrada en Live, zona horaria de la Sheet en
+Buenos Aires. Token: Thomas decidió no regenerarlo (quedó escrito en un chat de trabajo).
 
 ## Dónde estamos (24/09/2026, madrugada) — listo para automatizar
 
