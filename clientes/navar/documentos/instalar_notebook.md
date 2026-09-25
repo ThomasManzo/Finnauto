@@ -104,7 +104,7 @@ cd C:\finauto; $null = Read-Host "Copia el token con Ctrl+C y despues apreta Ent
 Después, en este orden:
 
 1. **Prueba de estructura**, sin mostrar nombres ni montos. Confirma la dirección real de API,
-   las columnas y el total informado:
+   la consulta personalizada, las columnas y el total informado:
    ```powershell
    .\.venv\Scripts\python.exe ingestas\tango_live.py --cliente navar --probar cobranzas --empresa A
    ```
@@ -114,8 +114,10 @@ Después, en este orden:
    New-Item -ItemType Directory -Force C:\finauto\clientes\navar\privado\tango_api_prueba | Out-Null
    .\.venv\Scripts\python.exe ingestas\tango_live.py --cliente navar --destino C:\finauto\clientes\navar\privado\tango_api_prueba
    ```
-   Confirmar especialmente los conteos `E/R/X` de cheques propios y los pares `Tipo/Clase` de
-   tesorería: esas equivalencias se dedujeron y esta corrida es la confirmación supervisada.
+   Confirmar especialmente que salgan las ocho `customQuery` configuradas. Todas las consultas
+   piden fechas vacías salvo cheques propios: esa foto usa desde hoy menos 60 días, para cubrir
+   el margen que necesita el lector sin traer pendientes históricos desde 1995. Los conteos de
+   estados y los pares `Tipo/Clase` quedan en el log como control contra cambios futuros de Live.
 3. **Bajada real a Drive**, recién después de aprobar la comparación:
    ```powershell
    .\.venv\Scripts\python.exe ingestas\tango_live.py --cliente navar

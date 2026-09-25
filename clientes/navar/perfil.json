@@ -92,7 +92,7 @@
   },
   "_ayuda_modos_de_prueba": "Para probar un bot: en el banco que quieras, poner 'solo_empresa_activa': true o 'solo_estas_empresas': ['Nombre Tal Cual']. Vacio + solo_empresa_activa false = PRODUCCION (todas).",
   "tango_live": {
-    "_ayuda": "Bajada automatica de Tango Live por API (ingestas/tango_live.py). La llamada usa /Api/GetApiLiveQueryData con process, fechas DD/MM/AAAA y paginacion como parametros de query. 'url' es el Live de la red de NAVAR; 'consultas' son los procesos y 'empresas' el header Company. El token NO va aca: queda en el llavero de Windows. custom_query vacio o '-' significa que no se manda ese parametro.",
+    "_ayuda": "Bajada automatica de Tango Live por API (ingestas/tango_live.py). La llamada usa /Api/GetApiLiveQueryData con parametros de query. Cada empresa y consulta exige su consultas_personalizadas: sin ese numero no se baja la vista por defecto porque le faltan columnas. El token NO va aca: queda en el llavero de Windows. Solo cheques propios filtra desde hoy menos dias_atras; las demas fotos mandan fechas vacias para traer todo.",
     "url": "http://servidor:17000",
     "empresas": {
       "A": 13,
@@ -105,8 +105,24 @@
       "cheques_propios": 11584,
       "movimientos_tesoreria": 11591
     },
-    "custom_query": "-",
-    "_origen": "Procesos y empresas comprobados contra Live el 24-25/09/2026. NAVAR SA = 13 y NAVAR SA Otros = 56. La API funciona con parametros despues de '?'; la ruta dibujada por la pantalla devuelve HTML.",
+    "consultas_personalizadas": {
+      "A": {
+        "cobranzas": 10,
+        "pagos": 11,
+        "cheques_terceros": 12,
+        "cheques_propios": 13
+      },
+      "AA": {
+        "cobranzas": 14,
+        "pagos": 15,
+        "cheques_terceros": 16,
+        "movimientos_tesoreria": 17
+      }
+    },
+    "dias_atras": {
+      "cheques_propios": 60
+    },
+    "_origen": "Procesos, empresas y consultas personalizadas comprobados contra Live el 25/09/2026. NAVAR SA = 13 y NAVAR SA Otros = 56. La API funciona con parametros despues de '?'; la ruta dibujada por la pantalla devuelve HTML.",
     "_movimientos_tesoreria": "11591 = movimientos de tesorería (un renglón por comprobante: cobros, pagos y otros, con Desc. relacionado). Solo para AA (empresa 56): es la operación en efectivo. Va a la carpeta 'Tesoreria AA' sin tilde y la procesa lector/tesoreria_aa.py."
   }
 }

@@ -221,8 +221,8 @@ No tocar los lectores, el vigilante, `nucleo/`, `setup_credenciales.py` ni los `
 Trabajo terminado en el worktree de `tarea/tango-api`. Se tocaron únicamente los seis archivos
 permitidos:
 
-- `ingestas/tango_live.py`: llamada real con parámetros de query y fechas DD/MM/AAAA; rango
-  01/01/1990 → 31/12 de cinco años después de `--hoy`; páginas de 5.000 con timeout de 300 s;
+- `ingestas/tango_live.py`: llamada real con parámetros de query y la consulta personalizada
+  obligatoria de cada empresa/lista; páginas de 5.000 con timeout de 300 s;
   validación de `succeeded`, `exceptionInfo`, JSON, `resultData.list`, `hasNextPage` y
   `totalCount`. Una foto incompleta no llega a escribirse.
 - La misma ingesta traduce a los encabezados manuales antes de crear el Excel, conserva al final
@@ -236,7 +236,7 @@ permitidos:
   bajadas con su URL. La tesorería elige primero `Tesoreria AA`, tolera la variante con tilde y
   crea la carpeta sin tilde si no existe ninguna.
 - `ingestas/test_tango_live.py`: 12 pruebas sin red con respuestas y datos inventados. Cubren URL,
-  headers, timeout, query opcional, dos páginas, cierre contra `totalCount`, HTML “Iniciando”,
+  headers, timeout, consulta personalizada obligatoria, dos páginas, cierre contra `totalCount`, HTML “Iniciando”,
   `succeeded=false`, `exceptionInfo`, las cinco traducciones, códigos desconocidos, filtro de
   terceros, freno Tipo/Clase, elección de carpeta y no exposición de datos en `--probar`.
   La integración crea Excel temporales y verifica que `lector.tango.procesar` y
@@ -248,7 +248,17 @@ permitidos:
   consola de Windows no falle por acentos o flechas.
 - `clientes/navar/documentos/instalar_notebook.md` §5: token validado desde el portapapeles,
   prueba de estructura, primera descarga local, descarga a Drive y recién después instalación.
-  `clientes/navar/perfil.json`: se actualizaron solamente los textos del bloque `tango_live`.
+  `clientes/navar/perfil.json`: se modificó solamente el bloque `tango_live`.
+
+**Agregado del 25/09 aplicado:** se reemplazó la vista por defecto por las ocho `customQuery`
+10–17, configuradas por empresa y consulta; si falta una, esa bajada falla sin volver al formato
+incompleto. Se agregaron al traductor las columnas completas de las consultas guardadas. Todas
+las fotos mandan `fromDate` y `toDate` vacíos salvo cheques propios: toma
+`dias_atras.cheques_propios = 60` desde el perfil y, para 25/09/2026, arma **27/07/2026** hasta
+vacío. Se aplicó literalmente la regla “hoy menos 60 días” indicada por el usuario; el 26/08 que
+figura como ejemplo en el agregado equivale a 30 días y no se usó. Las equivalencias confirmadas
+quedaron como tales: propios traduce sólo `E = Al Cobro`; Tesorería conserva 1/2/4/6; terceros
+mantiene C/A/R y deja X sin traducir. El filtro final de terceros sigue publicando sólo C.
 
 **Comprobaciones realizadas:**
 
@@ -256,13 +266,14 @@ permitidos:
 - `python -m py_compile ingestas/tango_live.py ingestas/test_tango_live.py`: OK.
 - `python -m json.tool clientes/navar/perfil.json`: OK.
 - `python tests/test_lector.py`: todos los chequeos existentes pasaron.
-- Simulación con fecha 25/09/2026 y carpeta temporal: exactamente ocho bajadas, desde
-  `01/01/1990` hasta `31/12/2031`, sin leer el token.
+- Simulación con fecha 25/09/2026 y carpeta temporal: exactamente ocho bajadas, todas con su
+  `customQuery`; siete con fechas vacías y cheques propios desde 27/07/2026, sin leer el token.
 - `git diff --check`: OK. No se agregaron nombres propios de personas ni dependencias.
 
-**No se pudo probar en este entorno:** la red y el Tango real de NAVAR, el token del llavero,
-la ejecución del `.ps1`/Programador de tareas de Windows y las equivalencias inferidas
-`E/R/X` y `1/2/4/6`. Por eso la guía exige una primera descarga local supervisada y los logs
-dejan los conteos necesarios para confirmarlas antes de publicar en Drive.
+**No se pudo probar en este entorno:** la red y el Tango real de NAVAR, el token del llavero ni
+la ejecución del `.ps1`/Programador de tareas de Windows. Las equivalencias de códigos y las
+consultas personalizadas fueron confirmadas externamente según el agregado; las pruebas locales
+verifican que el programa respete ese contrato. La guía conserva una primera descarga local
+supervisada antes de publicar en Drive.
 
 ## Revisión

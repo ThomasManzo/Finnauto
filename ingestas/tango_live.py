@@ -4,12 +4,10 @@ ingestas.tango_live — baja las consultas de Tango Live por API y deja Excel co
 mismo contrato que los exports manuales que ya leen lector/tango.py y
 lector/tesoreria_aa.py.
 
-La API no devuelve la vista armada en pantalla: usa nombres como
-NRO_COMPROBANTE y códigos de estado. Acá se traducen antes de escribir. Las
-columnas que no tienen una equivalencia comprobada se conservan, al final, con
-su nombre original. No se inventan los datos que la API omite: cobranzas no trae
-fecha de emisión, importe al vencimiento ni condición de venta; pagos no trae
-fecha de emisión ni total al vencimiento. Los lectores ya toleran esos faltantes.
+Cada empresa y proceso tiene una consulta personalizada de Live con las mismas
+columnas del export manual. La API igual usa nombres como NRO_COMPROBANTE y
+códigos de estado: acá se traducen antes de escribir. Las columnas que no tienen
+una equivalencia comprobada se conservan, al final, con su nombre original.
 
 La llamada comprobada contra Tango es:
     GET <url>/Api/GetApiLiveQueryData?process=...&fromDate=DD/MM/AAAA&...
@@ -65,35 +63,42 @@ TIMEOUT_PAGINA = 300
 # cambiarle el nombre. Un mismo código puede producir texto + código visible.
 COLUMNAS_EXPORT = {
     "cobranzas": [
+        ("Cód. cliente", "COD_CLIENTE", "crudo"),
         ("Razón social", "RAZON_SOCIAL", "crudo"),
         ("Tipo comprobante", "TIPO_COMPROBANTE", "crudo"),
         ("Nro. comprobante", "NRO_COMPROBANTE", "crudo"),
+        ("Fecha de emisión", "FECHA_DE_EMISION", "crudo"),
         ("Fecha de vencimiento", "FECHA_DE_VENCIMIENTO", "crudo"),
+        ("Importe al Vencimiento (CTE)", "IMPORTE_AL_VENCIMIENTO_CTE", "crudo"),
         ("Importe Pendiente (CTE)", "IMPORTE_PENDIENTE_CTE", "crudo"),
+        ("Descripción condición de venta", "DESCRIPCION_CONDICION_DE_VENTA", "crudo"),
     ],
     "pagos": [
+        ("Cód. proveedor", "COD_PROVEEDOR", "crudo"),
         ("Razón social", "RAZON_SOCIAL", "crudo"),
         ("Tipo de comprobante", "TIPO_DE_COMPROBANTE", "crudo"),
         ("Nro. comprobante", "NRO_COMPROBANTE", "crudo"),
+        ("Fecha de emisión", "FECHA_DE_EMISION", "crudo"),
         ("Fecha de vencimiento", "FECHA_DE_VENCIMIENTO", "crudo"),
+        ("Total al vencimiento (CTE)", "TOTAL_AL_VENCIMIENTO_CTE", "crudo"),
         ("Total pendiente (CTE)", "TOTAL_PENDIENTE_CTE", "crudo"),
     ],
     "cheques_terceros": [
         ("Nro. de cheque", "NRO_DE_CHEQUE", "crudo"),
-        ("Nro. interno", "NRO_INTERNO", "crudo"),
         ("Banco", "BANCO", "crudo"),
+        ("Cód. cliente", "COD_CLIENTE", "crudo"),
         ("Cliente", "CLIENTE", "crudo"),
         ("Fecha del cheque", "FECHA_DEL_CHEQUE", "crudo"),
         ("Importe (CTE)", "IMPORTE_CTE", "crudo"),
         ("Estado", "ESTADO", "estado_terceros"),
-        ("Subestado", "DESC_SUBESTADO", "crudo"),
-        ("Cód. estado", "ESTADO", "codigo"),
-        ("Proveedor", "PROVEEDOR", "crudo"),
-        ("Tipo de cheque", "TIPO_DE_CHEQUE", "crudo"),
+        ("Subestado", "SUBESTADO", "crudo"),
+        ("Desc. subestado", "DESC_SUBESTADO", "crudo"),
+        ("Cód. estado", "COD_ESTADO", "codigo"),
+        ("Origen", "ORIGEN", "crudo"),
     ],
     "cheques_propios": [
         ("Nro. de cheque", "NRO_DE_CHEQUE", "crudo"),
-        ("Nombre de banco", "BANCO", "crudo"),
+        ("Banco", "BANCO", "crudo"),
         ("Cód. proveedor", "COD_PROVEEDOR", "crudo"),
         ("Razón social", "RAZON_SOCIAL", "crudo"),
         ("Fecha de emisión", "FECHA_DE_EMISION", "crudo"),
@@ -101,12 +106,13 @@ COLUMNAS_EXPORT = {
         ("Importe mon. cta.", "IMPORTE", "crudo"),
         ("Estado", "ESTADO", "estado_propios"),
         ("Cód. estado", "ESTADO", "codigo"),
-        ("Tipo de cheque", "TIPO_DE_CHEQUE", "crudo"),
+        ("Cuenta emisión", "CUENTA_EMISION", "crudo"),
     ],
     "movimientos_tesoreria": [
         ("Tipo", "TIPO", "crudo"),
         ("Comprobante", "COMPROBANTE", "crudo"),
         ("Fecha", "FECHA", "crudo"),
+        ("Fecha de emisión", "FECHA_DE_EMISION", "crudo"),
         ("Concepto", "CONCEPTO", "crudo"),
         ("Clase", "CLASE", "clase_tesoreria"),
         ("Total (cte)", "TOTAL_CTE", "crudo"),
@@ -118,9 +124,7 @@ COLUMNAS_EXPORT = {
 
 TRADUCCIONES = {
     "estado_terceros": {"C": "En Cartera", "A": "Aplicado", "R": "Rechazado"},
-    # Estas dos equivalencias se infirieron por proporciones y se confirman en la
-    # primera corrida supervisada mirando los conteos, no nombres ni importes.
-    "estado_propios": {"E": "Al Cobro", "R": "Rechazado", "X": "Anulado"},
+    "estado_propios": {"E": "Al Cobro"},
     "clase_tesoreria": {
         "1": "Cobros",
         "2": "Pagos",
@@ -130,7 +134,7 @@ TRADUCCIONES = {
 }
 
 CAMPO_CODIGO = {
-    "cheques_terceros": ("ESTADO", "estado_terceros"),
+    "cheques_terceros": ("COD_ESTADO", "estado_terceros"),
     "cheques_propios": ("ESTADO", "estado_propios"),
     "movimientos_tesoreria": ("CLASE", "clase_tesoreria"),
 }
@@ -154,37 +158,47 @@ def token(cliente):
     return tok
 
 
-def rango_fechas(hoy):
-    """La foto completa: bien atrás y hasta cinco años después del día de corrida."""
-    return "01/01/1990", "31/12/%d" % (hoy.year + 5)
+def rango_fechas(cfg, hoy, consulta):
+    """Live trae todo sin fechas; propios usa una ventana configurable de seguridad."""
+    if consulta != "cheques_propios":
+        return "", ""
+    try:
+        dias = int(cfg.get("dias_atras", {}).get("cheques_propios"))
+    except (TypeError, ValueError):
+        raise RuntimeError("falta dias_atras.cheques_propios válido en perfil.json")
+    if dias <= 0:
+        raise RuntimeError("dias_atras.cheques_propios debe ser mayor que cero")
+    return (hoy - datetime.timedelta(days=dias)).strftime("%d/%m/%Y"), ""
 
 
-def _custom_query(cfg):
-    valor = str(cfg.get("custom_query") or "").strip()
-    return "" if valor.lower() in ("", "-", "none", "null") else valor
+def consulta_personalizada(cfg, empresa, consulta):
+    valor = cfg.get("consultas_personalizadas", {}).get(empresa, {}).get(consulta)
+    if valor in (None, ""):
+        raise RuntimeError(
+            "falta la consulta personalizada en perfil.json para %s %s"
+            % (empresa, consulta))
+    return valor
 
 
-def armar_url(cfg, proceso, desde, hasta, pagina=0, tam=PAGINA):
-    """Arma la dirección real de API: todos los parámetros van después de '?'."""
+def armar_url(cfg, empresa, consulta, proceso, desde, hasta, pagina=0, tam=PAGINA):
+    """Arma la API real y exige la vista personalizada de esa empresa/lista."""
     parametros = [
         ("process", proceso),
         ("fromDate", desde),
         ("toDate", hasta),
         ("pageSize", tam),
         ("pageIndex", pagina),
+        ("customQuery", consulta_personalizada(cfg, empresa, consulta)),
     ]
-    custom = _custom_query(cfg)
-    if custom:
-        parametros.append(("customQuery", custom))
     return "%s/Api/GetApiLiveQueryData?%s" % (
         cfg["url"].rstrip("/"), urllib.parse.urlencode(parametros))
 
 
-def llamar(cfg, tok, empresa_id, proceso, desde, hasta, pagina=0, tam=PAGINA):
-    url = armar_url(cfg, proceso, desde, hasta, pagina, tam)
+def llamar(cfg, tok, empresa, consulta, proceso, desde, hasta, pagina=0, tam=PAGINA):
+    url = armar_url(cfg, empresa, consulta, proceso, desde, hasta, pagina, tam)
     req = urllib.request.Request(url, headers={
         "ApiAuthorization": tok,
-        "Company": str(empresa_id),
+        "Company": str(cfg["empresas"][empresa]),
         "Accept": "application/json",
     })
     try:
@@ -230,14 +244,14 @@ def _respuesta(cuerpo, url):
     }
 
 
-def bajar(cfg, tok, empresa, proceso, desde, hasta):
+def bajar(cfg, tok, empresa, consulta, proceso, desde, hasta):
     """Trae todas las páginas y no entrega una foto si no cierra con totalCount."""
     filas = []
     pagina = 0
     total_esperado = None
     while True:
         st, url, cuerpo = llamar(
-            cfg, tok, cfg["empresas"][empresa], proceso, desde, hasta, pagina, PAGINA)
+            cfg, tok, empresa, consulta, proceso, desde, hasta, pagina, PAGINA)
         if st != 200:
             raise RuntimeError("Live devolvió HTTP %s en %s: %s" % (st, url, cuerpo[:300]))
         datos = _respuesta(cuerpo, url)
@@ -325,7 +339,7 @@ def conteo_codigos(consulta, empresa, filas):
 
 
 def validar_tesoreria(filas):
-    """La relación Tipo/Clase permite detectar una traducción inferida incorrecta."""
+    """La relación Tipo/Clase detecta si Live cambió la traducción ya confirmada."""
     esperado = {
         "REC": "Cobros",
         "O/P": "Pagos",
@@ -394,7 +408,7 @@ def escribir_xlsx(filas, ruta, columnas=None):
 
 def bajar_y_escribir(cfg, tok, empresa, consulta, proceso, ruta, desde, hasta):
     """Unidad atómica: sólo escribe después de bajar, cerrar y controlar todo."""
-    originales = bajar(cfg, tok, empresa, proceso, desde, hasta)
+    originales = bajar(cfg, tok, empresa, consulta, proceso, desde, hasta)
     filas, columnas, linea_codigos, linea_pares = preparar_filas(consulta, empresa, originales)
     if linea_codigos:
         log(linea_codigos)
@@ -427,7 +441,7 @@ def pendientes(cfg):
 
 def _mostrar_prueba(cfg, tok, consulta, empresa, proceso, desde, hasta):
     st, url, cuerpo = llamar(
-        cfg, tok, cfg["empresas"][empresa], proceso, desde, hasta, pagina=0, tam=5)
+        cfg, tok, empresa, consulta, proceso, desde, hasta, pagina=0, tam=5)
     print("GET", url)
     print("HTTP", st)
     if st != 200:
@@ -458,7 +472,6 @@ def main(argv=None):
     a = ap.parse_args(argv)
     cfg = perfil(a.cliente)
     hoy = datetime.date.fromisoformat(a.hoy)
-    desde, hasta = rango_fechas(hoy)
 
     if a.probar:
         if a.empresa not in cfg.get("empresas", {}):
@@ -466,6 +479,7 @@ def main(argv=None):
         proceso = cfg.get("consultas", {}).get(a.probar)
         if not proceso:
             raise SystemExit("la consulta %s no tiene número de proceso en perfil.json" % a.probar)
+        desde, hasta = rango_fechas(cfg, hoy, a.probar)
         _mostrar_prueba(cfg, token(a.cliente), a.probar, a.empresa, proceso, desde, hasta)
         return 0
 
@@ -485,8 +499,13 @@ def main(argv=None):
         for empresa, consulta, proceso in trabajos:
             carpeta = carpeta_consulta(raiz, consulta)
             nombre = DESTINO[consulta][1] % (empresa, a.hoy)
-            url = armar_url(cfg, proceso, desde, hasta, 0, PAGINA)
-            log("bajaría %s · GET %s" % (os.path.join(carpeta, nombre), url))
+            try:
+                desde, hasta = rango_fechas(cfg, hoy, consulta)
+                url = armar_url(cfg, empresa, consulta, proceso, desde, hasta, 0, PAGINA)
+                log("bajaría %s · GET %s" % (os.path.join(carpeta, nombre), url))
+            except Exception as ex:
+                log("%s: FALLÓ: %s" % (nombre, ex))
+                return 1
         return 0
 
     tok = token(a.cliente)
@@ -496,6 +515,7 @@ def main(argv=None):
         nombre = DESTINO[consulta][1] % (empresa, a.hoy)
         ruta = os.path.join(carpeta, nombre)
         try:
+            desde, hasta = rango_fechas(cfg, hoy, consulta)
             recibidas, escritas = bajar_y_escribir(
                 cfg, tok, empresa, consulta, proceso, ruta, desde, hasta)
             detalle = "%d filas" % escritas
