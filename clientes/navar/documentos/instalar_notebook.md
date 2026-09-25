@@ -90,30 +90,47 @@ tal cual. Si aparece un escaneado nuevo sin caché, el lector de bancos corta co
 La primera corrida en la notebook relee las cuatro fuentes (no tiene memoria de qué procesó):
 es normal y el control "se achicó de golpe" protege la Sheet.
 
-## 5. Tango Live por API (cuando soporte habilite el usuario finauto) (10 min)
+## 5. Tango Live por API (primera corrida supervisada y tarea diaria)
 
-1. En la notebook, entrar a Tango Live **con el usuario finauto**, abrir cualquiera de las
-   cuatro consultas → Apertura → API → **Obtener token**. Copiar el token.
-2. En la URL de esa pantalla (o en la barra de direcciones de cada consulta) está el número de
-   proceso: anotar el de las cuatro consultas y el id de empresa de NAVAR SA Otros (el header
-   `Company`; NAVAR SA es 13). Cargarlos en `clientes\navar\perfil.json` → `tango_live`.
-3. Guardar el token en el llavero de la máquina (nunca en un archivo):
+El token ya se genera desde Live: abrir una consulta → Apertura → API → **Obtener token** y
+copiarlo. No pegarlo en la pantalla de clave oculta de Python a través del escritorio remoto:
+esa combinación puede guardar un carácter de más, uno de menos o el código de Ctrl+V. Se guarda
+directamente desde el portapapeles, con formato validado, y nunca pasa por un archivo:
+
+```powershell
+cd C:\finauto; $null = Read-Host "Copia el token con Ctrl+C y despues apreta Enter aca"; Get-Clipboard | .\.venv\Scripts\python.exe -c "import sys,re; from nucleo import credenciales as c; t=sys.stdin.read().strip(); assert re.fullmatch(r'[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}', t), 'NO parece un token (%d caracteres), no guardé nada' % len(t); c.guardar('.','navar','tango_live','finanzasnavar@gmail.com',t); print('guardado ok', len(t))"
+```
+
+Después, en este orden:
+
+1. **Prueba de estructura**, sin mostrar nombres ni montos. Confirma la dirección real de API,
+   la consulta personalizada, las columnas y el total informado:
    ```powershell
-   .\.venv\Scripts\python.exe setup_credenciales.py --cliente navar --banco tango_live
+   .\.venv\Scripts\python.exe ingestas\tango_live.py --cliente navar --probar cobranzas --empresa A
    ```
-   usuario: `finauto` · clave: el token.
-4. Probar una consulta y mirar cómo responde Live (esto se hace una vez, para ajustar el lector
-   al formato real):
+2. **Primera bajada a una carpeta local**, no a Drive. Genera las ocho fotos (cuatro de A y
+   cuatro de AA) para comparar encabezados, estados y cantidades antes de publicar:
    ```powershell
-   .\.venv\Scripts\python.exe ingestas\tango_live.py --probar cobranzas --empresa A
+   New-Item -ItemType Directory -Force C:\finauto\clientes\navar\privado\tango_api_prueba | Out-Null
+   .\.venv\Scripts\python.exe ingestas\tango_live.py --cliente navar --destino C:\finauto\clientes\navar\privado\tango_api_prueba
    ```
-   Pasarle a Claude lo que imprime.
-5. Cuando la prueba pase, la bajada entera:
+   Confirmar especialmente que salgan las ocho `customQuery` configuradas. Todas las consultas
+   piden fechas vacías salvo cheques propios: esa foto usa desde hoy menos 60 días, para cubrir
+   el margen que necesita el lector sin traer pendientes históricos desde 1995. Los conteos de
+   estados y los pares `Tipo/Clase` quedan en el log como control contra cambios futuros de Live.
+3. **Bajada real a Drive**, recién después de aprobar la comparación:
    ```powershell
-   .\.venv\Scripts\python.exe ingestas\tango_live.py
+   .\.venv\Scripts\python.exe ingestas\tango_live.py --cliente navar
    ```
-   Deja los siete Excel en sus carpetas de Drive; el vigilante hace el resto. Se programa a
-   las 7:30 en el Programador de tareas (misma receta que el vigilante, una vez por día).
+   Los archivos quedan con los mismos nombres y encabezados que los exports manuales. El
+   vigilante procesa Cuentas a cobrar, Cuentas a pagar, Cheques y `Tesoreria AA` como siempre.
+4. **Programar todos los días a las 07:30**:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File clientes\navar\herramientas\instalar_tango.ps1
+   ```
+   La tarea se llama `finauto NAVAR Tango`, no arranca una segunda instancia si la anterior
+   sigue corriendo y corta después de una hora. El historial queda agregado en
+   `clientes\navar\privado\tango_live.log`. Para quitarla, agregar `quitar` al comando.
 
 ## 6. Galicia: preparación y primera prueba en la notebook
 

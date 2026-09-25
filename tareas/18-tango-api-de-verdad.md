@@ -1,5 +1,5 @@
 # Tarea 18 — Que la bajada de Tango por API funcione de verdad
-Estado: pendiente
+Estado: lista para revisión
 Rama: tarea/tango-api
 
 ## Objetivo
@@ -218,4 +218,90 @@ No tocar los lectores, el vigilante, `nucleo/`, `setup_credenciales.py` ni los `
 
 ## Qué hice
 
+Trabajo terminado en el worktree de `tarea/tango-api`. Se tocaron únicamente los seis archivos
+permitidos:
+
+- `ingestas/tango_live.py`: llamada real con parámetros de query y la consulta personalizada
+  obligatoria de cada empresa/lista; páginas de 5.000 con timeout de 300 s;
+  validación de `succeeded`, `exceptionInfo`, JSON, `resultData.list`, `hasNextPage` y
+  `totalCount`. Una foto incompleta no llega a escribirse.
+- La misma ingesta traduce a los encabezados manuales antes de crear el Excel, conserva al final
+  los campos sin equivalencia, convierte códigos a texto y registra los conteos por código.
+  Terceros publica sólo `C`; Tesorería controla los pares Tipo/Clase. Un código desconocido se
+  muestra como tal. En Tesorería además se excluye de la publicación porque el lector existente
+  toma toda clase desconocida como “Otros”; publicarla sería inventar una categoría y el lector
+  no se podía tocar en esta tarea. El código queda visible en el log para revisar.
+- `--probar` trae cinco filas pero muestra únicamente URL sin token, HTTP, total, encabezados y
+  conteos; no imprime nombres ni montos. `--simular` no toca red ni llavero y lista las ocho
+  bajadas con su URL. La tesorería elige primero `Tesoreria AA`, tolera la variante con tilde y
+  crea la carpeta sin tilde si no existe ninguna.
+- `ingestas/test_tango_live.py`: 12 pruebas sin red con respuestas y datos inventados. Cubren URL,
+  headers, timeout, consulta personalizada obligatoria, dos páginas, cierre contra `totalCount`, HTML “Iniciando”,
+  `succeeded=false`, `exceptionInfo`, las cinco traducciones, códigos desconocidos, filtro de
+  terceros, freno Tipo/Clase, elección de carpeta y no exposición de datos en `--probar`.
+  La integración crea Excel temporales y verifica que `lector.tango.procesar` y
+  `lector.tesoreria_aa.leer` obtienen cliente, comprobante numérico, vencimiento, pendiente,
+  cheque de terceros, cheque propio, cobro y pago de AA.
+- `clientes/navar/herramientas/instalar_tango.ps1`: nueva tarea diaria `finauto NAVAR Tango` a
+  las 07:30, desde el repo, una sola instancia, límite de una hora y salida acumulada en
+  `privado/tango_live.log`; admite `quitar`. La salida de Python se fuerza a UTF-8 para que la
+  consola de Windows no falle por acentos o flechas.
+- `clientes/navar/documentos/instalar_notebook.md` §5: token validado desde el portapapeles,
+  prueba de estructura, primera descarga local, descarga a Drive y recién después instalación.
+  `clientes/navar/perfil.json`: se modificó solamente el bloque `tango_live`.
+
+**Agregado del 25/09 aplicado:** se reemplazó la vista por defecto por las ocho `customQuery`
+10–17, configuradas por empresa y consulta; si falta una, esa bajada falla sin volver al formato
+incompleto. Se agregaron al traductor las columnas completas de las consultas guardadas. Todas
+las fotos mandan `fromDate` y `toDate` vacíos salvo cheques propios: toma
+`dias_atras.cheques_propios = 60` desde el perfil y, para 25/09/2026, arma **27/07/2026** hasta
+vacío. Se aplicó literalmente la regla “hoy menos 60 días” indicada por el usuario; el 26/08 que
+figura como ejemplo en el agregado equivale a 30 días y no se usó. Las equivalencias confirmadas
+quedaron como tales: propios traduce sólo `E = Al Cobro`; Tesorería conserva 1/2/4/6; terceros
+mantiene C/A/R y deja X sin traducir. El filtro final de terceros sigue publicando sólo C.
+
+**Comprobaciones realizadas:**
+
+- `python -m unittest ingestas.test_tango_live`: 12 pruebas OK.
+- `python -m py_compile ingestas/tango_live.py ingestas/test_tango_live.py`: OK.
+- `python -m json.tool clientes/navar/perfil.json`: OK.
+- `python tests/test_lector.py`: todos los chequeos existentes pasaron.
+- Simulación con fecha 25/09/2026 y carpeta temporal: exactamente ocho bajadas, todas con su
+  `customQuery`; siete con fechas vacías y cheques propios desde 27/07/2026, sin leer el token.
+- `git diff --check`: OK. No se agregaron nombres propios de personas ni dependencias.
+
+**No se pudo probar en este entorno:** la red y el Tango real de NAVAR, el token del llavero ni
+la ejecución del `.ps1`/Programador de tareas de Windows. Las equivalencias de códigos y las
+consultas personalizadas fueron confirmadas externamente según el agregado; las pruebas locales
+verifican que el programa respete ese contrato. La guía conserva una primera descarga local
+supervisada antes de publicar en Drive.
+
 ## Revisión
+
+**Claude, 25/09/2026.** Leí el diff completo (`tango_live.py`, test, `.ps1`, perfil, §5) y lo crucé
+contra `lector/tango.py`, `lector/tesoreria_aa.py` y `vigilante.py`. Corrí `unittest
+ingestas.test_tango_live` (12 OK), `unittest bots.galicia.test_navar` (OK) y `--simular --hoy
+2026-09-25`: 8 bajadas, cada una con su `customQuery` (10–17), fechas vacías y propios desde
+27/07/2026.
+
+Verificado en el código:
+- Los encabezados traducidos coinciden con lo que buscan los lectores: `Nro. comprobante` exacto
+  (se acaba el "FAC FAC"), `Importe Pendiente (CTE)`/`Total pendiente (CTE)`, `Estado` + `Cód.
+  estado` en terceros (C → "En Cartera"/"C", que es lo que acepta `_motivo_estado_cheque`),
+  `Estado` = "Al Cobro" en propios y las claves exactas de tesorería (`Total (cte)`, `Desc.
+  relacionado`, `Fecha` como fecha).
+- No se escribe nada si la paginación no cierra con `totalCount`, si Live responde HTML o
+  `succeeded=false`, o si la tesorería trae un Tipo/Clase incompatible.
+- La tesorería va a `Tesoreria AA` (sin tilde). El vigilante toma el más nuevo por fecha de
+  modificación, así que la bajada de hoy le gana a los exports a mano viejos.
+- Los 60 días de propios están bien: el 26/08 del agregado era la prueba manual, no la regla.
+
+A mirar en la corrida supervisada (no bloquea el merge):
+1. `fromDate` sale codificado (`27%2F07%2F2026`); la prueba a mano fue con `/` sin codificar. Lo
+   normal es que el servidor lo decodifique: se confirma con `--probar cheques_propios --empresa A`
+   (tiene que dar total > 0, fechas del cheque desde el 27/07 en adelante).
+2. El temporal se llama `<nombre>.xlsx.parte.xlsx` y vive un segundo en la carpeta de Drive con
+   extensión `.xlsx`. Si el vigilante lista justo en ese segundo, lo cuenta como archivo de Tango.
+   Lo cubre la espera de 2 minutos del vigilante (en la pasada siguiente el temporal ya no está).
+   Riesgo bajo, pero conviene arreglarlo cuando se vuelva a tocar el archivo: temporal que empiece
+   con `.`, que el vigilante ya ignora.
