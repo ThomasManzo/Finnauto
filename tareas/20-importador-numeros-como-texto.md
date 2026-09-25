@@ -85,6 +85,9 @@ Pasó el 25/09/2026, con la primera bajada de Tango por API:
   cola borrada, Registro y fechas. También simulé la conversión automática de la Sheet: `0055`
   quedó como texto y el formato se aplicó antes de escribir. El único llamado a `_mismoDato_` es
   el control posterior al volcado.
+- La prueba existente `probar_importador_filtros.cjs` conserva la expectativa anterior (`"10"`
+  contra `10` era distinto). No la modifiqué porque está fuera de los archivos permitidos; corrí
+  esa misma prueba en memoria con la expectativa nueva y pasó completa.
 - El cambio no agrega nombres propios de personas.
 
 ### Prueba pendiente en la Sheet
