@@ -24,8 +24,11 @@ Pasó el 25/09/2026 con `Bancos/nacion/Movimientos Nacion 25-09-2026.pdf` (escan
   arrastra −$101,7 M del 15/09 y la nueva −$97,8 M del 24/09. En la Sheet, `crear_cash.gs →
   _cuentasVistaBancos_` distingue cuentas por banco + empresa + número, así que **el Nación sumaría
   las dos**.
-- Hoy no pasa: en la notebook no hay OCR y ese PDF quedó salteado ("no pude leer"). Se va a
-  destrabar dejando la caché `.ocr/` desde la Mac, **después** de esta tarea.
+- **Parche manual del 25/09 (decisión de Thomas: procesarlo igual):** en la caché OCR de ese PDF
+  (`Bancos/nacion/.ocr/Movimientos Nacion 25-09-2026.tsv`, generada en la Mac y copiada a Drive
+  para la notebook) se reemplazó el renglón `1947789000772` por `19477890007728`. Verificado: los
+  tres extractos quedan en una sola cuenta, con saldo −$97,8 M al 24/09. El próximo extracto que
+  llegue con 13 dígitos vuelve a separar la cuenta; por eso esta tarea sigue haciendo falta.
 
 ## Archivos permitidos
 
