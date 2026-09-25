@@ -96,7 +96,10 @@ corrupta.getRange = (...args) => {
   return r;
 };
 assert.throws(() => contexto._volcar_(new Hoja([enc, nueva]), corrupta, 1, 1000, cfg), /VERIFICACION_NO_CUADRA.*fila 2.*Fecha/);
-assert.equal(contexto._mismoDato_(10, '10'), false);
+// Tarea 20: la Sheet guarda "10" como 10; eso es el mismo dato. Con ceros adelante, no.
+assert.equal(contexto._mismoDato_(10, '10'), true);
+assert.equal(contexto._mismoDato_(55, '0055'), false);
+assert.equal(contexto._mismoDato_(3.3000953674800002e28, '033000953674800000000011381061'), false);
 assert.equal(contexto._mismoDato_(new Date(0), new Date(0)), true);
 assert.equal(contexto._mismoDato_(new Date(0), new Date(1)), false);
 

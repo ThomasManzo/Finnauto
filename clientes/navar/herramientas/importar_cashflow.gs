@@ -61,11 +61,11 @@ var IMPORTS = {
     prefijo: "para_pegar_en_la_sheet_",
     solapas: [
       { xlsx: "Cuentas a Cobrar",   sheet: "Cuentas a Cobrar",   formulas: ["Saldo Pendiente", "Estado", "Dias de Atraso"],
-        colMarca: "Observaciones", marcas: ["Tango Live", "REVISAR:", "AGREGADO"], conId: true },
+        texto: ["Nro Factura"], colMarca: "Observaciones", marcas: ["Tango Live", "REVISAR:", "AGREGADO"], conId: true },
       { xlsx: "Cuentas a Pagar",    sheet: "Cuentas a Pagar",    formulas: ["Saldo Pendiente", "Estado", "Dias de Atraso"],
-        colMarca: "Observaciones", marcas: ["Tango Live", "REVISAR:", "AGREGADO"], conId: true },
+        texto: ["Nro Factura / OC"], colMarca: "Observaciones", marcas: ["Tango Live", "REVISAR:", "AGREGADO"], conId: true },
       { xlsx: "Cartera de Cheques", sheet: "Cartera de Cheques", formulas: [],
-        colMarca: "Observaciones", marcas: ["Tango Live", "REVISAR:", "AGREGADO"], conId: true },
+        texto: ["Nro Cheque"], colMarca: "Observaciones", marcas: ["Tango Live", "REVISAR:", "AGREGADO"], conId: true },
     ]
   },
   bancos: {
@@ -74,9 +74,9 @@ var IMPORTS = {
       // El saldo "(varios)" cargado a mano el 31/08 para la empresa A se pisa también:
       // con extractos, el saldo de A es el de cada cuenta. El de AA queda (no hay extractos).
       { xlsx: "Saldos Bancarios", sheet: "Saldos Bancarios", formulas: [],
-        colMarca: "Origen", marcas: ["Extracto", "Captura"], conId: false, pisarTambien: _saldoManualDeA_ },
+        texto: ["Cuenta / Nro"], colMarca: "Origen", marcas: ["Extracto", "Captura"], conId: false, pisarTambien: _saldoManualDeA_ },
       { xlsx: "Movimientos",      sheet: "Movimientos",      formulas: ["Semana (lunes)"],
-        colMarca: "Origen", marcas: ["Extracto", "Captura"], conId: true },
+        texto: ["Referencia", "Concepto / Detalle"], colMarca: "Origen", marcas: ["Extracto", "Captura"], conId: true },
     ]
   },
   // La operación en efectivo de AA (Tango → lector/tesoreria_aa.py): filas de Movimientos con
@@ -85,22 +85,22 @@ var IMPORTS = {
     prefijo: "para_pegar_tesoreria_aa_",
     solapas: [
       { xlsx: "Movimientos", sheet: "Movimientos", formulas: ["Semana (lunes)"],
-        colMarca: "Origen", marcas: ["Tango AA"], conId: true },
+        texto: ["Referencia", "Concepto / Detalle"], colMarca: "Origen", marcas: ["Tango AA"], conId: true },
     ]
   },
   impuestos: {
     prefijo: "para_pegar_impuestos_",
     solapas: [
       { xlsx: "Deuda Impositiva", sheet: "Deuda Impositiva", formulas: [],
-        colMarca: "Observaciones", marcas: ["Mapa impuestos", "AGREGADO", "(agregado"], conId: false },
+        texto: [], colMarca: "Observaciones", marcas: ["Mapa impuestos", "AGREGADO", "(agregado"], conId: false },
     ]
   },
   deuda: {
     prefijo: "para_pegar_deuda_",
     // Deuda Bancaria tiene dos bloques en la misma solapa, cada uno con su fila "Banco".
     bloques: [
-      { xlsx: "Lineas",     formulas: [],                     colMarca: "Observaciones", marcas: ["Mapa deuda", "AGREGADO", "(agregado"] },
-      { xlsx: "Cronograma", formulas: ["Importe Total Cuota"], colMarca: "Observaciones", marcas: ["Mapa deuda", "AGREGADO", "(agregado"] },
+      { xlsx: "Lineas",     formulas: [],                      texto: [], colMarca: "Observaciones", marcas: ["Mapa deuda", "AGREGADO", "(agregado"] },
+      { xlsx: "Cronograma", formulas: ["Importe Total Cuota"], texto: [], colMarca: "Observaciones", marcas: ["Mapa deuda", "AGREGADO", "(agregado"] },
     ]
   }
 };
@@ -380,9 +380,15 @@ function _volcarSinFiltro_(hOrigen, hDestino, filaEnc, filaFin, s) {
 
   // 3. Escribir columna por columna, salteando las de fórmula, y limpiar lo que sobra abajo.
   var total = finales.length, antes = viejas.length;
+  var altoEscritura = Math.max(total, antes);
+  var columnasTexto = (s.texto || []).map(_n_);
   if (filaEnc + total > filaFin) throw new Error(hDestino.getName() + ": no hay lugar para " + total + " filas (hay hasta la fila " + filaFin + ")");
   for (var c = 0; c < encD.length; c++) {
     if (!encD[c] || s.formulas.indexOf(encD[c]) !== -1) continue;
+    // Un cheque, una factura o una referencia no es una cantidad. El formato se pone
+    // antes de pegar y cubre también la cola que se borra, para conservar ceros y cifras largas.
+    if (altoEscritura > 0 && columnasTexto.indexOf(_n_(encD[c])) !== -1)
+      hDestino.getRange(filaEnc + 1, c + 1, altoEscritura, 1).setNumberFormat("@");
     if (total > 0) hDestino.getRange(filaEnc + 1, c + 1, total, 1).setValues(finales.map(function (r) { return [r[c]]; }));
     if (antes > total) hDestino.getRange(filaEnc + 1 + total, c + 1, antes - total, 1).clearContent();
   }
@@ -470,5 +476,15 @@ function _verificarVolcado_(h, enc, fin, nombres, cfg, esperado, antes) {
 
 function _mismoDato_(a, b) {
   if (a instanceof Date || b instanceof Date) return a instanceof Date && b instanceof Date && a.getTime() === b.getTime();
-  return a === b;
+  if (a === b) return true;
+
+  // A veces Sheets recibe "55" y devuelve 55. Lo aceptamos sólo si podemos asegurar
+  // que no perdió ceros ni precisión: "0055" y una referencia demasiado larga no pasan.
+  var texto, numero;
+  if (typeof a === "string" && typeof b === "number") { texto = a; numero = b; }
+  else if (typeof a === "number" && typeof b === "string") { texto = b; numero = a; }
+  else return false;
+  return /^(0|[1-9][0-9]*)$/.test(texto) &&
+    isFinite(numero) && Math.floor(numero) === numero && Math.abs(numero) <= 9007199254740991 &&
+    String(numero) === texto;
 }
