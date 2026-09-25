@@ -94,8 +94,16 @@ exports a mano del 23/09 en todo lo que no cambió en dos días. Log de la bajad
 - Estado `X` en cheques de terceros de A (107, históricos): no se sabe qué es; queda afuera.
 - Plan B si la API falla: exportar a mano como antes y dejar el Excel en la misma carpeta de Drive.
 
-**Pendiente de Tango**: certificar la tarea de las 07:30 (mirar el log del 26/09) · tarea 20 (Codex)
-y pegar el `.gs`. Hecho el 25/09: consulta vieja 12 borrada en Live, zona horaria de la Sheet en
+**Pendiente de Tango**: certificar la tarea de las 07:30 (mirar el log del 26/09).
+
+**Importador de la Sheet (25/09, tareas 20 y 22, pegadas en Apps Script y probadas):** los números de
+comprobante, cuenta y referencia se guardan como texto (la columna D de Cartera de Cheques ya no
+necesita formato manual). Las fechas se importan a las 00:00 de la zona de la Sheet. **La Sheet
+queda en hora de Buenos Aires.** Antes, al cambiarla, las fechas caían a las 04:00 y la columna de
+hoy del Cash quedaba vacía. Reimportado el 25/09 a las 19:00: Tango 374/535/77, Bancos 251/2.462,
+Tesorería AA 761. Ojo: al arreglarse las fechas, la caja de AA se corrió un día respecto de lo que
+se veía antes, cuando estaba un día antes de lo real. Lo correcto es lo de ahora.
+**Macro al 25/09: −$49,8 M con acuerdo de ~$50 M → margen $0,16 M.** Hecho el 25/09: consulta vieja 12 borrada en Live, zona horaria de la Sheet en
 Buenos Aires. Token: Thomas decidió no regenerarlo (quedó escrito en un chat de trabajo).
 
 ## Dónde estamos (24/09/2026, madrugada) — listo para automatizar
