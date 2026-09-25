@@ -52,3 +52,6 @@ datos/*.xls
 Claude outputs/
 /*.xlsx
 /*.xls
+
+# Permisos personales de Claude Code (no se suben)
+.claude/settings.local.json
