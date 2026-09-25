@@ -109,7 +109,7 @@
       "A": {
         "cobranzas": 10,
         "pagos": 11,
-        "cheques_terceros": 12,
+        "cheques_terceros": 18,
         "cheques_propios": 13
       },
       "AA": {
@@ -123,6 +123,7 @@
       "cheques_propios": 60
     },
     "_origen": "Procesos, empresas y consultas personalizadas comprobados contra Live el 25/09/2026. NAVAR SA = 13 y NAVAR SA Otros = 56. La API funciona con parametros despues de '?'; la ruta dibujada por la pantalla devuelve HTML.",
-    "_movimientos_tesoreria": "11591 = movimientos de tesorería (un renglón por comprobante: cobros, pagos y otros, con Desc. relacionado). Solo para AA (empresa 56): es la operación en efectivo. Va a la carpeta 'Tesoreria AA' sin tilde y la procesa lector/tesoreria_aa.py."
+    "_movimientos_tesoreria": "11591 = movimientos de tesorería (un renglón por comprobante: cobros, pagos y otros, con Desc. relacionado). Solo para AA (empresa 56): es la operación en efectivo. Va a la carpeta 'Tesoreria AA' sin tilde y la procesa lector/tesoreria_aa.py.",
+    "_cheques_terceros": "Las consultas 18 (A) y 16 (AA) filtran Estado = En Cartera en Live (25/09/2026): sin ese filtro A bajaba 75 mil cheques de historia para quedarse con ~44. La bajada igual vuelve a filtrar por código C."
   }
 }
