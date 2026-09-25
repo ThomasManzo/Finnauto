@@ -1,5 +1,5 @@
 # Tarea 17 — Dejar listo el bot de Galicia para NAVAR
-Estado: lista para revisión
+Estado: aprobada con correcciones pendientes (mergeada el 24/09 sin revisar; revisada el 25/09 → tarea 19)
 Rama: tarea/galicia-navar
 
 ## Objetivo
@@ -108,3 +108,40 @@ No tocar los lectores, `crear_cash.gs`, `importar_cashflow.gs` ni `vigilante.py`
   el revisor los agregue y commitee, según el circuito de tareas/LEEME.md.
 
 ## Revisión
+
+**Claude, 25/09/2026.** Se mergeó a `main` el 24/09 sin esta revisión; se revisó después, antes de
+cualquier prueba contra el banco. Leí `bots/galicia/navar.py`, el cambio en `orquestador/correr.py`,
+el test, el bloque del perfil, y contra eso `nucleo/loop.py`, `nucleo/fechas.py`, `nucleo/salidas.py`
+y `lector/extractos.py`. Además comparé contra los dos exports reales de Galicia que hay en Drive.
+
+Bien:
+- La variante aislada (`BotGaliciaNavar`) no toca el bot de MAGA ni el núcleo. Frena ante la duda:
+  empresa no confirmada, cuenta ausente o repetida, fechas no confirmadas, archivo que no es XLSX,
+  movimientos fuera de rango. Publica con copia temporal + `os.replace`.
+- El orquestador frena **antes del llavero** si falta la carpeta, y devuelve error si algo falló
+  (la tarea programada queda en rojo).
+- `lector/extractos.py` junta **todos** los archivos de `Bancos/galicia` y descarta repetidos por
+  (cuenta, fecha, importe) contando multiplicidad: un archivo nuevo por día, superpuesto con los
+  anteriores, se suma bien.
+- `_ESTADO_*.txt` y `_SALDOS_*.json` que deja el motor en la carpeta no molestan: el vigilante solo
+  mira .pdf/.xls/.xlsx/.csv.
+
+A corregir (→ tarea 19):
+1. **Bloqueante — el export de Galicia NO trae el número de cuenta.** Revisé `Movimientos Galicia.xlsx`
+   (18/08–08/09) y `Movimientos Galicia 2026-09-23.xlsx` (26/08–22/09): ni `0005459` ni `5459`
+   aparecen en ninguna celda. `validar_excel` exige la cuenta en el contenido, así que **el bot no
+   publicaría nunca**. La confirmación de cuenta tiene que ser la de pantalla (`ir_a_cuenta`, que ya
+   exige verla una sola vez y visible al abrir) más los encabezados del lector.
+2. **`actualizar.ps1` pisa `perfil.json`.** La guía pide completar `carpeta_drive_destino` a mano en la
+   notebook; la próxima actualización lo deja vacío y el bot frena. Hay que resolver la carpeta sola
+   (`ingestas.drive_local.carpeta_datos()` + `carpeta_drive_relativa`), como hace `tango_live.py`.
+3. **Primera corrida y fines de semana.** Con `backfill` 0, la primera vez baja solo "ayer": quedaría
+   un hueco entre el último export a mano (hasta 22/09) y el día de arranque. Además, un domingo o lunes
+   el rango es un día sin movimientos y "Excel sin movimientos" cuenta como falla. `rango_a_bajar`
+   aplica `backfill` **en todas las corridas** (no solo la primera): con 7 días, cada mañana baja la
+   última semana. Tapa el hueco, los fines de semana y los feriados, y los repetidos se descartan en el
+   lector.
+
+Menores, sin cambio de código: los supuestos de pantalla (cuenta clickeable, opción XLSX en el menú,
+segundo factor) siguen sin comprobar y se ven en la primera corrida supervisada. El test es chico pero
+cubre los frenos importantes.
