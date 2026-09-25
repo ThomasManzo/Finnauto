@@ -1,5 +1,5 @@
 # Tarea 18 — Que la bajada de Tango por API funcione de verdad
-Estado: pendiente
+Estado: lista para revisión
 Rama: tarea/tango-api
 
 ## Objetivo
@@ -217,5 +217,52 @@ No tocar los lectores, el vigilante, `nucleo/`, `setup_credenciales.py` ni los `
 5. `grep` de nombres propios de personas vacío en lo agregado. Commit en la rama.
 
 ## Qué hice
+
+Trabajo terminado en el worktree de `tarea/tango-api`. Se tocaron únicamente los seis archivos
+permitidos:
+
+- `ingestas/tango_live.py`: llamada real con parámetros de query y fechas DD/MM/AAAA; rango
+  01/01/1990 → 31/12 de cinco años después de `--hoy`; páginas de 5.000 con timeout de 300 s;
+  validación de `succeeded`, `exceptionInfo`, JSON, `resultData.list`, `hasNextPage` y
+  `totalCount`. Una foto incompleta no llega a escribirse.
+- La misma ingesta traduce a los encabezados manuales antes de crear el Excel, conserva al final
+  los campos sin equivalencia, convierte códigos a texto y registra los conteos por código.
+  Terceros publica sólo `C`; Tesorería controla los pares Tipo/Clase. Un código desconocido se
+  muestra como tal. En Tesorería además se excluye de la publicación porque el lector existente
+  toma toda clase desconocida como “Otros”; publicarla sería inventar una categoría y el lector
+  no se podía tocar en esta tarea. El código queda visible en el log para revisar.
+- `--probar` trae cinco filas pero muestra únicamente URL sin token, HTTP, total, encabezados y
+  conteos; no imprime nombres ni montos. `--simular` no toca red ni llavero y lista las ocho
+  bajadas con su URL. La tesorería elige primero `Tesoreria AA`, tolera la variante con tilde y
+  crea la carpeta sin tilde si no existe ninguna.
+- `ingestas/test_tango_live.py`: 12 pruebas sin red con respuestas y datos inventados. Cubren URL,
+  headers, timeout, query opcional, dos páginas, cierre contra `totalCount`, HTML “Iniciando”,
+  `succeeded=false`, `exceptionInfo`, las cinco traducciones, códigos desconocidos, filtro de
+  terceros, freno Tipo/Clase, elección de carpeta y no exposición de datos en `--probar`.
+  La integración crea Excel temporales y verifica que `lector.tango.procesar` y
+  `lector.tesoreria_aa.leer` obtienen cliente, comprobante numérico, vencimiento, pendiente,
+  cheque de terceros, cheque propio, cobro y pago de AA.
+- `clientes/navar/herramientas/instalar_tango.ps1`: nueva tarea diaria `finauto NAVAR Tango` a
+  las 07:30, desde el repo, una sola instancia, límite de una hora y salida acumulada en
+  `privado/tango_live.log`; admite `quitar`. La salida de Python se fuerza a UTF-8 para que la
+  consola de Windows no falle por acentos o flechas.
+- `clientes/navar/documentos/instalar_notebook.md` §5: token validado desde el portapapeles,
+  prueba de estructura, primera descarga local, descarga a Drive y recién después instalación.
+  `clientes/navar/perfil.json`: se actualizaron solamente los textos del bloque `tango_live`.
+
+**Comprobaciones realizadas:**
+
+- `python -m unittest ingestas.test_tango_live`: 12 pruebas OK.
+- `python -m py_compile ingestas/tango_live.py ingestas/test_tango_live.py`: OK.
+- `python -m json.tool clientes/navar/perfil.json`: OK.
+- `python tests/test_lector.py`: todos los chequeos existentes pasaron.
+- Simulación con fecha 25/09/2026 y carpeta temporal: exactamente ocho bajadas, desde
+  `01/01/1990` hasta `31/12/2031`, sin leer el token.
+- `git diff --check`: OK. No se agregaron nombres propios de personas ni dependencias.
+
+**No se pudo probar en este entorno:** la red y el Tango real de NAVAR, el token del llavero,
+la ejecución del `.ps1`/Programador de tareas de Windows y las equivalencias inferidas
+`E/R/X` y `1/2/4/6`. Por eso la guía exige una primera descarga local supervisada y los logs
+dejan los conteos necesarios para confirmarlas antes de publicar en Drive.
 
 ## Revisión

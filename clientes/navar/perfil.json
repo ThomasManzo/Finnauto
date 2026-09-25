@@ -92,7 +92,7 @@
   },
   "_ayuda_modos_de_prueba": "Para probar un bot: en el banco que quieras, poner 'solo_empresa_activa': true o 'solo_estas_empresas': ['Nombre Tal Cual']. Vacio + solo_empresa_activa false = PRODUCCION (todas).",
   "tango_live": {
-    "_ayuda": "Bajada automatica de las consultas de Tango Live por API (ingestas/tango_live.py). 'url' es donde corre Live en la red de NAVAR. Los numeros de 'consultas' son el {process} de cada consulta (se ven en la URL de la consulta en Live o en Apertura -> API). Los de 'empresas' son el header Company. Lo que esta en null falta: se completa cuando este el usuario finauto. El token NO va aca: va al llavero (setup_credenciales.py --banco tango_live).",
+    "_ayuda": "Bajada automatica de Tango Live por API (ingestas/tango_live.py). La llamada usa /Api/GetApiLiveQueryData con process, fechas DD/MM/AAAA y paginacion como parametros de query. 'url' es el Live de la red de NAVAR; 'consultas' son los procesos y 'empresas' el header Company. El token NO va aca: queda en el llavero de Windows. custom_query vacio o '-' significa que no se manda ese parametro.",
     "url": "http://servidor:17000",
     "empresas": {
       "A": 13,
@@ -106,7 +106,7 @@
       "movimientos_tesoreria": 11591
     },
     "custom_query": "-",
-    "_origen": "Números tomados de las URL de Live el 22/09/2026: http://servidor:17000/company/<empresa>/live/<proceso>. NAVAR SA = 13, NAVAR SA Otros = 56.",
-    "_movimientos_tesoreria": "11591 = movimientos de tesorería (un renglón por comprobante: cobros, pagos, otros; con Desc. relacionado). Solo para AA (empresa 56): es la operación en efectivo. Va a la carpeta 'Tesorería AA'. Lector: lector/tesoreria_aa.py (pendiente)."
+    "_origen": "Procesos y empresas comprobados contra Live el 24-25/09/2026. NAVAR SA = 13 y NAVAR SA Otros = 56. La API funciona con parametros despues de '?'; la ruta dibujada por la pantalla devuelve HTML.",
+    "_movimientos_tesoreria": "11591 = movimientos de tesorería (un renglón por comprobante: cobros, pagos y otros, con Desc. relacionado). Solo para AA (empresa 56): es la operación en efectivo. Va a la carpeta 'Tesoreria AA' sin tilde y la procesa lector/tesoreria_aa.py."
   }
 }
