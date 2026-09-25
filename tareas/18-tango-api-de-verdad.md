@@ -277,3 +277,31 @@ verifican que el programa respete ese contrato. La guía conserva una primera de
 supervisada antes de publicar en Drive.
 
 ## Revisión
+
+**Claude, 25/09/2026.** Leí el diff completo (`tango_live.py`, test, `.ps1`, perfil, §5) y lo crucé
+contra `lector/tango.py`, `lector/tesoreria_aa.py` y `vigilante.py`. Corrí `unittest
+ingestas.test_tango_live` (12 OK), `unittest bots.galicia.test_navar` (OK) y `--simular --hoy
+2026-09-25`: 8 bajadas, cada una con su `customQuery` (10–17), fechas vacías y propios desde
+27/07/2026.
+
+Verificado en el código:
+- Los encabezados traducidos coinciden con lo que buscan los lectores: `Nro. comprobante` exacto
+  (se acaba el "FAC FAC"), `Importe Pendiente (CTE)`/`Total pendiente (CTE)`, `Estado` + `Cód.
+  estado` en terceros (C → "En Cartera"/"C", que es lo que acepta `_motivo_estado_cheque`),
+  `Estado` = "Al Cobro" en propios y las claves exactas de tesorería (`Total (cte)`, `Desc.
+  relacionado`, `Fecha` como fecha).
+- No se escribe nada si la paginación no cierra con `totalCount`, si Live responde HTML o
+  `succeeded=false`, o si la tesorería trae un Tipo/Clase incompatible.
+- La tesorería va a `Tesoreria AA` (sin tilde). El vigilante toma el más nuevo por fecha de
+  modificación, así que la bajada de hoy le gana a los exports a mano viejos.
+- Los 60 días de propios están bien: el 26/08 del agregado era la prueba manual, no la regla.
+
+A mirar en la corrida supervisada (no bloquea el merge):
+1. `fromDate` sale codificado (`27%2F07%2F2026`); la prueba a mano fue con `/` sin codificar. Lo
+   normal es que el servidor lo decodifique: se confirma con `--probar cheques_propios --empresa A`
+   (tiene que dar total > 0, fechas del cheque desde el 27/07 en adelante).
+2. El temporal se llama `<nombre>.xlsx.parte.xlsx` y vive un segundo en la carpeta de Drive con
+   extensión `.xlsx`. Si el vigilante lista justo en ese segundo, lo cuenta como archivo de Tango.
+   Lo cubre la espera de 2 minutos del vigilante (en la pasada siguiente el temporal ya no está).
+   Riesgo bajo, pero conviene arreglarlo cuando se vuelva a tocar el archivo: temporal que empiece
+   con `.`, que el vigilante ya ignora.
