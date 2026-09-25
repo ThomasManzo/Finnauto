@@ -63,6 +63,41 @@ USD 400/mes desde el mes 2, revisable a los 3 meses contra el acierto medido.
 La presentación (PDF de propuesta + vista rápida del tablero + la Sheet) fue
 lo que cerró. Primer peso cobrado de finauto.
 
+## Dónde estamos (25/09/2026) — Tango llega solo, por API
+
+**Tango ya no se exporta a mano.** Recorrido de cada mañana: 07:30 la tarea "finauto NAVAR Tango"
+de la notebook corre `ingestas/tango_live.py`, que deja 8 Excel en Drive con el mismo formato que
+los exports a mano (4 de A y 4 de AA). Después el vigilante corre los lectores (cada 15 min) y el
+disparador de la Sheet importa (cada hora). Primera corrida real el 25/09: Registro ok con 374
+cobranzas, 535 pagos y 77 cheques, y tesorería AA con 761 movimientos. Los números coinciden con los
+exports a mano del 23/09 en todo lo que no cambió en dos días. Log de la bajada:
+`C:\finauto\clientes\navar\privado\tango_live.log`.
+
+- **Token** en el llavero de la notebook (`finauto:navar:tango_live`, usuario de Tango
+  finanzasnavar@gmail.com). Se guarda **desde el portapapeles** (comando en `instalar_notebook.md`
+  §5): pegar en la pantalla de clave oculta por escritorio remoto guardó basura tres veces.
+- **Consultas personalizadas de Live ("Finauto ...", en Mis consultas): NO BORRARLAS NI
+  EDITARLAS.** La bajada depende de ellas (`perfil.json → tango_live.consultas_personalizadas`).
+  A: cobranzas 10 · pagos 11 · cheques terceros 18 (filtro En Cartera) · cheques propios 13 (Al
+  Cobro + Diferido). AA: cobranzas 14 · pagos 15 · cheques terceros 16 (En Cartera) · tesorería 17.
+  Si alguien les cambia columnas, el lector deja de encontrarlas. La API las pide por número:
+  guardar una "nueva" cambia el número.
+- **Cheques propios**: Tango nunca los marca como debitados ("Al Cobro" junta todo desde 1995). La
+  bajada pide solo fecha del cheque desde hoy − 60 días (`dias_atras`).
+- **Hallazgo 25/09**: con la API entran 19 cheques propios por $210,4 M (todos a Envasando SRL),
+  contra 9 por $85,9 M del export a mano. Los 10 de más tienen fecha en 2027, y el filtro "año
+  actual" del export a mano los dejaba afuera. **Confirmar con NAVAR antes de mostrarlo.**
+- **Hallazgo 25/09**: con los exports a mano, "Nro Cheque" de terceros de A mostraba el CUIT del
+  cheque (esa columna no venía). Con la API es el número real. Eso destapó que el importador
+  frenaba con números como texto: arreglo manual (columna D de Cartera de Cheques en "Texto sin
+  formato") y arreglo de fondo en la tarea 20.
+- Estado `X` en cheques de terceros de A (107, históricos): no se sabe qué es; queda afuera.
+- Plan B si la API falla: exportar a mano como antes y dejar el Excel en la misma carpeta de Drive.
+
+**Pendiente de Tango**: certificar la tarea de las 07:30 (mirar el log del 26/09) · generar token
+nuevo (el actual quedó en un chat) · borrar la consulta vieja 12 en Live · tarea 20 (Codex) y
+pegar el `.gs` · zona horaria de la Sheet → Buenos Aires (Registro marca 3 hs de menos).
+
 ## Dónde estamos (24/09/2026, madrugada) — listo para automatizar
 
 El circuito quedó andando de punta a punta y con los frenos puestos. Lo hecho el 23-24/09:
@@ -86,9 +121,7 @@ El circuito quedó andando de punta a punta y con los frenos puestos. Lo hecho e
   Apps Script no guarda de forma confiable cuando se automatiza el pegado.
 
 ### Lo que sigue (las automatizaciones)
-1. **Tango por API**: el token ya existe. `ingestas/tango_live.py` contra los 5 procesos
-   (17952 cobranzas · 17696 pagos · 11583 cheques terceros · 11584 propios · 11591 tesorería AA)
-   y las 2 empresas (13 = A, 56 = AA). Falta la respuesta de soporte de Tango.
+1. ~~**Tango por API**~~ ✅ 25/09 (ver arriba).
 2. **Bots de banco**: esperan el operador de consulta de cada banco.
 3. **El tablero web nunca se implementó**: `tablero_web.gs` (Código.gs) está pegado pero sin
    deployment, así que no hay URL para compartir. PERMITIDOS ya tiene los mails de NAVAR.
