@@ -61,11 +61,11 @@ var IMPORTS = {
     prefijo: "para_pegar_en_la_sheet_",
     solapas: [
       { xlsx: "Cuentas a Cobrar",   sheet: "Cuentas a Cobrar",   formulas: ["Saldo Pendiente", "Estado", "Dias de Atraso"],
-        texto: ["Nro Factura"], colMarca: "Observaciones", marcas: ["Tango Live", "REVISAR:", "AGREGADO"], conId: true },
+        fechas: ["Fecha Emision", "Fecha Vencimiento"], texto: ["Nro Factura"], colMarca: "Observaciones", marcas: ["Tango Live", "REVISAR:", "AGREGADO"], conId: true },
       { xlsx: "Cuentas a Pagar",    sheet: "Cuentas a Pagar",    formulas: ["Saldo Pendiente", "Estado", "Dias de Atraso"],
-        texto: ["Nro Factura / OC"], colMarca: "Observaciones", marcas: ["Tango Live", "REVISAR:", "AGREGADO"], conId: true },
+        fechas: ["Fecha Emision", "Fecha Vencimiento"], texto: ["Nro Factura / OC"], colMarca: "Observaciones", marcas: ["Tango Live", "REVISAR:", "AGREGADO"], conId: true },
       { xlsx: "Cartera de Cheques", sheet: "Cartera de Cheques", formulas: [],
-        texto: ["Nro Cheque"], colMarca: "Observaciones", marcas: ["Tango Live", "REVISAR:", "AGREGADO"], conId: true },
+        fechas: ["Fecha Emision", "Fecha Pago / Cobro"], texto: ["Nro Cheque"], colMarca: "Observaciones", marcas: ["Tango Live", "REVISAR:", "AGREGADO"], conId: true },
     ]
   },
   bancos: {
@@ -74,9 +74,9 @@ var IMPORTS = {
       // El saldo "(varios)" cargado a mano el 31/08 para la empresa A se pisa también:
       // con extractos, el saldo de A es el de cada cuenta. El de AA queda (no hay extractos).
       { xlsx: "Saldos Bancarios", sheet: "Saldos Bancarios", formulas: [],
-        texto: ["Cuenta / Nro"], colMarca: "Origen", marcas: ["Extracto", "Captura"], conId: false, pisarTambien: _saldoManualDeA_ },
+        fechas: ["Fecha"], texto: ["Cuenta / Nro"], colMarca: "Origen", marcas: ["Extracto", "Captura"], conId: false, pisarTambien: _saldoManualDeA_ },
       { xlsx: "Movimientos",      sheet: "Movimientos",      formulas: ["Semana (lunes)"],
-        texto: ["Referencia", "Concepto / Detalle"], colMarca: "Origen", marcas: ["Extracto", "Captura"], conId: true },
+        fechas: ["Fecha"], texto: ["Referencia", "Concepto / Detalle"], colMarca: "Origen", marcas: ["Extracto", "Captura"], conId: true },
     ]
   },
   // La operación en efectivo de AA (Tango → lector/tesoreria_aa.py): filas de Movimientos con
@@ -85,22 +85,22 @@ var IMPORTS = {
     prefijo: "para_pegar_tesoreria_aa_",
     solapas: [
       { xlsx: "Movimientos", sheet: "Movimientos", formulas: ["Semana (lunes)"],
-        texto: ["Referencia", "Concepto / Detalle"], colMarca: "Origen", marcas: ["Tango AA"], conId: true },
+        fechas: ["Fecha"], texto: ["Referencia", "Concepto / Detalle"], colMarca: "Origen", marcas: ["Tango AA"], conId: true },
     ]
   },
   impuestos: {
     prefijo: "para_pegar_impuestos_",
     solapas: [
       { xlsx: "Deuda Impositiva", sheet: "Deuda Impositiva", formulas: [],
-        texto: [], colMarca: "Observaciones", marcas: ["Mapa impuestos", "AGREGADO", "(agregado"], conId: false },
+        fechas: ["Fecha Vencimiento"], texto: [], colMarca: "Observaciones", marcas: ["Mapa impuestos", "AGREGADO", "(agregado"], conId: false },
     ]
   },
   deuda: {
     prefijo: "para_pegar_deuda_",
     // Deuda Bancaria tiene dos bloques en la misma solapa, cada uno con su fila "Banco".
     bloques: [
-      { xlsx: "Lineas",     formulas: [],                      texto: [], colMarca: "Observaciones", marcas: ["Mapa deuda", "AGREGADO", "(agregado"] },
-      { xlsx: "Cronograma", formulas: ["Importe Total Cuota"], texto: [], colMarca: "Observaciones", marcas: ["Mapa deuda", "AGREGADO", "(agregado"] },
+      { xlsx: "Lineas",     formulas: [],                      fechas: ["Fecha Otorgamiento", "Fecha Vto. Final"], texto: [], colMarca: "Observaciones", marcas: ["Mapa deuda", "AGREGADO", "(agregado"] },
+      { xlsx: "Cronograma", formulas: ["Importe Total Cuota"], fechas: ["Fecha Vencimiento"], texto: [], colMarca: "Observaciones", marcas: ["Mapa deuda", "AGREGADO", "(agregado"] },
     ]
   }
 };
@@ -224,6 +224,12 @@ function _importarConLock_(cual, archivo) {
   var destino = SpreadsheetApp.getActiveSpreadsheet();
   var resumen = [];
   try {
+    // La temporal suele nacer con la zona de la cuenta. La igualamos al destino antes
+    // de leerla para que el 25/09 a medianoche siga siendo el 25/09 a medianoche.
+    var zonaDestino = destino.getSpreadsheetTimeZone();
+    origen.setSpreadsheetTimeZone(zonaDestino);
+    SpreadsheetApp.flush();
+
     // Se revisan TODAS las solapas de datos antes de cargar la primera.
     var nombres = cfg.solapas ? cfg.solapas.map(function (s) { return s.sheet; }) : ["Deuda Bancaria"];
     var hojas = nombres.map(function (nombre) {
@@ -242,7 +248,7 @@ function _importarConLock_(cual, archivo) {
         var hOrigen = origen.getSheetByName(s.xlsx);
         var hDestino = destino.getSheetByName(s.sheet);
         if (!hOrigen || !hDestino) { resumen.push(s.sheet + ": falta la solapa (origen " + !!hOrigen + ", destino " + !!hDestino + ")"); return; }
-        var r = _volcar_(hOrigen, hDestino, 1, hDestino.getMaxRows(), s);
+        var r = _volcar_(hOrigen, hDestino, 1, hDestino.getMaxRows(), s, zonaDestino);
         resumen.push(s.sheet + ": borradas " + r.borradas + " filas viejas, cargadas " + r.cargadas);
       });
     }
@@ -257,7 +263,7 @@ function _importarConLock_(cual, archivo) {
       cfg.bloques.forEach(function (b, i) {
         var hOrigen = origen.getSheetByName(b.xlsx);
         if (!hOrigen) { resumen.push("Deuda Bancaria/" + b.xlsx + ": falta la solapa en el xlsx"); return; }
-        var r = _volcar_(hOrigen, hDestino, limites[i][0], limites[i][1], b);
+        var r = _volcar_(hOrigen, hDestino, limites[i][0], limites[i][1], b, zonaDestino);
         resumen.push("Deuda Bancaria/" + b.xlsx + ": borradas " + r.borradas + " filas viejas, cargadas " + r.cargadas);
       });
     }
@@ -305,17 +311,17 @@ function _saldoManualDeA_(fila, enc) {
 // filaEnc: fila del encabezado en el destino; filaFin: última fila que puede usar.
 // Todo se escribe por bloques (setValues por columna), no celda por celda: con 2.000
 // filas, celda por celda tarda minutos y Apps Script corta a los 6.
-function _volcar_(hOrigen, hDestino, filaEnc, filaFin, s) {
+function _volcar_(hOrigen, hDestino, filaEnc, filaFin, s, zonaDestino) {
   try {
     _quitarFiltros_(hDestino);
-    return _volcarSinFiltro_(hOrigen, hDestino, filaEnc, filaFin, s);
+    return _volcarSinFiltro_(hOrigen, hDestino, filaEnc, filaFin, s, zonaDestino);
   } catch (e) {
     throw new Error(hDestino.getName() + "/" + (s.xlsx || "lista") + ": " + String(e.message || e) +
       " Puede haber una carga parcial; revisá Registro y el para_pegar antes de usar el cash.");
   }
 }
 
-function _volcarSinFiltro_(hOrigen, hDestino, filaEnc, filaFin, s) {
+function _volcarSinFiltro_(hOrigen, hDestino, filaEnc, filaFin, s, zonaDestino) {
   var encO = hOrigen.getRange(1, 1, 1, hOrigen.getLastColumn()).getValues()[0].map(String);
   var encD = hDestino.getRange(filaEnc, 1, 1, hDestino.getLastColumn()).getValues()[0].map(String);
   // Si el lector trae una columna que la solapa no tiene (ej. "Debito Automatico" el 22/09),
@@ -378,6 +384,16 @@ function _volcarSinFiltro_(hOrigen, hDestino, filaEnc, filaFin, s) {
   });
   if (s.conId) finales.forEach(function (r, i) { r[0] = i + 1; });   // ID de corrido
 
+  // Las listas guardan días, no horarios. Aunque la conversión del Excel traiga una
+  // fecha corrida, se conserva su día y se la deja en la medianoche de la Sheet destino.
+  var columnasFecha = (s.fechas || []).map(_n_);
+  if (zonaDestino) finales.forEach(function (r) {
+    r.forEach(function (valor, c) {
+      if (valor instanceof Date && columnasFecha.indexOf(_n_(encD[c])) !== -1)
+        r[c] = _fechaAMedianoche_(valor, zonaDestino);
+    });
+  });
+
   // 3. Escribir columna por columna, salteando las de fórmula, y limpiar lo que sobra abajo.
   var total = finales.length, antes = viejas.length;
   var altoEscritura = Math.max(total, antes);
@@ -404,7 +420,7 @@ function _volcarSinFiltro_(hOrigen, hDestino, filaEnc, filaFin, s) {
     if (antes > total) hDestino.getRange(filaEnc + 1 + total, c + 1, antes - total, 1).clearContent();
   });
   SpreadsheetApp.flush();
-  _verificarVolcado_(hDestino, filaEnc, filaFin, encD, s, finales, antes);
+  _verificarVolcado_(hDestino, filaEnc, filaFin, encD, s, finales, antes, zonaDestino);
   return { borradas: borradas, cargadas: cargadas };
 }
 
@@ -459,19 +475,33 @@ function _quitarFiltros_(h) {
 
 // Se vuelve a leer TODO lo escrito, incluidas las filas manuales conservadas y la cola
 // borrada. No alcanza comparar totales: una fecha corrida puede sumar igual.
-function _verificarVolcado_(h, enc, fin, nombres, cfg, esperado, antes) {
+function _verificarVolcado_(h, enc, fin, nombres, cfg, esperado, antes, zonaDestino) {
   var alto = Math.max(esperado.length, antes);
   var leido = alto ? h.getRange(enc + 1, 1, alto, nombres.length).getValues() : [];
+  var columnasFecha = (cfg.fechas || []).map(_n_);
   for (var f = 0; f < alto; f++) {
     for (var c = 0; c < nombres.length; c++) {
       if (!nombres[c] || cfg.formulas.indexOf(nombres[c]) !== -1) continue;
       var valor = f < esperado.length ? esperado[f][c] : "";
+      if (zonaDestino && leido[f][c] instanceof Date && columnasFecha.indexOf(_n_(nombres[c])) !== -1 &&
+          !_esMedianoche_(leido[f][c], zonaDestino))
+        throw new Error("VERIFICACION_NO_CUADRA: " + h.getName() + " fila " + (enc + 1 + f) +
+          ", columna " + nombres[c] + ": fechas corridas por zona horaria; no usar el cash hasta revisar y reimportar.");
       if (!_mismoDato_(valor, leido[f][c])) throw new Error("VERIFICACION_NO_CUADRA: " + h.getName() +
         " fila " + (enc + 1 + f) + ", columna " + nombres[c] + ". La escritura terminó pero no coincide con lo preparado; no usar el cash hasta revisar y reimportar.");
     }
   }
   if (_ultimaFilaConDatos_(h, enc + 1, fin, 2) !== enc + esperado.length)
     throw new Error("VERIFICACION_NO_CUADRA: " + h.getName() + ": cantidad de filas distinta; revisá el para_pegar y reimportá.");
+}
+
+function _fechaAMedianoche_(fecha, zona) {
+  var dia = Utilities.formatDate(fecha, zona, "yyyy-MM-dd");
+  return Utilities.parseDate(dia, zona, "yyyy-MM-dd");
+}
+
+function _esMedianoche_(fecha, zona) {
+  return fecha.getTime() === _fechaAMedianoche_(fecha, zona).getTime();
 }
 
 function _mismoDato_(a, b) {
