@@ -1,5 +1,5 @@
 # Tarea 20 — El importador frena por números de comprobante que la Sheet convierte en número
-Estado: pendiente
+Estado: lista para revisión
 Rama: tarea/importador-texto
 
 ## Objetivo
@@ -68,5 +68,36 @@ Pasó el 25/09/2026, con la primera bajada de Tango por API:
 3. `grep` de nombres propios de personas vacío. Commit en la rama.
 
 ## Qué hice
+
+- Agregué en cada bloque de `IMPORTS` la lista explícita `texto`. Quedaron cubiertos `Nro
+  Factura`, `Nro Factura / OC`, `Nro Cheque`, `Cuenta / Nro`, `Referencia` y `Concepto /
+  Detalle`, incluidas las dos fuentes que cargan Movimientos.
+- Antes de pegar, el importador pone esas columnas en formato texto. El rango incluye tanto las
+  filas que se escriben como las filas viejas que se limpian debajo, para no perder ceros ni
+  precisión aunque cambie la cantidad de registros.
+- `_mismoDato_` sigue comparando las fechas por su instante exacto. Como red de seguridad, ahora
+  acepta `"55"` contra `55`, pero no `"0055"` contra `55` ni un identificador que exceda la
+  precisión segura de un número.
+- Revisé impuestos y deuda bancaria. No agregué otras columnas: `Nro Cuota` sale como número o
+  como una leyenda, y `Periodo` es texto descriptivo; ninguna necesita cubrir el caso de un
+  identificador numérico recibido como texto.
+- Verifiqué la sintaxis, los casos de achicar/agrandar/repetir el volcado, filtros, filas ocultas,
+  cola borrada, Registro y fechas. También simulé la conversión automática de la Sheet: `0055`
+  quedó como texto y el formato se aplicó antes de escribir. El único llamado a `_mismoDato_` es
+  el control posterior al volcado.
+- El cambio no agrega nombres propios de personas.
+
+### Prueba pendiente en la Sheet
+
+No se puede ejecutar Apps Script desde este entorno. Para la revisión:
+
+1. Copiar `importar_cashflow.gs` desde `NAVAR - Datos/Scripts/`, pegarlo completo en Apps Script
+   de la Sheet y guardar.
+2. En `Cartera de Cheques`, volver temporalmente la columna D a formato `Automático`, para probar
+   el caso que fallaba.
+3. Ejecutar `finauto → Importar Tango (cobrar / pagar / cheques)`.
+4. Confirmar que termine sin `VERIFICACION_NO_CUADRA` y que `Nro Cheque` quede en formato texto.
+5. Revisar en `Registro` una línea `ok` con 374 / 535 / 77, o con las cantidades del archivo más
+   nuevo si cambiaron.
 
 ## Revisión
