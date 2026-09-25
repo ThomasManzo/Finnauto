@@ -1,5 +1,5 @@
 # Tarea 20 — El importador frena por números de comprobante que la Sheet convierte en número
-Estado: lista para revisión
+Estado: aprobada (mergeada 25/09; falta pegar el .gs en Apps Script y probar)
 Rama: tarea/importador-texto
 
 ## Objetivo
