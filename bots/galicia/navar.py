@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import tempfile
+import time
 from pathlib import Path
 
 from bots.galicia.bot import BotGalicia
@@ -14,6 +15,10 @@ from nucleo.utilidades import _click_robusto
 
 def _empresa(texto):
     return re.sub(r"[\s.]", "", texto or "").upper()
+
+
+PATRON_EMPRESA = re.compile(
+    r"NAVAR\s+(?:S\.?\s*A\.?|SOCIEDAD\s+AN[OÓ]NIMA)", re.I)
 
 
 class BotGaliciaNavar(BotGalicia):
@@ -30,10 +35,7 @@ class BotGaliciaNavar(BotGalicia):
         page.goto(self.url, timeout=timeout)
         captura(page, "home_galicia")
 
-        _click_robusto(page, [
-            lambda: page.get_by_role("link", name=re.compile(r"^office banking$", re.I)),
-            lambda: page.get_by_role("button", name=re.compile(r"^office banking$", re.I)),
-        ], "Office Banking")
+        self._abrir_office_banking(page, timeout)
 
         campo_usuario = page.get_by_label("Usuario", exact=True)
         try:
@@ -66,9 +68,7 @@ class BotGaliciaNavar(BotGalicia):
             ingresar.click(timeout=timeout)
             captura(page, "login_enviado")
             campo_usuario.wait_for(state="hidden", timeout=timeout)
-            empresa = page.locator("header").filter(has_text=re.compile(
-                r"NAVAR\s+(?:S\.?\s*A\.?|SOCIEDAD\s+ANONIMA)", re.I))
-            empresa.wait_for(state="visible", timeout=timeout)
+            self._esperar_empresa_visible(page, timeout)
         except Exception as e:
             captura(page, "ERROR_login_no_confirmado")
             raise RuntimeError("login no confirmado; revisar captura") from e
@@ -77,13 +77,15 @@ class BotGaliciaNavar(BotGalicia):
 
     def capturar_empresa_activa(self, page):
         # Hay una sola empresa. En pantalla figura con el nombre legal completo,
-        # pero el estado usa siempre la misma clave corta entre corridas.
+        # puede repetirse fuera de un <header>, y el estado usa siempre la misma
+        # clave corta entre corridas.
         try:
-            texto = page.locator("header").inner_text(timeout=5000)
+            coincidencias = page.get_by_text(PATRON_EMPRESA)
+            if any(coincidencias.nth(i).is_visible() for i in range(coincidencias.count())):
+                return "NAVAR SA"
         except Exception:
-            return None
-        normalizado = _empresa(texto)
-        return "NAVAR SA" if any(nombre in normalizado for nombre in self.empresas) else None
+            pass
+        return None
 
     def descubrir_empresas(self, page, timeout, excluir, solo=None):
         # La empresa ya está activa y el perfil ordena no abrir el desplegable.
@@ -106,6 +108,33 @@ class BotGaliciaNavar(BotGalicia):
             if len(visibles) == 1:
                 return visibles[0]
         raise RuntimeError("No encontré %s; revisar captura." % descripcion)
+
+    def _abrir_office_banking(self, page, timeout):
+        # En la home puede haber copias ocultas del mismo acceso. Sólo importa
+        # que exista un único enlace o botón visible, y nunca se elige a ciegas.
+        office = self._unico_visible([
+            page.get_by_role("link", name=re.compile(r"^office banking$", re.I)),
+            page.get_by_role("button", name=re.compile(r"^office banking$", re.I)),
+        ], "Office Banking visible")
+        office.click(timeout=timeout)
+
+    @staticmethod
+    def _esperar_empresa_visible(page, timeout):
+        """Espera cualquier aparición visible; el inicio muestra el nombre más de una vez."""
+        limite = time.monotonic() + timeout / 1000.0
+        while True:
+            coincidencias = page.get_by_text(PATRON_EMPRESA)
+            try:
+                for i in range(coincidencias.count()):
+                    if coincidencias.nth(i).is_visible():
+                        return
+            except Exception:
+                # La página puede reconstruirse mientras termina de cargar.
+                pass
+            restante_ms = int((limite - time.monotonic()) * 1000)
+            if restante_ms <= 0:
+                raise RuntimeError("la empresa no apareció en la página")
+            page.wait_for_timeout(min(200, restante_ms))
 
     def ir_a_cuenta(self, page, timeout):
         # El motor permite seguir si no pudo leer la empresa. Acá eso no alcanza:
