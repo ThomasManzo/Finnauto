@@ -1,5 +1,5 @@
 # Tarea 19 — Galicia NAVAR: correcciones antes de la primera corrida completa en el banco
-Estado: lista para revisión
+Estado: en curso (vuelve con correcciones de la revisión del 27/09)
 Rama: tarea/galicia-correcciones
 
 ## Objetivo
@@ -150,3 +150,43 @@ No tocar `nucleo/`, el bot original `bots/galicia/bot.py`, los lectores ni el vi
   supervisada en la notebook.
 
 ## Revisión
+
+**Claude, 27/09/2026.** Leí el diff completo. Corrí `python -m unittest bots.galicia.test_navar`:
+8 OK. También `py_compile`, el JSON y el grep de nombres, todo limpio. No tocó `nucleo/`, el bot
+original ni los lectores.
+
+Bien: login con un solo intento y confirmación · empresa única con clave canónica `NAVAR SA` y
+`solo_empresa_activa: true` · sin selector ni clics por coordenadas · `_unico_visible` sin `.first`
+· cuenta con `N°` opcional · validación del Excel sin la cuenta · carpeta automática, que frena
+antes del llavero · backfill 7 · §6 al día.
+
+A corregir (solo en `bots/galicia/navar.py` y su test):
+
+1. **Modo estricto en "Office Banking".** `_click_robusto` hace `wait_for` y `click` sobre
+   `get_by_role("link", name=^office banking$)`. Si la home tiene más de un enlace con ese nombre
+   (por ejemplo, uno oculto dentro del desplegable "Empresas" del encabezado, o en el pie), Playwright
+   corta por modo estricto y el login falla antes de empezar. El bot original usaba `.first` sobre
+   `text=Office Banking`, y en la captura de la home del ensayo se ve un solo botón **visible**. Usar
+   `_unico_visible` con las mismas opciones (link y button): toma el único visible, frena si hay dos
+   visibles y no usa `.first`.
+2. **Modo estricto en `header`.** `capturar_empresa_activa` hace `page.locator("header").inner_text()`
+   y el login confirma con `page.locator("header").filter(...).wait_for()`. Si la página tiene más de
+   un `<header>` (las tarjetas del inicio pueden tener uno cada una), las dos cosas fallan: la primera
+   devuelve `None` y el bot dice "No pude confirmar la empresa"; la segunda da "login no confirmado"
+   aunque haya entrado. Tampoco está comprobado que la barra de arriba sea un `<header>`. Cambiar las
+   dos cosas por una búsqueda del nombre en la página:
+   `page.get_by_text(re.compile(r"NAVAR\s+(S\.?\s*A\.?|SOCIEDAD\s+AN[OÓ]NIMA)", re.I))`.
+   La empresa queda confirmada si **al menos una** coincidencia es visible. Acá no se pide que sea
+   única: en el inicio el nombre aparece dos veces, arriba a la derecha y en el título "NAVAR
+   SOCIEDAD ANONIMA - CONSUMO MASIVO". Para la espera del login, esperar con `.first` visible sobre
+   ese locator (acá `.first` es correcto, porque no se hace clic) o un bucle hasta el `timeout`. Que
+   acepte `ANÓNIMA` con tilde, por las dudas.
+3. **Tests**: sumar uno que confirme que la empresa se reconoce con **dos** coincidencias visibles
+   del nombre, y otro que confirme que "Office Banking" con un oculto y un visible elige el visible.
+   Con dobles de Locator, como los que ya hay.
+
+Menor, sin cambio: en `ir_a_cuenta`, el número de la cuenta también está en la tarjeta del inicio. Si
+el clic en "Cuentas" tarda, `wait_for` podría encontrar todavía el del inicio. Abrir la cuenta desde
+ahí también sirve, y el control posterior sigue exigiendo una sola cuenta visible. Queda para mirar
+en las capturas de la próxima corrida.
+
