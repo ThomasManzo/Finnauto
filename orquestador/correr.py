@@ -56,11 +56,21 @@ def correr_banco(cliente, banco, modo_forzado=None):
     if cliente == "navar" and banco == "galicia":
         from bots.galicia.navar import BotGaliciaNavar
         bot = BotGaliciaNavar(cfg_banco)
-        ctx.carpeta_drive = cfg_banco.get("carpeta_drive_destino", "").strip()
+        fijada = cfg_banco.get("carpeta_drive_destino", "").strip()
+        relativa = cfg_banco.get("carpeta_drive_relativa", "Bancos/galicia").strip()
+        if fijada:
+            ctx.carpeta_drive = os.path.normpath(fijada)
+            buscada = "carpeta_drive_destino=%s" % fijada
+        else:
+            from ingestas.drive_local import carpeta_datos
+            raiz = carpeta_datos()
+            relativa_sistema = relativa.replace("/", os.sep).replace("\\", os.sep)
+            ctx.carpeta_drive = os.path.normpath(os.path.join(raiz, relativa_sistema)) if raiz else ""
+            buscada = "NAVAR - Datos + %s (detección automática de Drive)" % relativa
         # También en prueba: no abrir el banco si no sabemos dónde publicar.
         if not os.path.isabs(ctx.carpeta_drive) or not os.path.isdir(ctx.carpeta_drive):
-            raise SystemExit("Completar bancos.galicia.carpeta_drive_destino con la ruta local "
-                             "existente a NAVAR - Datos/Bancos/galicia.")
+            raise SystemExit("No encontré la carpeta de Galicia antes de abrir el banco. Busqué: %s. "
+                             "Revisar que Drive esté montado o fijar carpeta_drive_destino." % buscada)
 
     usuario, clave = _cred.cargar(BASE_REPO, cliente, banco)
 

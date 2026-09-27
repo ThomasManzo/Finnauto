@@ -22,16 +22,18 @@
       "activo": false,
       "empresas_excluir": [],
       "solo_estas_empresas": [
-        "NAVAR SA"
+        "NAVAR SA",
+        "NAVAR SOCIEDAD ANONIMA"
       ],
-      "solo_empresa_activa": false,
+      "solo_empresa_activa": true,
       "nombre_archivo": "excel_navar",
       "prefijo_archivo": "Movimientos GALICIA",
-      "_nota": "Preparado, sin validar en el banco. Activo false evita corridas generales; la invocación explícita sí corre. Completar carpeta_drive_destino con la ruta local absoluta a NAVAR - Datos/Bancos/galicia. Empresa normalizada sin puntos ni espacios; confirmar nombre en la notebook.",
+      "_nota": "Una sola empresa activa: se confirma en pantalla y no se abre el selector. La carpeta se resuelve sola desde NAVAR - Datos/Bancos/galicia; carpeta_drive_destino queda como alternativa manual. El backfill de 7 días aplica en todas las corridas: cubre el arranque, fines de semana y feriados; el lector elimina la superposición.",
       "cuenta": "0005459-5 070-1",
       "carpeta_drive_destino": "",
       "carpeta_drive_relativa": "Bancos/galicia",
-      "incluir_hoy": false
+      "incluir_hoy": false,
+      "backfill_dias_primera_vez": 7
     },
     "nacion": {
       "activo": false,

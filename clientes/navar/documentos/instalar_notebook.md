@@ -134,10 +134,11 @@ Después, en este orden:
 
 ## 6. Galicia: preparación y primera prueba en la notebook
 
-**Preparado para revisar, todavía no validado contra Galicia.** El adaptador original baja
-CSV y el lector de NAVAR sólo toma Excel/PDF. La variante de NAVAR pide XLSX y frena si
-no confirma empresa, cuenta, fechas o un Excel legible. No se comprobó que el menú actual
-ofrezca esa opción ni que el número de cuenta sea un enlace: se debe mirar la primera vez.
+**Correcciones preparadas, todavía pendientes de una corrida completa contra Galicia.** El ensayo
+supervisado confirmó que el usuario de consulta entra sin segundo factor. La variante de NAVAR
+ahora espera el formulario y confirma el ingreso, pide XLSX y frena si no puede confirmar empresa,
+cuenta, fechas o un Excel legible. La pantalla del menú Cuentas y la descarga todavía se deben mirar
+en la próxima prueba supervisada.
 
 1. Con el mismo usuario de Windows que correrá la tarea, desde `C:\finauto`, cargar las
    credenciales **en la notebook**. La administración las tipea sin compartirlas:
@@ -146,14 +147,13 @@ ofrezca esa opción ni que el número de cuenta sea un enlace: se debe mirar la 
    ```
    Es el equivalente a `python setup_credenciales.py --cliente navar --banco galicia` con
    el entorno elegido. Quedan en el llavero `finauto:navar:galicia` de esa máquina y usuario.
-2. En `clientes/navar/perfil.json`, completar **bancos.galicia.carpeta_drive_destino** con
-   la ruta absoluta existente a `NAVAR - Datos/Bancos/galicia`. Ejemplo JSON, sólo si coincide
-   con el Explorador: `"G:\\Mi unidad\\NAVAR - Datos\\Bancos\\galicia"`.
-   Puede estar en un acceso directo de Drive; usar la ruta comprobada en el punto 3.
-   `carpeta_drive_relativa` documenta el destino, no se resuelve sola.
-   Se espera empresa **NAVAR SA** (se admiten puntos y espacios) y cuenta **0005459-5 070-1**.
-   No incluye otras empresas ni otras cuentas. `activo: false` evita las corridas generales;
-   **el comando con --banco explícito sí corre aunque esté en false**.
+2. No completar una ruta local en el perfil. Con `carpeta_drive_destino` vacío, el orquestador
+   encuentra `NAVAR - Datos` en el Drive montado y le suma `Bancos/galicia`. Si esa detección no
+   funciona en una máquina particular, se puede fijar `carpeta_drive_destino` como excepción.
+   Antes de pedir las credenciales, el comando frena y dice qué ruta buscó si la carpeta no existe.
+   Se acepta el nombre corto o el nombre legal completo de la única empresa, pero el estado siempre
+   guarda la misma clave. Se espera sólo la cuenta configurada. `activo: false` evita las corridas
+   generales; **el comando con --banco explícito sí corre aunque esté en false**.
 3. **No existe --simular en este orquestador.** No usar `--modo prueba` como simulación:
    entra al banco, descarga, publica y guarda estado. Para la primera prueba supervisada,
    pausar temporalmente la tarea del vigilante y ejecutar:
@@ -166,11 +166,15 @@ ofrezca esa opción ni que el número de cuenta sea un enlace: se debe mirar la 
    cuenta, fechas, movimientos y saldos. Sale como `Movimientos GALICIA AAAA-MM-DD_HHMMSS_microsegundos.xlsx`
    en `Bancos/galicia`. La fecha del nombre es la descarga; las fechas del extracto mandan.
    Se valida con el lector existente antes de publicar; no se convierte CSV ni se inventan saldos.
-   Si falla, el Excel queda local en `.run/galicia/descargas_temp/galicia_por_validar.xlsx`.
-   Un extracto sin movimientos también frena: ese caso necesita validación manual.
-   El rango termina ayer (`incluir_hoy: false`), arranca ayer en la primera corrida, y después
-   retoma desde el último cierre guardado. No recupera historia anterior por sí solo; conservar
-   los extractos previos. Estado: `.run/galicia/estado_descargas.json`; no borrarlo a ciegas.
+   El export de Galicia no trae el número de cuenta: por eso la cuenta se confirma en pantalla y
+   el archivo se controla por formato, movimientos y fechas. Si falla, queda local en
+   `.run/galicia/descargas_temp/galicia_por_validar.xlsx`. Un extracto sin movimientos también
+   frena y requiere revisión manual.
+
+   El rango termina ayer (`incluir_hoy: false`) y en **cada corrida** vuelve a incluir los últimos
+   siete días. Esa superposición cubre fines de semana, feriados y huecos; el lector descarta los
+   movimientos repetidos al juntar los archivos. Estado: `.run/galicia/estado_descargas.json`;
+   no borrarlo a ciegas.
 5. Sólo cuando pase la comparación, reanudar el vigilante y revisar su log y Registro en la
    Sheet. En el Programador de tareas, crear **finauto NAVAR Galicia**, a las **07:00 cada día**:
    - Usuario: el mismo que cargó las claves y tiene Drive abierto; ejecutar sólo con sesión iniciada.
@@ -188,19 +192,20 @@ ofrezca esa opción ni que el número de cuenta sea un enlace: se debe mirar la 
 
 | Señal | Qué revisar |
 |---|---|
-| Login no avanza / segundo factor | `pantalla_login`, `post_login`, `ERROR_login`. No hay resolución automática de token ni espera interactiva prevista. Revisar con administración. |
+| Login no avanza | `pantalla_login`, `login_enviado`, `post_login`, `ERROR_formulario_login` y `ERROR_login_no_confirmado`. El bot espera Usuario y Clave, hace un solo intento y exige que desaparezca el formulario y aparezca la empresa en el encabezado. No resuelve un segundo factor. Revisar con administración. |
 | «Usuario ya conectado» | `post_login` y último error. Cerrar la sesión anterior de forma normal; el bot no fuerza su cierre. |
-| Empresa no reconocida o cambio fallido | `modal_empresas`, `ERROR_menu_no_abrio`, `empresa_*`, `ERROR_*`. El original busca nombres en header/body y usa alternativas por coordenadas: son frágiles. Confirmar nombre y pantalla antes de ajustar. |
-| Cuenta no encontrada / no abre | `listado_cuentas` y `movimientos`. El texto exacto y su click son supuestos pendientes de comprobar; no se elige otra cuenta como reemplazo. |
+| Empresa no reconocida | `post_login` y `ERROR_*`. La variante sólo mira el encabezado, acepta los dos nombres configurados y no abre el selector de empresas ni hace clics por coordenadas. |
+| Cuenta no encontrada / no abre | Capturas `antes_*`, `despues_click_*` y `despues_*` de menú y cuenta. El menú se busca dentro de la navegación y la cuenta debe aparecer una sola vez, con o sin `N°`. Esta pantalla sigue pendiente de una prueba real; no se elige otra cuenta como reemplazo. |
 | Fechas no confirmadas | `panel_filtros`, `calendario_abierto`, `fechas_seleccionadas`, `movimientos_filtrados`. El calendario depende de clases y textos de la web. No se publica si devuelve una verificación fallida. |
-| No hay XLSX o no pasa el lector | `menu_descarga`, `ERROR_*` y Excel local. Revisar opción disponible, encabezados, número de cuenta dentro del archivo y fechas. No renombrar CSV a XLSX. |
-| Drive o tarea fallan | Ruta local, usuario de Windows, sesión iniciada, Drive montado y `log.txt`. Un error de configuración puede aparecer sólo en consola antes de crear log. |
+| No hay XLSX o no pasa el lector | `menu_descarga`, `ERROR_*` y Excel local. Revisar opción disponible, encabezados, movimientos y fechas. El número de cuenta no viene dentro del export. No renombrar CSV a XLSX. |
+| Drive o tarea fallan | Usuario de Windows, sesión iniciada, Drive montado, ruta informada en el error y `log.txt`. Un error de configuración puede aparecer sólo en consola antes de crear log. |
 
-El código heredado usa esperas fijas y no confirma el login al enviarlo; una falla puede
-aparecer recién como error de empresa o cuenta. Revisar las capturas en orden. Las capturas
-pueden pisarse entre corridas: conservar la evidencia local antes de repetir. No se probaron
-acceso real, segundo factor, empresa, cuenta, export, permisos del usuario, sincronización de
-Drive ni tarea programada. Los otros bancos siguen desactivados y sin adaptación en esta tarea.
+La variante ya reemplaza las esperas fijas del login por confirmaciones de pantalla, pero el resto
+del recorrido heredado todavía necesita la corrida supervisada. Revisar las capturas en orden.
+Pueden pisarse entre corridas: conservar la evidencia local antes de repetir. No se probaron con
+este cambio el login real, la navegación a la cuenta, el filtro, la descarga, los permisos, la
+sincronización de Drive ni la tarea programada. Los otros bancos siguen desactivados y sin
+adaptación en esta tarea.
 
 ## Qué queda corriendo, en orden, cada mañana
 
