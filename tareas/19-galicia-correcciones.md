@@ -1,5 +1,5 @@
 # Tarea 19 — Galicia NAVAR: correcciones antes de la primera corrida completa en el banco
-Estado: en curso (vuelve con correcciones de la revisión del 27/09)
+Estado: lista para revisión
 Rama: tarea/galicia-correcciones
 
 ## Objetivo
@@ -128,7 +128,7 @@ No tocar `nucleo/`, el bot original `bots/galicia/bot.py`, los lectores ni el vi
 ## Qué hice
 
 - Corregí la variante de Galicia para que espere los campos Usuario y Clave, haga un solo intento
-  de ingreso y recién continúe cuando desaparece el formulario y la empresa aparece en el encabezado.
+  de ingreso y recién continúe cuando desaparece el formulario y la empresa aparece visible en la página.
 - Dejé una única empresa activa con los dos nombres admitidos y una clave canónica estable. La
   variante ya no abre el selector de empresas ni hereda sus clics por coordenadas.
 - Acoté el acceso a Cuentas al menú de navegación y a la cuenta exacta, con prefijo `N°` opcional,
@@ -140,11 +140,12 @@ No tocar `nucleo/`, el bot original `bots/galicia/bot.py`, los lectores ni el vi
   configure una ruta fija. Si no existe, frena antes de consultar el llavero e informa qué buscó.
 - Configuré una ventana superpuesta de siete días para todas las corridas y actualicé la sección 6
   de la guía con el funcionamiento y las evidencias actuales.
-- Agregué ocho pruebas sin banco ni datos reales: Excel realista sin cuenta, fecha y encabezado
+- Agregué diez pruebas sin banco ni datos reales: Excel realista sin cuenta, fecha y encabezado
   inválidos, filtro no confirmado, carpeta automática e inexistente, nombres de empresa y ausencia
-  de clics en el selector.
+  de clics en el selector. La vuelta de revisión suma los casos con dos empresas visibles y con un
+  acceso a Office Banking oculto junto al único visible.
 - Verifiqué compilación de los tres archivos Python, JSON válido, `git diff --check` y
-  `python -m unittest bots.galicia.test_navar`: ocho pruebas OK.
+  `python -m unittest bots.galicia.test_navar`: diez pruebas OK.
 - No se pudo probar desde este entorno la pantalla real: login, navegación a la cuenta, calendario,
   descarga, permisos, sincronización de Drive y tarea programada requieren la próxima corrida
   supervisada en la notebook.
@@ -189,4 +190,3 @@ Menor, sin cambio: en `ir_a_cuenta`, el número de la cuenta también está en l
 el clic en "Cuentas" tarda, `wait_for` podría encontrar todavía el del inicio. Abrir la cuenta desde
 ahí también sirve, y el control posterior sigue exigiendo una sola cuenta visible. Queda para mirar
 en las capturas de la próxima corrida.
-

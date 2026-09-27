@@ -33,17 +33,49 @@ def _escribir_excel(ruta, fecha, encabezado_creditos="Créditos"):
     libro.save(ruta)
 
 
-class PaginaSoloEncabezado:
-    def __init__(self, texto):
+class ElementoFalso:
+    def __init__(self, texto="", visible=True):
         self.texto = texto
+        self.visible = visible
+        self.clics = 0
 
-    def locator(self, selector):
-        if selector != "header":
-            raise AssertionError("El control de empresa salió del encabezado")
-        return self
+    def is_visible(self):
+        return self.visible
 
-    def inner_text(self, timeout=None):
-        return self.texto
+    def click(self, timeout=None):
+        self.clics += 1
+
+
+class ListaFalsa:
+    def __init__(self, elementos):
+        self.elementos = elementos
+
+    def count(self):
+        return len(self.elementos)
+
+    def nth(self, indice):
+        return self.elementos[indice]
+
+
+class PaginaConTextos:
+    def __init__(self, textos):
+        self.elementos = [ElementoFalso(texto, visible) for texto, visible in textos]
+
+    def get_by_text(self, patron):
+        return ListaFalsa([e for e in self.elementos if patron.search(e.texto)])
+
+
+class PaginaOfficeBanking:
+    def __init__(self):
+        self.oculto = ElementoFalso("Office Banking", visible=False)
+        self.visible = ElementoFalso("Office Banking", visible=True)
+
+    def get_by_role(self, rol, name=None):
+        if rol == "link":
+            return ListaFalsa([self.oculto, self.visible])
+        if rol == "button":
+            return ListaFalsa([])
+        raise AssertionError("Rol inesperado: %s" % rol)
 
 
 class PaginaQueNoSePuedeTocar:
@@ -118,11 +150,25 @@ class PruebaNavar(unittest.TestCase):
     def test_nombres_de_empresa(self):
         self.assertTrue(self.cfg["solo_empresa_activa"])
         self.assertEqual(self.cfg["backfill_dias_primera_vez"], 7)
-        for nombre in ("NAVAR SA", "NAVAR SOCIEDAD ANONIMA"):
-            pagina = PaginaSoloEncabezado("Usuario de consulta\n%s" % nombre)
+        for nombre in ("NAVAR SA", "NAVAR SOCIEDAD ANÓNIMA"):
+            pagina = PaginaConTextos([(nombre, True)])
             self.assertEqual(self.bot.capturar_empresa_activa(pagina), "NAVAR SA")
-        otra = PaginaSoloEncabezado("OTRA EMPRESA SOCIEDAD ANONIMA")
+        otra = PaginaConTextos([("OTRA EMPRESA SOCIEDAD ANONIMA", True)])
         self.assertIsNone(self.bot.capturar_empresa_activa(otra))
+
+    def test_empresa_repetida_visible_se_reconoce(self):
+        pagina = PaginaConTextos([
+            ("NAVAR SOCIEDAD ANONIMA", True),
+            ("NAVAR SOCIEDAD ANONIMA - CONSUMO MASIVO", True),
+        ])
+        self.bot._esperar_empresa_visible(pagina, 10)
+        self.assertEqual(self.bot.capturar_empresa_activa(pagina), "NAVAR SA")
+
+    def test_office_banking_elige_el_unico_visible(self):
+        pagina = PaginaOfficeBanking()
+        self.bot._abrir_office_banking(pagina, 10)
+        self.assertEqual(pagina.oculto.clics, 0)
+        self.assertEqual(pagina.visible.clics, 1)
 
     def test_empresa_unica_no_hace_clics(self):
         pagina = PaginaQueNoSePuedeTocar()
