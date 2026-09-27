@@ -1,5 +1,5 @@
 # Tarea 19 — Galicia NAVAR: correcciones antes de la primera corrida completa en el banco
-Estado: pendiente
+Estado: lista para revisión
 Rama: tarea/galicia-correcciones
 
 ## Objetivo
@@ -126,5 +126,27 @@ No tocar `nucleo/`, el bot original `bots/galicia/bot.py`, los lectores ni el vi
 4. `grep` de nombres propios de personas vacío en lo agregado. Commit en la rama.
 
 ## Qué hice
+
+- Corregí la variante de Galicia para que espere los campos Usuario y Clave, haga un solo intento
+  de ingreso y recién continúe cuando desaparece el formulario y la empresa aparece en el encabezado.
+- Dejé una única empresa activa con los dos nombres admitidos y una clave canónica estable. La
+  variante ya no abre el selector de empresas ni hereda sus clics por coordenadas.
+- Acoté el acceso a Cuentas al menú de navegación y a la cuenta exacta, con prefijo `N°` opcional,
+  control de ambigüedad y capturas antes y después de cada clic. Este selector queda señalado para
+  afinarlo sólo si la próxima corrida supervisada muestra una estructura distinta.
+- Saqué la exigencia imposible de encontrar la cuenta dentro del Excel. Se mantienen los controles
+  de XLSX legible, movimientos y fechas dentro del rango.
+- La carpeta de destino ahora se resuelve desde el Drive montado más `Bancos/galicia`, salvo que se
+  configure una ruta fija. Si no existe, frena antes de consultar el llavero e informa qué buscó.
+- Configuré una ventana superpuesta de siete días para todas las corridas y actualicé la sección 6
+  de la guía con el funcionamiento y las evidencias actuales.
+- Agregué ocho pruebas sin banco ni datos reales: Excel realista sin cuenta, fecha y encabezado
+  inválidos, filtro no confirmado, carpeta automática e inexistente, nombres de empresa y ausencia
+  de clics en el selector.
+- Verifiqué compilación de los tres archivos Python, JSON válido, `git diff --check` y
+  `python -m unittest bots.galicia.test_navar`: ocho pruebas OK.
+- No se pudo probar desde este entorno la pantalla real: login, navegación a la cuenta, calendario,
+  descarga, permisos, sincronización de Drive y tarea programada requieren la próxima corrida
+  supervisada en la notebook.
 
 ## Revisión
