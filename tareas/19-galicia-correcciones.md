@@ -1,5 +1,5 @@
 # Tarea 19 — Galicia NAVAR: correcciones antes de la primera corrida completa en el banco
-Estado: lista para revisión
+Estado: aprobada (mergeada el 27/09/2026; falta la corrida supervisada en la notebook)
 Rama: tarea/galicia-correcciones
 
 ## Objetivo
@@ -190,3 +190,14 @@ Menor, sin cambio: en `ir_a_cuenta`, el número de la cuenta también está en l
 el clic en "Cuentas" tarda, `wait_for` podría encontrar todavía el del inicio. Abrir la cuenta desde
 ahí también sirve, y el control posterior sigue exigiendo una sola cuenta visible. Queda para mirar
 en las capturas de la próxima corrida.
+
+**Segunda vuelta, Claude, 27/09/2026.** Corregidas las dos cosas. "Office Banking" pasa por
+`_unico_visible`, y la empresa se busca en toda la página con `PATRON_EMPRESA`, aceptando cualquier
+aparición visible (espera con un bucle hasta el `timeout`; tolera que la página se reconstruya). Los
+tests nuevos cubren las dos cosas: 10 OK, compila, `git diff --check` limpio, sin nombres.
+Aprobada.
+
+Menor, para mirar en la corrida: `_abrir_office_banking` busca el botón apenas termina `goto`, sin
+espera. Si la home tardara en pintar el encabezado, frena con "No encontré Office Banking visible"
+**antes** de cualquier intento de login. Es un freno limpio y se ve en `home_galicia`.
+
