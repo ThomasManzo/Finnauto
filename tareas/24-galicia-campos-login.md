@@ -1,5 +1,5 @@
 # Tarea 24 — Galicia NAVAR: encontrar Usuario y Clave por su id
-Estado: lista para revisión
+Estado: aprobada (mergeada el 27/09/2026)
 Rama: tarea/galicia-campos-login
 
 ## Objetivo
@@ -73,3 +73,10 @@ Nada más.
   corrida supervisada en la notebook.
 
 ## Revisión
+
+**Claude, 27/09/2026.** Hizo justo lo pedido: `input#userInput` e `input#userPassword` primero, con
+alternativas por rol y por `type=password`, y sin `get_by_label`. Solo tocó `hacer_login`. En el test,
+la página falsa ahora devuelve etiqueta + campo por `get_by_label` (el caso real) y se comprueba que el
+login no la consulta y llena cada campo una sola vez. 17 OK, compila, `git diff --check` limpio.
+Aprobada.
+
