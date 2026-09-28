@@ -1,5 +1,5 @@
 # Tarea 27 — Galicia NAVAR: temporal único por corrida y nombre del archivo publicado
-Estado: lista para revisión
+Estado: aprobada (mergeada el 28/09/2026; falta la prueba de dos corridas seguidas en la notebook)
 Rama: tarea/galicia-temporal-unico
 
 ## Objetivo
@@ -111,3 +111,21 @@ No tocar `nucleo/` (ni `fechas.py`: el comportamiento de volver a bajar el últi
   La prueba final es en la notebook: correr Galicia dos veces seguidas sin borrar temporales.
 
 ## Revisión
+
+**Claude, 28/09/2026.** Hace lo pedido. El temporal es único por corrida (fecha + uuid), se borra
+después de publicar y queda si falla la validación o la publicación. La limpieza solo borra
+`galicia_por_validar_*.xlsx` y `*.tmp` de más de 7 días. El `save_as` fallido deja en el log la
+causa y el `failure()`. El publicado se llama `Movimientos Galicia AAAA-MM-DD.xlsx` y una segunda
+corrida del mismo día lo reemplaza con `os.replace`. `_nota` y §6 corregidos (ya no dicen que el
+estado evita bajar dos veces). 26 tests OK, compila, JSON válido, `git diff --check` limpio. No toca
+`nucleo/` ni los lectores. Aprobada.
+
+Menores, sin cambio:
+- `import uuid` quedó adentro de la función; es solo estilo.
+- El `galicia_por_validar.xlsx` sin sufijo que dejó la corrida del 28/09 a las 19:47 no entra en el
+  patrón de limpieza. Ya no molesta (el nombre nuevo nunca coincide), pero queda ahí hasta que se
+  borre a mano.
+- Si Drive o el vigilante justo tienen abierto el archivo del día cuando una segunda corrida lo
+  reemplaza, `os.replace` puede fallar en Windows. Sería un fallo de ese día, visible en el log, y
+  la corrida siguiente lo resuelve.
+
