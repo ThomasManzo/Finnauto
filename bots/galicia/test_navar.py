@@ -47,6 +47,7 @@ class ElementoFalso:
         self.al_click = al_click
         self.clics = 0
         self.valor = None
+        self.llenados = 0
 
     def is_visible(self):
         return self.visible
@@ -58,6 +59,7 @@ class ElementoFalso:
 
     def fill(self, valor, timeout=None):
         self.valor = valor
+        self.llenados += 1
 
     def wait_for(self, state=None, timeout=None):
         if state == "hidden" and not self.visible:
@@ -105,8 +107,11 @@ class PaginaLoginFalsa(PaginaEsperaFalsa):
         self.url = ""
         self.usuario = ElementoFalso("Usuario")
         self.clave = ElementoFalso("Clave")
+        self.etiqueta_usuario = ElementoFalso("Usuario")
+        self.etiqueta_clave = ElementoFalso("Clave")
         self.empresa = ElementoFalso("NAVAR SOCIEDAD ANONIMA", visible=False)
         self.ingresar = ElementoFalso("Ingresar", al_click=self._entrar)
+        self.consultas_por_etiqueta = 0
 
     def _entrar(self):
         self.usuario.visible = False
@@ -116,7 +121,10 @@ class PaginaLoginFalsa(PaginaEsperaFalsa):
         self.url = url
 
     def get_by_label(self, nombre, exact=None):
-        return ListaFalsa([self.usuario if nombre == "Usuario" else self.clave])
+        self.consultas_por_etiqueta += 1
+        if nombre == "Usuario":
+            return ListaFalsa([self.etiqueta_usuario, self.usuario])
+        return ListaFalsa([self.etiqueta_clave, self.clave])
 
     def get_by_role(self, rol, name=None, exact=None):
         if rol == "textbox":
@@ -126,6 +134,10 @@ class PaginaLoginFalsa(PaginaEsperaFalsa):
         return ListaFalsa()
 
     def locator(self, selector):
+        if selector == "input#userInput":
+            return ListaFalsa([self.usuario])
+        if selector == "input#userPassword":
+            return ListaFalsa([self.clave])
         if selector == "input[type='password']":
             return ListaFalsa([self.clave])
         return ListaFalsa()
@@ -178,6 +190,9 @@ class PruebaNavar(unittest.TestCase):
         self.assertEqual(pagina.url, URL_LOGIN)
         self.assertEqual(pagina.usuario.valor, "usuario inventado")
         self.assertEqual(pagina.clave.valor, "clave inventada")
+        self.assertEqual(pagina.usuario.llenados, 1)
+        self.assertEqual(pagina.clave.llenados, 1)
+        self.assertEqual(pagina.consultas_por_etiqueta, 0)
         self.assertEqual(pagina.ingresar.clics, 1)
 
     def test_cuenta_abierta_con_titulo_completo(self):

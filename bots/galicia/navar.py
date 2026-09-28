@@ -83,12 +83,14 @@ class BotGaliciaNavar(BotGalicia):
         page.goto(URL_LOGIN, timeout=timeout)
 
         try:
+            # La etiqueta tiene su propio aria-label: buscar por etiqueta devuelve
+            # la etiqueta y el campo. Estos id son los vistos en el formulario del 27/09.
             campo_usuario = self._esperar_unico_visible(page, [
-                lambda: page.get_by_label("Usuario", exact=True),
+                lambda: page.locator("input#userInput"),
                 lambda: page.get_by_role("textbox", name="Usuario", exact=True),
             ], "el campo Usuario", timeout)
             campo_clave = self._esperar_unico_visible(page, [
-                lambda: page.get_by_label("Clave", exact=True),
+                lambda: page.locator("input#userPassword"),
                 lambda: page.locator("input[type='password']"),
             ], "el campo Clave", timeout)
             ingresar = self._esperar_unico_visible(page, [

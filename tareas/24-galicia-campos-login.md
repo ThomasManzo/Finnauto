@@ -1,5 +1,5 @@
 # Tarea 24 — Galicia NAVAR: encontrar Usuario y Clave por su id
-Estado: pendiente
+Estado: lista para revisión
 Rama: tarea/galicia-campos-login
 
 ## Objetivo
@@ -58,5 +58,18 @@ Nada más.
 3. Commit en la rama. Lo de pantalla lo prueba Thomas en la notebook.
 
 ## Qué hice
+
+- En `hacer_login`, Usuario se busca primero como `input#userInput` y después por rol textbox;
+  Clave se busca primero como `input#userPassword` y después por tipo password. Eliminé las dos
+  búsquedas por etiqueta y dejé sin cambios el botón Ingresar, el único intento y la confirmación.
+- Dejé comentado por qué no se usa la etiqueta y que los `id` salen del formulario observado el
+  27/09.
+- El doble de la página ahora reproduce que cada `get_by_label` devolvería etiqueta y campo. El test
+  confirma que esa API no se consulta, que los `id` eligen los campos y que cada uno se llena una
+  sola vez.
+- `python -m py_compile bots/galicia/navar.py bots/galicia/test_navar.py` y
+  `python -m unittest bots.galicia.test_navar`: 17 pruebas OK.
+- No se pudo probar la pantalla real del banco; la verificación final corresponde a la próxima
+  corrida supervisada en la notebook.
 
 ## Revisión
