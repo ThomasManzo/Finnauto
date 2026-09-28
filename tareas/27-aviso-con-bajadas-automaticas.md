@@ -1,5 +1,5 @@
 # Tarea 27 — El aviso de las 9:00 tiene que saber que Tango y Galicia bajan solos
-Estado: lista para revisión
+Estado: en curso (una corrección de la revisión del 28/09)
 Rama: tarea/aviso-bajadas
 
 ## Objetivo
@@ -118,3 +118,30 @@ Cómo es el circuito desde el 25-28/09 (en la notebook de NAVAR):
   ejecutar **«Ver el aviso de hoy (sin mandar)»** antes de dejarlo enviando correos.
 
 ## Revisión
+
+**Claude, 28/09/2026.** Leí el diff completo. Casi todo bien; **una corrección antes de mergear.**
+
+Bien:
+- El parte de Tango: se escribe siempre, de forma atómica, con temporal que empieza con `.` (el
+  vigilante lo ignora) y sin token. Si Drive falla no rompe la bajada, y si el token falla antes no
+  hay parte, así que el mail lo marca "sin parte de hoy". Correcto.
+- La lectura de los dos partes va en `leer(...)` separados; `FUENTES_AUTOMATICAS` es explícita; los
+  textos de las fuentes manuales no cambian. Sacar la alerta de "más de 3 días" está bien.
+- Los horarios cierran: Tango, Galicia y el aviso corren todos los días, así que no hay falsas
+  alarmas de fin de semana.
+
+**A corregir — falsa alarma diaria de Galicia.** En `_faltantesAviso_`, para Galicia se exige
+`requerida = hoy` sobre la **última fecha de Saldos Bancarios**. Pero esa fecha es la del **último
+movimiento**, no la de la bajada: el lector arma el saldo del día a partir de los movimientos. Caso
+real: al 25/09 el último movimiento de Galicia era del 22/09, porque no hubo movimientos. Con este
+código, el mail diría casi todos los días "Extracto de GALICIA: no llegó la bajada automática de
+hoy", aunque el bot haya corrido bien.
+
+Corrección: para los bancos que están en `FUENTES_AUTOMATICAS`, **no** controlar la fecha del
+extracto en `_faltantesAviso_`. La señal de frescura es el parte del bot (`_ESTADO_` de hoy), que ya
+genera su propia alerta. Agregar un caso a `probar_aviso_bajadas.cjs`: Galicia con estado OK de hoy
+y último saldo de hace 4 días → **ninguna** línea de faltante para Galicia.
+
+Menor, sin cambio obligatorio: `GaliciaParte` arma el nombre del archivo con `new Date()` en lugar
+de `ahora`. En el mail real da igual; en una prueba con fecha inventada podría buscar otro día. Si se
+toca, usar la fecha del aviso.
