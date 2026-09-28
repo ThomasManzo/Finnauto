@@ -1,5 +1,5 @@
 # Tarea 26 — Galicia NAVAR: que corra solo todas las mañanas
-Estado: lista para revisión
+Estado: aprobada (mergeada el 28/09/2026)
 Rama: tarea/galicia-tarea-diaria
 
 ## Objetivo
@@ -69,3 +69,10 @@ visible**. En `nucleo/contexto.py`, `modo_visible` sale del perfil
   en esta Mac; la instalación y la prueba con «Ejecutar» quedan para la notebook Windows.
 
 ## Revisión
+
+**Claude, 28/09/2026.** Comparé el `.ps1` con `instalar_tango.ps1` línea por línea: difieren solo en
+el nombre, la hora (07:00), el script (`orquestador\correr.py --cliente navar --banco galicia`, sin
+`--modo`), el log (`privado\galicia.log`) y la descripción. `modo_visible: true` va en el bloque del
+banco, que es donde lo lee `nucleo/contexto.py`. §6 y la tabla de la mañana al día. JSON válido.
+Aprobada.
+
