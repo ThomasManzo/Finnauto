@@ -63,7 +63,32 @@ USD 400/mes desde el mes 2, revisable a los 3 meses contra el acierto medido.
 La presentación (PDF de propuesta + vista rápida del tablero + la Sheet) fue
 lo que cerró. Primer peso cobrado de finauto.
 
-## Dónde estamos (25/09/2026) — Tango llega solo, por API
+## Dónde estamos (28/09/2026) — Galicia baja solo
+
+**El bot de Galicia anduvo de punta a punta el 28/09 a las 00:27** en la notebook (`--modo prueba`):
+login directo, empresa, cuenta 0005459-5 070-1, saldos Actual y Disponible, descarga Excel,
+validación y publicación en `Bancos/galicia`. El Excel publicado (110 movimientos, 28/08–22/09)
+coincide uno por uno con un export a mano, y el saldo final coincide con la pantalla.
+
+- Recorrido (tareas 23 a 25): `empresas.bancogalicia.com.ar/login` → tarjeta de la cuenta en el inicio
+  → tarjeta Saldos → flechita al lado de "Filtros" → **Excel**. Trae los **últimos 30 días**; no se usa
+  el filtro de fechas. El lector descarta los repetidos entre archivos.
+- La cuenta se confirma en pantalla y por el nombre del archivo del banco (`Extracto_CC545950701.xlsx`):
+  el contenido no trae el número.
+- Saldos en `Bancos/galicia/_SALDOS_Galicia_<dd-mm>.json` (actual y disponible; el acuerdo de
+  descubierto es disponible − actual). **La Sheet todavía no los lee**: el acordado del Cash sigue
+  saliendo del mapa de deuda.
+- Lecciones de la página (para Macro/BBVA): las etiquetas del formulario tienen su propio `aria-label`
+  (buscar campos por `id`); hay modales escondidos que Playwright da como "visibles"; los botones
+  de ícono no tienen nombre útil (se ubican por posición relativa, clic sobre el elemento). Cuando
+  algo falla, un script de diagnóstico que **solo lista** lo que ve ahorra vueltas.
+- Credenciales: llavero de la notebook, `finauto:navar:galicia` (usuario de consulta, sin segundo factor).
+
+**Pendiente de Galicia**: tarea 26 (tarea programada 07:00 con navegador visible) · primera corrida
+programada · probar el modo invisible · conectar los saldos a la Sheet · borrar
+`NAVAR - Datos/_diagnostico/` (capturas con datos reales).
+
+## Dónde estábamos (25/09/2026) — Tango llega solo, por API
 
 **Tango ya no se exporta a mano.** Recorrido de cada mañana: 07:30 la tarea "finauto NAVAR Tango"
 de la notebook corre `ingestas/tango_live.py`, que deja 8 Excel en Drive con el mismo formato que
