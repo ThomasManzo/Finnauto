@@ -104,11 +104,19 @@ datos.saldos[0].fecha = new Date('2026-09-27T03:00:00Z');
 datos.entradas = datos.entradas.filter(f =>
   !f.nombre.startsWith('A pagos') && f.tipo !== 'tesoreria_aa');
 const faltantesLunes = contexto._faltantesAviso_(ahora, datos);
-assert.ok(faltantesLunes.some(l => l.includes('Extracto de Galicia: no llegó la bajada automática de hoy')));
+// Galicia es automático: su frescura la da el parte del bot, no la fecha del último movimiento.
+assert.ok(!faltantesLunes.some(l => l.includes('Extracto de Galicia')));
 assert.ok(faltantesLunes.some(l => l.includes('Tango A — pagos: no llegó la bajada automática de hoy')));
 assert.ok(faltantesLunes.some(l => l.includes('Tesorería AA: no llegó la bajada automática de hoy')));
 assert.ok(!faltantesLunes.some(l => l.includes('Extracto de Macro')));
 assert.ok(!faltantesLunes.some(l => l.includes('subida manual')));
+
+// Caso real del 25/09: Galicia sin movimientos hace días, pero el bot corrió bien hoy.
+datos = foto();
+datos.saldos[0].fecha = new Date('2026-09-24T03:00:00Z');
+aviso = contexto._armarAviso_(ahora, datos);
+assert.ok(!contexto._faltantesAviso_(ahora, datos).some(l => l.includes('Galicia')));
+assert.ok(!aviso.alertas.some(a => a.includes('Galicia')));
 
 const tangoParseado = contexto._parteTangoAviso_(
   '2026-09-28T10:31:00+00:00\n6 de 8\nA pagos 2026-09-28.xlsx: timeout\n');

@@ -1,5 +1,5 @@
 # Tarea 27 — El aviso de las 9:00 tiene que saber que Tango y Galicia bajan solos
-Estado: en curso (una corrección de la revisión del 28/09)
+Estado: aprobada (mergeada 28/09; la corrección la escribió Claude porque Codex estaba sin cupo)
 Rama: tarea/aviso-bajadas
 
 ## Objetivo
@@ -145,3 +145,16 @@ y último saldo de hace 4 días → **ninguna** línea de faltante para Galicia.
 Menor, sin cambio obligatorio: `GaliciaParte` arma el nombre del archivo con `new Date()` en lugar
 de `ahora`. En el mail real da igual; en una prueba con fecha inventada podría buscar otro día. Si se
 toca, usar la fecha del aviso.
+
+**Corrección aplicada por Claude (28/09).** Codex estaba sin cupo semanal y Thomas pidió que la
+escribiera Claude.
+- `_faltantesAviso_`: los bancos que están en `FUENTES_AUTOMATICAS` (se compara con el nombre del
+  banco en minúscula) ya no se controlan por la fecha del extracto; la frescura la da el parte del
+  bot. Comentado en el código.
+- `probar_aviso_bajadas.cjs`: el caso del lunes ahora espera que **no** aparezca "Extracto de
+  Galicia", y se suma el caso real del 25/09 (último movimiento de hace 4 días + bot OK hoy → sin
+  faltante ni alerta de Galicia).
+- En esta Mac no hay `node`: la prueba se corrió con el JavaScript de macOS (JavaScriptCore), con
+  una adaptación mínima de `require`/`vm`. **Pasa con el código nuevo y falla con el anterior**,
+  justo en el caso de Galicia. `python -m unittest ingestas.test_tango_live`: OK.
+- Queda igual: `GaliciaParte` arma el nombre con `new Date()`. En el mail real da lo mismo.
