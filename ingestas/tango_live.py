@@ -57,6 +57,9 @@ DESTINO = {
 SOLO_EMPRESA = {"movimientos_tesoreria": "AA"}
 PAGINA = 5000
 TIMEOUT_PAGINA = 300
+# El circuito diario tiene cuatro fotos de A y cuatro de AA. Si una configuración
+# queda incompleta, el parte debe mostrar que faltó algo en vez de decir 5 de 5.
+TOTAL_BAJADAS_DIARIAS = 8
 
 # Qué encabezado manual corresponde a cada campo comprobado de la API. El orden
 # es el orden útil del export manual; todo campo no listado se agrega después sin
@@ -430,6 +433,36 @@ def carpeta_consulta(raiz, consulta):
     return sin_tilde
 
 
+def _resumir_error_parte(error, tok):
+    """Deja sólo un motivo corto; nunca copia el token ni filas descargadas."""
+    texto = " ".join(str(error or "sin detalle").split())
+    if tok:
+        texto = texto.replace(str(tok), "[token oculto]")
+    return texto[:150]
+
+
+def _escribir_parte_tango(raiz, ok, total, fallas, tok="", ahora=None):
+    """Publica de una vez el resultado que leerá el aviso de las 09:00."""
+    carpeta = os.path.join(raiz, "_para la Sheet")
+    os.makedirs(carpeta, exist_ok=True)
+    destino = os.path.join(carpeta, "tango_ultima_bajada.txt")
+    temporal = os.path.join(carpeta, ".tango_ultima_bajada.%d.tmp" % os.getpid())
+    marca = ahora or datetime.datetime.now(datetime.timezone.utc)
+    if marca.tzinfo is None:
+        marca = marca.replace(tzinfo=datetime.timezone.utc)
+    marca = marca.astimezone(datetime.timezone.utc).replace(microsecond=0)
+    lineas = [marca.isoformat(), "%d de %d" % (ok, total)]
+    for nombre, error in fallas:
+        lineas.append("%s: %s" % (nombre, _resumir_error_parte(error, tok)))
+    try:
+        with open(temporal, "w", encoding="utf-8", newline="\n") as f:
+            f.write("\n".join(lineas) + "\n")
+        os.replace(temporal, destino)
+    finally:
+        if os.path.exists(temporal):
+            os.unlink(temporal)
+
+
 def pendientes(cfg):
     """Las ocho fotos válidas: cuatro de A y cuatro de AA."""
     return [(empresa, consulta, proceso)
@@ -510,6 +543,7 @@ def main(argv=None):
 
     tok = token(a.cliente)
     ok = 0
+    fallas = []
     for empresa, consulta, proceso in trabajos:
         carpeta = carpeta_consulta(raiz, consulta)
         nombre = DESTINO[consulta][1] % (empresa, a.hoy)
@@ -525,7 +559,15 @@ def main(argv=None):
             ok += 1
         except Exception as ex:
             log("%s: FALLÓ: %s" % (nombre, ex))
+            fallas.append((nombre, ex))
     log("listo: %d de %d" % (ok, len(trabajos)))
+    try:
+        _escribir_parte_tango(raiz, ok, TOTAL_BAJADAS_DIARIAS, fallas, tok)
+        log("parte para el aviso diario: _para la Sheet/tango_ultima_bajada.txt")
+    except Exception as ex:
+        # Drive puede demorarse o no estar montado: se avisa, pero no se convierte
+        # una bajada que terminó bien en una corrida fallida.
+        log("AVISO: no pude escribir el parte de Tango para el mail diario: %s" % ex)
     return 0 if ok == len(trabajos) else 1
 
 

@@ -1,5 +1,5 @@
 # Tarea 27 — El aviso de las 9:00 tiene que saber que Tango y Galicia bajan solos
-Estado: pendiente
+Estado: lista para revisión
 Rama: tarea/aviso-bajadas
 
 ## Objetivo
@@ -99,5 +99,22 @@ Cómo es el circuito desde el 25-28/09 (en la notebook de NAVAR):
 4. `grep` de nombres propios de personas vacío en lo agregado. Commit en la rama.
 
 ## Qué hice
+
+- `ingestas/tango_live.py` ahora deja `_para la Sheet/tango_ultima_bajada.txt` después de cada
+  corrida normal: hora UTC, cantidad sobre 8 y una línea corta por consulta fallida. Se publica de
+  forma atómica, no incluye el token y una falla al escribirlo queda en el log sin romper la bajada.
+- `aviso_diario.gs` lee por separado el parte de Tango y el estado diario de Galicia. El encabezado
+  informa hora y resultado de cada automatización, y genera la alerta correspondiente si falló, si
+  el parte es viejo o si no apareció el de hoy.
+- Declaré `FUENTES_AUTOMATICAS` con Tango, tesorería AA y Galicia. Sus faltantes ahora indican que no
+  llegó la bajada automática y que hay que revisar la notebook; las fuentes manuales conservan su
+  texto. Saqué la alerta vieja de pedir un export de Tango por antigüedad.
+- Agregué pruebas Python para el parte 8 de 8, las fallas sin token y el error de escritura. Agregué
+  una prueba Node con datos inventados para Tango 8/8 y 6/8, parte de ayer, Galicia OK/ATENCIÓN/sin
+  estado y el cierre de un lunes.
+- Verifiqué compilación y 15 pruebas Python, la prueba nueva del aviso y la prueba anterior del
+  importador: todo pasa. También confirmé que no agregué nombres propios de personas.
+- Prueba pendiente en Google: pegar `clientes/navar/herramientas/aviso_diario.gs` en Apps Script y
+  ejecutar **«Ver el aviso de hoy (sin mandar)»** antes de dejarlo enviando correos.
 
 ## Revisión
