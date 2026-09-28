@@ -134,11 +134,10 @@ Después, en este orden:
 
 ## 6. Galicia: preparación y primera prueba en la notebook
 
-**Correcciones preparadas, todavía pendientes de una corrida completa contra Galicia.** El ensayo
-supervisado confirmó que el usuario de consulta entra sin segundo factor. La variante de NAVAR
-ahora espera el formulario y confirma el ingreso, pide XLSX y frena si no puede confirmar empresa,
-cuenta, fechas o un Excel legible. La pantalla del menú Cuentas y la descarga todavía se deben mirar
-en la próxima prueba supervisada.
+**Recorrido preparado a partir de una prueba manual, todavía pendiente de una corrida completa del
+bot.** La variante entra directo al login, abre la tarjeta de la única cuenta, lee los saldos y baja
+la opción Excel. No abre el menú Cuentas ni usa filtros de fechas: Galicia entrega por defecto unos
+30 días de movimientos.
 
 1. Con el mismo usuario de Windows que correrá la tarea, desde `C:\finauto`, cargar las
    credenciales **en la notebook**. La administración las tipea sin compartirlas:
@@ -162,19 +161,28 @@ en la próxima prueba supervisada.
    ```
    Log: `clientes/navar/.run/galicia/log.txt`. Capturas:
    `clientes/navar/.run/galicia/capturas/`. No subirlas a git: pueden contener datos reales.
-4. Revisar el Excel y compararlo contra el banco antes de reanudar el vigilante: empresa,
-   cuenta, fechas, movimientos y saldos. Sale como `Movimientos GALICIA AAAA-MM-DD_HHMMSS_microsegundos.xlsx`
-   en `Bancos/galicia`. La fecha del nombre es la descarga; las fechas del extracto mandan.
-   Se valida con el lector existente antes de publicar; no se convierte CSV ni se inventan saldos.
-   El export de Galicia no trae el número de cuenta: por eso la cuenta se confirma en pantalla y
-   el archivo se controla por formato, movimientos y fechas. Si falla, queda local en
-   `.run/galicia/descargas_temp/galicia_por_validar.xlsx`. Un extracto sin movimientos también
-   frena y requiere revisión manual.
+4. Seguir la primera corrida con las capturas, en este orden:
+   - `pantalla_login`: formulario directo con un único Usuario, una única Clave y un único Ingresar
+     visibles. El bot no toca «Recordar usuario» y hace un solo intento.
+   - `post_login`: el formulario desapareció y el nombre de la empresa quedó visible.
+   - `inicio`: aparece la tarjeta con `N° 0005459-5 070-1`; el bot hace clic directamente ahí.
+   - `cuenta_abierta`: la URL contiene `/cuentas/movimientos` y el título muestra esa cuenta.
+   - `saldos`: se intentó leer Actual y Disponible. Si uno no se puede leer, queda avisado en el
+     log pero los movimientos siguen.
+   - `menu_descarga`: se abrió el botón junto a Filtros y aparece la opción exacta `Excel`.
 
-   El rango termina ayer (`incluir_hoy: false`) y en **cada corrida** vuelve a incluir los últimos
-   siete días. Esa superposición cubre fines de semana, feriados y huecos; el lector descarta los
-   movimientos repetidos al juntar los archivos. Estado: `.run/galicia/estado_descargas.json`;
-   no borrarlo a ciegas.
+   El archivo que entrega el banco debe llamarse como `Extracto_CC545950701.xlsx`. Ese nombre es
+   la confirmación de cuenta que aporta la descarga, porque el contenido no trae el número. Antes
+   de publicar, el lector exige movimientos, rechaza fechas futuras y también movimientos de más
+   de 35 días. Si pasa, se copia como
+   `Movimientos GALICIA AAAA-MM-DD_HHMMSS_microsegundos.xlsx` en `Bancos/galicia`; si falla, queda
+   para revisar en `.run/galicia/descargas_temp/galicia_por_validar.xlsx`.
+
+   Cada Excel trae aproximadamente los últimos 30 días. El lector elimina los movimientos repetidos
+   entre archivos y el estado evita una segunda descarga el mismo día. Si el bot falla varios días,
+   la primera corrida que vuelva a funcionar recupera sola hasta esos 30 días. Un corte mayor puede
+   dejar un hueco y requiere un extracto manual. Estado: `.run/galicia/estado_descargas.json`; no
+   borrarlo a ciegas.
 5. Sólo cuando pase la comparación, reanudar el vigilante y revisar su log y Registro en la
    Sheet. En el Programador de tareas, crear **finauto NAVAR Galicia**, a las **07:00 cada día**:
    - Usuario: el mismo que cargó las claves y tiene Drive abierto; ejecutar sólo con sesión iniciada.
@@ -192,20 +200,19 @@ en la próxima prueba supervisada.
 
 | Señal | Qué revisar |
 |---|---|
-| Login no avanza | `pantalla_login`, `login_enviado`, `post_login`, `ERROR_formulario_login` y `ERROR_login_no_confirmado`. El bot espera Usuario y Clave, hace un solo intento y exige que desaparezca el formulario y aparezca la empresa en el encabezado. No resuelve un segundo factor. Revisar con administración. |
+| Login no avanza | `pantalla_login`, `login_enviado`, `post_login`, `ERROR_formulario_login` y `ERROR_login_no_confirmado`. El error indica si faltó un campo o si había más de uno visible. El bot hace un solo intento y no resuelve un segundo factor. Revisar con administración. |
 | «Usuario ya conectado» | `post_login` y último error. Cerrar la sesión anterior de forma normal; el bot no fuerza su cierre. |
-| Empresa no reconocida | `post_login` y `ERROR_*`. La variante sólo mira el encabezado, acepta los dos nombres configurados y no abre el selector de empresas ni hace clics por coordenadas. |
-| Cuenta no encontrada / no abre | Capturas `antes_*`, `despues_click_*` y `despues_*` de menú y cuenta. El menú se busca dentro de la navegación y la cuenta debe aparecer una sola vez, con o sin `N°`. Esta pantalla sigue pendiente de una prueba real; no se elige otra cuenta como reemplazo. |
-| Fechas no confirmadas | `panel_filtros`, `calendario_abierto`, `fechas_seleccionadas`, `movimientos_filtrados`. El calendario depende de clases y textos de la web. No se publica si devuelve una verificación fallida. |
-| No hay XLSX o no pasa el lector | `menu_descarga`, `ERROR_*` y Excel local. Revisar opción disponible, encabezados, movimientos y fechas. El número de cuenta no viene dentro del export. No renombrar CSV a XLSX. |
+| Empresa no reconocida | `post_login` y `ERROR_*`. Se acepta el nombre corto o legal en cualquier parte visible de la página; no se abre el selector de empresas ni se hacen clics por coordenadas. |
+| Cuenta no encontrada / no abre | `inicio`, `cuenta_abierta` y `ERROR_*`. Debe haber una sola tarjeta visible con el número configurado; al abrir se controlan URL y título. No se elige otra cuenta como reemplazo. |
+| No se pudieron leer saldos | `saldos` y el aviso del log para Actual o Disponible. La descarga continúa; no se inventa un saldo. Comparar ambos importes con la pantalla antes de automatizar. |
+| No aparece Excel o el archivo no pasa controles | `menu_descarga`, `ERROR_*` y Excel local. Revisar opción, extensión, número de cuenta en el nombre, encabezados, movimientos y fechas. No renombrar CSV a XLSX. |
 | Drive o tarea fallan | Usuario de Windows, sesión iniciada, Drive montado, ruta informada en el error y `log.txt`. Un error de configuración puede aparecer sólo en consola antes de crear log. |
 
-La variante ya reemplaza las esperas fijas del login por confirmaciones de pantalla, pero el resto
-del recorrido heredado todavía necesita la corrida supervisada. Revisar las capturas en orden.
-Pueden pisarse entre corridas: conservar la evidencia local antes de repetir. No se probaron con
-este cambio el login real, la navegación a la cuenta, el filtro, la descarga, los permisos, la
-sincronización de Drive ni la tarea programada. Los otros bancos siguen desactivados y sin
-adaptación en esta tarea.
+Todo el recorrido de pantalla todavía necesita la corrida supervisada del bot. Revisar las capturas
+en orden; pueden pisarse entre corridas, por lo que conviene conservar la evidencia local antes de
+repetir. No se probaron con este cambio el login real, los clics, la lectura de saldos, la descarga,
+los permisos, la sincronización de Drive ni la tarea programada. Los otros bancos siguen
+desactivados y sin adaptación en esta tarea.
 
 ## Qué queda corriendo, en orden, cada mañana
 
