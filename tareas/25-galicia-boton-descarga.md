@@ -1,5 +1,5 @@
 # Tarea 25 — Galicia NAVAR: encontrar el botón de descarga y la opción Excel
-Estado: listo para revisión
+Estado: aprobada (mergeada el 28/09/2026)
 Rama: tarea/galicia-boton-descarga
 
 ## Objetivo
@@ -97,3 +97,16 @@ derecha**, con cinco opciones en columna: `.CSV`, `.PDF`, `.SAP`, `Excel`, `Pers
 - Verifiqué compilación y las 21 pruebas de Galicia NAVAR: todas pasan.
 
 ## Revisión
+
+**Claude, 28/09/2026.** Lo pedido está hecho. Filtros se busca por `aria-label='filter2'` o por el
+texto exacto y sirve solo de referencia. La flechita se elige por fila (±10 px) y por estar pegada a la
+derecha (0–60 px), sin texto, exactamente una. Excel se elige debajo del botón y cerca en horizontal.
+Los clics van siempre sobre el elemento: no queda `page.mouse` ni `following::`. Tests: 21 OK,
+incluidos el "Aplicar" escondido, las flechitas de fila, dos o ningún candidato y el Excel lejano; el
+doble de página revienta si alguien usa `page.mouse`. Compila, `git diff --check` limpio, sin nombres
+ni montos. Aprobada.
+
+Menor, para mirar solo si pasa: la caja de Filtros se toma una vez antes del bucle. Si la barra se
+moviera mientras carga, el bucle compararía contra una posición vieja y frenaría con "0 candidatos"
+al vencer el tiempo. La corrección sería volver a medir Filtros dentro del bucle.
+
