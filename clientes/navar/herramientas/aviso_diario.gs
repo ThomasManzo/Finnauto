@@ -308,14 +308,17 @@ function _faltantesAviso_(ahora, datos) {
     });
     Object.keys(bancos).sort().forEach(function (clave) {
       var banco = bancos[clave], ultima = banco.fecha;
-      var fuente = clave === "galicia" ? "galicia" : "", requerida = automatica(fuente) ? hoy : cierre;
-      if (automatica(fuente)) pedir("Extracto de " + banco.nombre, ultima, requerida, fuente);
-      else if (ultima && ultima < requerida) {
+      // Un banco automático no se controla por la fecha del extracto: esa fecha es la del
+      // último MOVIMIENTO, y si el banco no se movió queda vieja aunque el bot haya bajado bien.
+      // Su frescura la dice el parte del bot (ver "Bot de ..." en el encabezado).
+      if (automatica(clave)) return;
+      var requerida = cierre;
+      if (ultima && ultima < requerida) {
         // La edad son días corridos; para pedir actualización manda el cierre hábil.
         var edad = Math.round((Date.parse(hoy) - Date.parse(ultima)) / AVISO_DIA);
         lineas.push("- Extracto de " + banco.nombre + ": el último extracto es del " + mostrar(ultima) +
           ", hace " + edad + (edad === 1 ? " día" : " días") + "; falta actualizar al " + mostrar(requerida) + ".");
-      } else if (!ultima) pedir("Extracto de " + banco.nombre, ultima, requerida, fuente);
+      } else if (!ultima) pedir("Extracto de " + banco.nombre, ultima, requerida);
     });
     if (!Object.keys(bancos).length) lineas.push("- Extractos de banco: no hay bancos identificables en Saldos Bancarios; revisar la lista.");
     pedir("Arqueo de caja AA (carga manual)", arqueo, cierre);
