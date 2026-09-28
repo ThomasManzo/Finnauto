@@ -174,12 +174,13 @@ la opción Excel. No abre el menú Cuentas ni usa filtros de fechas: Galicia ent
    El archivo que entrega el banco debe llamarse como `Extracto_CC545950701.xlsx`. Ese nombre es
    la confirmación de cuenta que aporta la descarga, porque el contenido no trae el número. Antes
    de publicar, el lector exige movimientos, rechaza fechas futuras y también movimientos de más
-   de 35 días. Si pasa, se copia como
-   `Movimientos GALICIA AAAA-MM-DD_HHMMSS_microsegundos.xlsx` en `Bancos/galicia`; si falla, queda
-   para revisar en `.run/galicia/descargas_temp/galicia_por_validar.xlsx`.
+   de 35 días. Si pasa, se copia como `Movimientos Galicia AAAA-MM-DD.xlsx` en `Bancos/galicia`;
+   otra corrida del mismo día reemplaza ese archivo. Si la validación o la publicación falla, el
+   temporal de esa corrida queda para revisar como
+   `.run/galicia/descargas_temp/galicia_por_validar_<fecha>_<identificador>.xlsx`.
 
-   Cada Excel trae aproximadamente los últimos 30 días. El lector elimina los movimientos repetidos
-   entre archivos y el estado evita una segunda descarga el mismo día. Si el bot falla varios días,
+   Cada corrida vuelve a bajar aproximadamente los últimos 30 días del banco. El lector elimina los
+   movimientos repetidos entre archivos; el estado solo marca hasta qué día se bajó. Si el bot falla varios días,
    la primera corrida que vuelva a funcionar recupera sola hasta esos 30 días. Un corte mayor puede
    dejar un hueco y requiere un extracto manual. Estado: `.run/galicia/estado_descargas.json`; no
    borrarlo a ciegas.
@@ -208,6 +209,7 @@ la opción Excel. No abre el menú Cuentas ni usa filtros de fechas: Galicia ent
 | Cuenta no encontrada / no abre | `inicio`, `cuenta_abierta` y `ERROR_*`. Debe haber una sola tarjeta visible con el número configurado; al abrir se controlan URL y título. No se elige otra cuenta como reemplazo. |
 | No se pudieron leer saldos | `saldos` y el aviso del log para Actual o Disponible. La descarga continúa; no se inventa un saldo. Comparar ambos importes con la pantalla antes de automatizar. |
 | No aparece Excel o el archivo no pasa controles | `menu_descarga`, `ERROR_*` y Excel local. Revisar opción, extensión, número de cuenta en el nombre, encabezados, movimientos y fechas. No renombrar CSV a XLSX. |
+| Al guardar aparece `Target page, context or browser has been closed` | Mirar `.run/galicia/descargas_temp/`: si quedó un `.tmp`, el banco entregó el archivo. Revisar permisos y espacio disponible, además del log. Un temporal `galicia_por_validar_*.xlsx` se conserva si falla la validación o publicación. |
 | Drive o tarea fallan | Usuario de Windows, sesión iniciada, Drive montado, ruta informada en el error y `log.txt`. Un error de configuración puede aparecer sólo en consola antes de crear log. |
 
 Todo el recorrido de pantalla todavía necesita la corrida supervisada del bot. Revisar las capturas

@@ -329,6 +329,20 @@ class BotGaliciaNavar(BotGalicia):
         if _empresa(nombre_empresa) not in self.empresas:
             raise RuntimeError("Falta confirmar la empresa antes de descargar.")
 
+        # Conservamos una semana de descargas fallidas para poder revisarlas.
+        # En Windows, guardar sobre el temporal anterior hacía fallar la descarga
+        # con el mensaje engañoso "página cerrada" (pasó el 28/09).
+        limite_antiguos = time.time() - 7 * 24 * 60 * 60
+        carpeta_temporales = Path(ctx.descargas_dir)
+        for patron in ("galicia_por_validar_*.xlsx", "*.tmp"):
+            for antiguo in carpeta_temporales.glob(patron):
+                try:
+                    if antiguo.is_file() and antiguo.stat().st_mtime < limite_antiguos:
+                        antiguo.unlink()
+                except OSError as e:
+                    log("   Aviso: no pude borrar temporal viejo %s: %s" %
+                        (antiguo.name, e))
+
         boton = self._buscar_boton_descarga(page, timeout)
         boton.click(timeout=timeout)
         captura(page, "menu_descarga")
@@ -339,12 +353,29 @@ class BotGaliciaNavar(BotGalicia):
         descarga = info.value
         nombre_origen = self._validar_nombre_descarga(descarga.suggested_filename)
 
-        temporal = os.path.join(ctx.descargas_dir, "galicia_por_validar.xlsx")
-        descarga.save_as(temporal)
+        # Cada corrida usa su propio temporal: nunca pisamos el de otra corrida.
+        import uuid
+        temporal = os.path.join(
+            ctx.descargas_dir,
+            "galicia_por_validar_%s_%s.xlsx" % (
+                datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S_%f"),
+                uuid.uuid4().hex))
+        try:
+            descarga.save_as(temporal)
+        except Exception as e:
+            try:
+                motivo = descarga.failure()
+            except Exception as consulta_error:
+                motivo = "no se pudo consultar: %s" % consulta_error
+            log("   Falló guardar descarga de Galicia: %s; Playwright: %s" %
+                (e, motivo or "sin detalle"))
+            raise
         self.validar_excel(temporal)
 
+        # El archivo publicado lleva la fecha de la descarga. Una nueva corrida
+        # del mismo día reemplaza ese archivo con la versión más reciente.
         nombre = "%s %s.xlsx" % (
-            self.prefijo, datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S_%f"))
+            self.prefijo, datetime.date.today().isoformat())
         destino = os.path.join(carpeta_destino, nombre)
         # Drive ve el archivo sólo después de copiarlo completo y validarlo.
         fd, parcial = tempfile.mkstemp(suffix=".part", dir=carpeta_destino)
@@ -355,6 +386,11 @@ class BotGaliciaNavar(BotGalicia):
         finally:
             if os.path.exists(parcial):
                 os.remove(parcial)
+        try:
+            os.remove(temporal)
+        except OSError as e:
+            log("   Aviso: se publicó, pero no pude borrar el temporal %s: %s" %
+                (os.path.basename(temporal), e))
         log("   Descargado y validado: %s (origen: %s)" % (
             os.path.basename(destino), nombre_origen))
         return destino
