@@ -201,3 +201,6 @@ Menor, para mirar en la corrida: `_abrir_office_banking` busca el botón apenas 
 espera. Si la home tardara en pintar el encabezado, frena con "No encontré Office Banking visible"
 **antes** de cualquier intento de login. Es un freno limpio y se ve en `home_galicia`.
 
+
+**27/09/2026, más tarde:** el recorrido real que hizo Thomas a mano reemplaza el menú "Cuentas", el
+filtro de fechas y la ventana de 7 días de esta tarea → ver `tareas/23-galicia-recorrido-real.md`.
