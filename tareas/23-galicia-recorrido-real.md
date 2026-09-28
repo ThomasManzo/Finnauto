@@ -1,5 +1,5 @@
 # Tarea 23 — Galicia NAVAR: el recorrido real, sin calendario
-Estado: pendiente
+Estado: lista para revisión
 Rama: tarea/galicia-recorrido-real
 
 ## Objetivo
@@ -142,5 +142,27 @@ cero clics por coordenadas, nada de `.first` para **elegir dónde hacer clic**, 
    `--modo prueba`.
 
 ## Qué hice
+
+- Reemplacé el paso por la home por el login directo de Galicia. Usuario, Clave, Ingresar y cada
+  clic del recorrido usan una ayuda que espera al único elemento visible, ignora copias ocultas y
+  frena con la causa concreta ante duplicados o vencimiento del tiempo.
+- El inicio abre directamente la tarjeta del número de cuenta configurado. La pantalla siguiente
+  se confirma por URL y por al menos una aparición visible del número completo; ya no se abre el
+  menú Cuentas.
+- Agregué la lectura propia de Actual y Disponible dentro de la tarjeta Saldos. Si falta uno, queda
+  un aviso y la descarga de movimientos continúa.
+- Eliminé el uso del filtro y del calendario. El bot abre el botón de descarga junto a Filtros,
+  elige la opción exacta Excel y controla extensión y cuenta mediante el nombre original.
+- El Excel se publica sólo si el lector encuentra movimientos y todas sus fechas están entre hoy
+  y hoy menos 35 días. Ya no depende de un rango elegido en pantalla.
+- Actualicé el perfil para quitar el backfill del banco y documentar que cada archivo trae unos
+  30 días. Reescribí la sección 6 de la guía con el recorrido, las capturas y la recuperación tras
+  varios días de falla.
+- Rehice los tests con datos inventados: cubren el selector visible, login directo, confirmación de
+  cuenta, saldos, nombres de descarga, fechas válidas/futuras/viejas, archivo vacío, ausencia de
+  filtro, empresa y carpeta de Drive. `python -m unittest bots.galicia.test_navar`: 17 pruebas OK.
+- Verifiqué compilación y JSON válido. No se pudo probar ninguna pantalla, clic o descarga real del
+  banco, ni la sincronización con Drive o la tarea programada; eso requiere `--modo prueba` en la
+  notebook.
 
 ## Revisión
