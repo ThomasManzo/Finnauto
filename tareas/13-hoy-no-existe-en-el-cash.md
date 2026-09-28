@@ -1,5 +1,5 @@
 # Tarea 13 — El día de hoy queda en blanco y lo real de hoy no se suma
-Estado: pendiente
+Estado: reemplazada (lo pedido se hizo directo en main el 24/09, commit ee67616 "cash: el día de hoy existe"; la rama tarea/hoy-en-el-cash se borró el 28/09 sin mergear)
 Rama: tarea/hoy-en-el-cash
 
 ## Objetivo
