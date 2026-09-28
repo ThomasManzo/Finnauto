@@ -1,5 +1,5 @@
 # Tarea 26 — Galicia NAVAR: que corra solo todas las mañanas
-Estado: pendiente
+Estado: lista para revisión
 Rama: tarea/galicia-tarea-diaria
 
 ## Objetivo
@@ -56,5 +56,16 @@ visible**. En `nucleo/contexto.py`, `modo_visible` sale del perfil
 3. Commit en la rama.
 
 ## Qué hice
+
+- Creé `clientes/navar/herramientas/instalar_galicia.ps1`, siguiendo el instalador de Tango: deja
+  programada **finauto NAVAR Galicia** todos los días a las 07:00, acumula salida y errores en
+  `clientes\navar\privado\galicia.log`, ignora una segunda instancia y corta a la hora.
+- El comando llama al orquestador con cliente y banco, sin `--modo`, para respetar el perfil.
+- Dejé Galicia con `modo_visible: true` y documenté cómo pasarlo a invisible cuando se pruebe.
+- Reemplacé la carga manual del Programador de tareas por el instalador y actualicé la tabla de la
+  mañana con la carpeta y el log de Galicia.
+- Validé el JSON y comparé el instalador línea por línea con el de Tango. También comprobé sus
+  valores clave y que no contenga `--modo`. No pude ejecutar PowerShell porque no está disponible
+  en esta Mac; la instalación y la prueba con «Ejecutar» quedan para la notebook Windows.
 
 ## Revisión
