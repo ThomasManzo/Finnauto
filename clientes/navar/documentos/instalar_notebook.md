@@ -184,17 +184,19 @@ la opción Excel. No abre el menú Cuentas ni usa filtros de fechas: Galicia ent
    dejar un hueco y requiere un extracto manual. Estado: `.run/galicia/estado_descargas.json`; no
    borrarlo a ciegas.
 5. Sólo cuando pase la comparación, reanudar el vigilante y revisar su log y Registro en la
-   Sheet. En el Programador de tareas, crear **finauto NAVAR Galicia**, a las **07:00 cada día**:
-   - Usuario: el mismo que cargó las claves y tiene Drive abierto; ejecutar sólo con sesión iniciada.
-   - Programa: `C:\finauto\.venv\Scripts\python.exe`.
-   - Argumentos: `orquestador\correr.py --cliente navar --banco galicia --modo produccion`.
-   - Iniciar en: `C:\finauto`.
-   - No iniciar otra instancia si ya está corriendo. Notebook encendida, sin suspensión y con Drive montado.
-   - Revisar las próximas horas del vigilante y dejar una pasada posterior, por ejemplo 07:15.
-     Corre cada 15 minutos: los horarios no garantizan que Galicia haya terminado. El Excel se
-     publica al terminar la copia; si tarda, lo recoge una pasada posterior.
-   Probar la tarea con «Ejecutar» y comprobar el archivo, log y Registro; el horario solo no
-   certifica funcionamiento. El comando explícito no requiere activar las corridas generales.
+   Sheet. Desde `C:\finauto`, instalar la tarea **finauto NAVAR Galicia** con:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File clientes\navar\herramientas\instalar_galicia.ps1
+   ```
+   La notebook tiene que quedar prendida, sin suspensión, con Drive montado y con la sesión del
+   mismo usuario que cargó las claves iniciada. A las 07:00 el navegador se abre solo porque por
+   ahora el perfil de Galicia está en modo visible.
+
+   En el Programador de tareas, elegir **finauto NAVAR Galicia** y usar «Ejecutar». Comprobar el
+   archivo en `Bancos\galicia\`, el log en `clientes\navar\privado\galicia.log` y después Registro
+   en la Sheet. El horario solo no certifica funcionamiento. Revisar también una pasada posterior
+   del vigilante, por ejemplo 07:15: corre cada 15 minutos y, si Galicia tarda, recoge el Excel en
+   la siguiente. El comando explícito no requiere activar las corridas generales.
 
 ### Qué puede fallar la primera vez
 
@@ -218,7 +220,7 @@ desactivados y sin adaptación en esta tarea.
 
 | Hora | Qué | Dónde deja |
 |---|---|---|
-| 7:00 | bots de banco (uno por banco) | `Bancos\<banco>\` |
+| 7:00 | Galicia | `Bancos\galicia\` · log `privado\galicia.log` |
 | 7:30 | `tango_live.py` | `Cuentas a cobrar`, `Cuentas a pagar`, `Cheques` |
 | cada 15 min | vigilante → lectores | `_para la Sheet\` |
 | cada hora | disparador de la Sheet | solapas de la Sheet + Registro |
