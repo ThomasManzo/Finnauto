@@ -1,4 +1,4 @@
-# Tarea 27 — Galicia NAVAR: la descarga falla si quedó el temporal de la corrida anterior
+# Tarea 27 — Galicia NAVAR: temporal único por corrida y nombre del archivo publicado
 Estado: pendiente
 Rama: tarea/galicia-temporal-unico
 
@@ -38,7 +38,7 @@ que "el estado evita bajar dos veces el mismo día", y eso es falso.
 
 - `bots/galicia/navar.py` — **solo** `descargar_csv` y una ayuda nueva si hace falta.
 - `bots/galicia/test_navar.py`
-- `clientes/navar/perfil.json` — **solo** el `_nota` de `bancos.galicia`.
+- `clientes/navar/perfil.json` — **solo** `_nota` y `prefijo_archivo` de `bancos.galicia`.
 - `clientes/navar/documentos/instalar_notebook.md` — **solo** la §6.
 - `tareas/27-galicia-temporal-unico.md`
 
@@ -64,13 +64,26 @@ No tocar `nucleo/` (ni `fechas.py`: el comportamiento de volver a bajar el últi
    hasta qué día se bajó. Sacar el "evita bajar dos veces el mismo día". Agregar en "Qué puede
    fallar" una fila para `Target page, context or browser has been closed` al guardar: mirar
    `descargas_temp` (si quedó un `.tmp`, el banco entregó; revisar permisos y espacio).
-5. **Tests**:
+5. **Nombre del archivo publicado** (pedido de Thomas, 28/09): que se llame
+   **`Movimientos Galicia AAAA-MM-DD.xlsx`**, con la fecha **del día de la descarga** y sin hora. Por
+   ejemplo, `Movimientos Galicia 2026-09-28.xlsx`.
+   - `bancos.galicia.prefijo_archivo` pasa a `"Movimientos Galicia"`. El formato de la fecha va en el
+     código, con un comentario.
+   - **Si ese día ya hay un archivo con ese nombre, se reemplaza** (con el mismo `os.replace` de hoy).
+     El más nuevo trae los mismos 30 días más lo que haya entrado después, así que queda un archivo
+     por día. Si la validación falla, no se publica y el anterior del día queda intacto.
+   - El lector no depende del nombre (reconoce el banco por la carpeta). Solo ignora los que empiezan
+     con `para_pegar` o `~$`, así que no hay que tocarlo.
+   - Actualizar la §6 con el nombre nuevo.
+6. **Tests**:
    - Dos descargas seguidas con el mismo `ctx.descargas_dir` y un doble de `Download` cuyo `save_as`
      **falla si el destino existe** (así se reproduce el caso): las dos pasan.
    - Tras una publicación OK, el temporal ya no está.
    - Con una validación que falla, el temporal queda.
    - La limpieza borra un `galicia_por_validar_*.xlsx` y un `.tmp` viejos (fechas de modificación
      puestas a mano), no toca uno nuevo ni otro archivo cualquiera.
+   - El publicado se llama `Movimientos Galicia <hoy AAAA-MM-DD>.xlsx`; una segunda publicación del
+     mismo día lo reemplaza (queda uno solo) y una validación fallida no toca el existente.
 
 ## Comprobaciones
 
