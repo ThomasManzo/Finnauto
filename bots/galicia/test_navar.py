@@ -41,10 +41,11 @@ def _escribir_excel(ruta, fechas, encabezado_creditos="Créditos"):
 
 
 class ElementoFalso:
-    def __init__(self, texto="", visible=True, al_click=None):
+    def __init__(self, texto="", visible=True, al_click=None, caja=None):
         self.texto = texto
         self.visible = visible
         self.al_click = al_click
+        self.caja = caja
         self.clics = 0
         self.valor = None
         self.llenados = 0
@@ -71,6 +72,9 @@ class ElementoFalso:
     def inner_text(self, timeout=None):
         return self.texto
 
+    def bounding_box(self):
+        return self.caja
+
 
 class ListaFalsa:
     def __init__(self, elementos=None):
@@ -81,6 +85,14 @@ class ListaFalsa:
 
     def nth(self, indice):
         return self.elementos[indice]
+
+    def filter(self, has_text=None):
+        if has_text is None:
+            return self
+        return ListaFalsa([
+            elemento for elemento in self.elementos
+            if has_text.search(elemento.texto)
+        ])
 
 
 class PaginaEsperaFalsa:
@@ -155,6 +167,29 @@ class PaginaSaldosFalsa(PaginaEsperaFalsa):
         return ListaFalsa()
 
 
+class PaginaDescargaFalsa(PaginaEsperaFalsa):
+    def __init__(self, botones, filtros, opciones_excel=None):
+        self.botones = botones
+        self.filtros = filtros
+        self.opciones_excel = list(opciones_excel or [])
+
+    @property
+    def mouse(self):
+        raise AssertionError("No se debe usar page.mouse")
+
+    def locator(self, selector):
+        if selector == "button[aria-label='filter2']":
+            return ListaFalsa([self.filtros])
+        if selector == "button":
+            return ListaFalsa(self.botones)
+        return ListaFalsa()
+
+    def get_by_text(self, texto, exact=None):
+        if texto == "Excel" and exact:
+            return ListaFalsa(self.opciones_excel)
+        return ListaFalsa()
+
+
 class PaginaQueNoSePuedeTocar:
     def __getattr__(self, nombre):
         raise AssertionError("Intentó usar la página: %s" % nombre)
@@ -218,6 +253,60 @@ class PruebaNavar(unittest.TestCase):
             self.bot._validar_nombre_descarga("Extracto_CC999999999.xlsx")
         with self.assertRaisesRegex(RuntimeError, "XLSX"):
             self.bot._validar_nombre_descarga("Extracto_CC545950701.csv")
+
+    def test_descarga_se_elige_por_posicion_junto_a_filtros(self):
+        filtros = ElementoFalso("Filtros", caja={
+            "x": 1243, "y": 595, "width": 101, "height": 40})
+        descarga = ElementoFalso("", caja={
+            "x": 1352, "y": 595, "width": 40, "height": 40})
+        aplicar_escondido = ElementoFalso("Aplicar", caja={
+            "x": 1465, "y": 595, "width": 100, "height": 40})
+        flechas_filas = [ElementoFalso("", caja={
+            "x": 1286, "y": y, "width": 24, "height": 24})
+            for y in (650, 700, 750)]
+        pagina = PaginaDescargaFalsa(
+            [filtros, aplicar_escondido, descarga] + flechas_filas, filtros)
+
+        elegido = self.bot._buscar_boton_descarga(pagina, 0)
+
+        self.assertIs(elegido, descarga)
+
+    def test_descarga_frena_con_dos_candidatos(self):
+        filtros = ElementoFalso("Filtros", caja={
+            "x": 1243, "y": 595, "width": 101, "height": 40})
+        candidatos = [ElementoFalso("", caja={
+            "x": x, "y": 595, "width": 40, "height": 40})
+            for x in (1352, 1388)]
+        pagina = PaginaDescargaFalsa([filtros] + candidatos, filtros)
+
+        with self.assertRaisesRegex(RuntimeError, "encontré 2 candidatos"):
+            self.bot._buscar_boton_descarga(pagina, 0)
+
+    def test_descarga_frena_sin_candidatos(self):
+        filtros = ElementoFalso("Filtros", caja={
+            "x": 1243, "y": 595, "width": 101, "height": 40})
+        flecha_fila = ElementoFalso("", caja={
+            "x": 1286, "y": 650, "width": 24, "height": 24})
+        pagina = PaginaDescargaFalsa([filtros, flecha_fila], filtros)
+
+        with self.assertRaisesRegex(RuntimeError, "encontré 0 candidatos"):
+            self.bot._buscar_boton_descarga(pagina, 0)
+
+    def test_excel_se_elige_debajo_del_boton(self):
+        filtros = ElementoFalso("Filtros", caja={
+            "x": 1243, "y": 595, "width": 101, "height": 40})
+        descarga = ElementoFalso("", caja={
+            "x": 1352, "y": 595, "width": 40, "height": 40})
+        excel_menu = ElementoFalso("Excel", caja={
+            "x": 1190, "y": 740, "width": 180, "height": 32})
+        excel_modal = ElementoFalso("Excel", caja={
+            "x": 1510, "y": 300, "width": 180, "height": 32})
+        pagina = PaginaDescargaFalsa(
+            [filtros, descarga], filtros, [excel_modal, excel_menu])
+
+        elegido = self.bot._buscar_excel_del_menu(pagina, descarga, 0)
+
+        self.assertIs(elegido, excel_menu)
 
     def test_excel_realista_dentro_de_30_dias_pasa(self):
         with tempfile.TemporaryDirectory() as carpeta:

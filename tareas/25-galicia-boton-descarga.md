@@ -1,5 +1,5 @@
 # Tarea 25 — Galicia NAVAR: encontrar el botón de descarga y la opción Excel
-Estado: pendiente
+Estado: listo para revisión
 Rama: tarea/galicia-boton-descarga
 
 ## Objetivo
@@ -87,5 +87,13 @@ derecha**, con cinco opciones en columna: `.CSV`, `.PDF`, `.SAP`, `Excel`, `Pers
 3. Commit en la rama. Lo de pantalla lo prueba Thomas en la notebook.
 
 ## Qué hice
+
+- Busqué Filtros por su `aria-label` real y usé su posición solo como referencia.
+- Elegí la flechita de descarga entre los botones vacíos de esa misma fila, sin clics por
+  coordenadas ni atajos que puedan caer en paneles escondidos.
+- Elegí el Excel ubicado debajo del botón y descarté las copias lejanas de modales ocultos.
+- Agregué pruebas para la flechita correcta, cero o dos candidatos, el Excel del menú y el freno
+  ante cualquier intento de usar `page.mouse`.
+- Verifiqué compilación y las 21 pruebas de Galicia NAVAR: todas pasan.
 
 ## Revisión
