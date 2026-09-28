@@ -324,14 +324,94 @@ class BotGaliciaNavar(BotGalicia):
                     "la opción Excel del menú: encontré %d candidatos" % cantidad)
             page.wait_for_timeout(min(200, restante_ms))
 
+    @staticmethod
+    def _registrar_eventos_descarga(page):
+        """El diagnóstico no debe frenar una descarga ni depender de una página viva."""
+        def registrar(mensaje):
+            try:
+                log(mensaje)
+            except Exception:
+                pass
+
+        def nueva_pagina(pagina):
+            try:
+                url = pagina.url or "(sin URL)"
+            except Exception:
+                url = "(sin URL)"
+            registrar("   se abrió una pestaña nueva: %s" % url)
+
+        for evento, mensaje in (
+                ("close", "   la página se cerró"),
+                ("crash", "   la página se cayó")):
+            try:
+                page.on(evento, lambda *args, texto=mensaje: registrar(texto))
+            except Exception:
+                pass
+        try:
+            page.context.on("page", nueva_pagina)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _rescatar_descarga(carpeta, anteriores, temporal, espera=30, estabilidad=2):
+        # El 28/09 falló intermitentemente save_as aunque el navegador había
+        # dejado el Excel completo. Sólo rescatamos un archivo nuevo e inequívoco.
+        import zipfile
+
+        limite = time.monotonic() + espera
+        observado = None
+        estable_desde = None
+        detalle = "0 archivos nuevos"
+        while True:
+            ahora = time.monotonic()
+            try:
+                nuevos = sorted(
+                    (p for p in carpeta.iterdir()
+                     if p.name not in anteriores
+                     and not p.name.startswith("galicia_por_validar_")
+                     and p.is_file()), key=lambda p: p.name)
+                if len(nuevos) > 1:
+                    raise RuntimeError(
+                        "Rescate en %s: encontré %d archivos nuevos (%s); no elijo uno." %
+                        (carpeta, len(nuevos), ", ".join(p.name for p in nuevos)))
+                if nuevos:
+                    candidato = nuevos[0]
+                    tamano = candidato.stat().st_size
+                    identidad = (candidato.name, tamano)
+                    if identidad != observado:
+                        observado = identidad
+                        estable_desde = ahora
+                    detalle = "%s, %d bytes; todavía no se estabilizó" % identidad
+                    if ahora - estable_desde >= estabilidad:
+                        if zipfile.is_zipfile(candidato):
+                            shutil.copyfile(candidato, temporal)
+                            log("   La página se cerró al guardar; tomé el archivo que dejó "
+                                "el navegador (%s, %d bytes)" % identidad)
+                            return
+                        detalle = "%s, %d bytes; no es zip válido" % identidad
+                else:
+                    observado = estable_desde = None
+                    detalle = "0 archivos nuevos"
+            except OSError as e:
+                observado = estable_desde = None
+                detalle = "no pude leer o copiar el archivo: %s" % e
+            restante = limite - time.monotonic()
+            if restante <= 0:
+                raise RuntimeError(
+                    "Rescate agotado: busqué un único archivo nuevo en %s, "
+                    "excluyendo los anteriores y galicia_por_validar_*; encontré %s." %
+                    (carpeta, detalle))
+            # La página puede estar cerrada: esta espera no usa Playwright.
+            time.sleep(min(0.2, restante))
+
     def descargar_csv(self, page, carpeta_destino, nombre_empresa, timeout, ctx):
         # El nombre del método viene del contrato compartido; NAVAR publica un Excel.
         if _empresa(nombre_empresa) not in self.empresas:
             raise RuntimeError("Falta confirmar la empresa antes de descargar.")
 
         # Conservamos una semana de descargas fallidas para poder revisarlas.
-        # En Windows, guardar sobre el temporal anterior hacía fallar la descarga
-        # con el mensaje engañoso "página cerrada" (pasó el 28/09).
+        # El temporal único evita pisar otra corrida; no explica el cierre
+        # intermitente observado el 28/09 (también ocurrió con nombre único).
         limite_antiguos = time.time() - 7 * 24 * 60 * 60
         carpeta_temporales = Path(ctx.descargas_dir)
         for patron in ("galicia_por_validar_*.xlsx", "*.tmp"):
@@ -348,6 +428,8 @@ class BotGaliciaNavar(BotGalicia):
         captura(page, "menu_descarga")
         excel = self._buscar_excel_del_menu(page, boton, timeout)
 
+        self._registrar_eventos_descarga(page)
+        anteriores = {p.name for p in carpeta_temporales.iterdir() if p.is_file()}
         with page.expect_download(timeout=timeout) as info:
             excel.click(timeout=timeout)
         descarga = info.value
@@ -369,7 +451,7 @@ class BotGaliciaNavar(BotGalicia):
                 motivo = "no se pudo consultar: %s" % consulta_error
             log("   Falló guardar descarga de Galicia: %s; Playwright: %s" %
                 (e, motivo or "sin detalle"))
-            raise
+            self._rescatar_descarga(carpeta_temporales, anteriores, temporal)
         self.validar_excel(temporal)
 
         # El archivo publicado lleva la fecha de la descarga. Una nueva corrida

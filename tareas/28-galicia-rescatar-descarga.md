@@ -1,5 +1,5 @@
 # Tarea 28 — Galicia NAVAR: rescatar la descarga cuando la página se cierra
-Estado: pendiente
+Estado: lista para revisión
 Rama: tarea/galicia-rescatar-descarga
 
 ## Objetivo
@@ -87,5 +87,19 @@ No tocar `nucleo/`.
    menos una que sea "la primera después de un rato" (por ejemplo, la de las 07:00).
 
 ## Qué hice
+
+- Antes de pedir Excel guardo los nombres presentes y registro cierre, caída y pestañas nuevas
+  sin que el diagnóstico pueda interrumpir la descarga.
+- Si falla save_as, busco durante hasta 30 segundos un único archivo nuevo, excluyendo temporales
+  de validación. Exijo dos segundos sin cambios de tamaño y zip válido; lo copio al temporal único
+  y sigue la misma validación, publicación y limpieza. No repito login ni descarga.
+- Los archivos anteriores nunca se toman. Dos candidatos frenan con conteo; ausencia, crecimiento
+  continuo o zip inválido dejan un error con carpeta y detalle. Se conserva el diagnóstico de
+  save_as y failure(), y se registra el nombre y tamaño cuando se rescata.
+- Cambié sólo descargar_csv, ayudas nuevas, sus pruebas y la fila autorizada de la guía.
+  Sin dependencias nuevas ni datos reales.
+- Verificación: 35 pruebas OK, compilación de ambos Python y git diff --check limpios.
+- Pendiente en la notebook: tres corridas programadas OK, incluyendo una primera después de un
+  rato (por ejemplo 07:00). No se probó banco real, Windows ni Drive desde este entorno.
 
 ## Revisión

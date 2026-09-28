@@ -209,7 +209,7 @@ la opción Excel. No abre el menú Cuentas ni usa filtros de fechas: Galicia ent
 | Cuenta no encontrada / no abre | `inicio`, `cuenta_abierta` y `ERROR_*`. Debe haber una sola tarjeta visible con el número configurado; al abrir se controlan URL y título. No se elige otra cuenta como reemplazo. |
 | No se pudieron leer saldos | `saldos` y el aviso del log para Actual o Disponible. La descarga continúa; no se inventa un saldo. Comparar ambos importes con la pantalla antes de automatizar. |
 | No aparece Excel o el archivo no pasa controles | `menu_descarga`, `ERROR_*` y Excel local. Revisar opción, extensión, número de cuenta en el nombre, encabezados, movimientos y fechas. No renombrar CSV a XLSX. |
-| Al guardar aparece `Target page, context or browser has been closed` | Mirar `.run/galicia/descargas_temp/`: si quedó un `.tmp`, el banco entregó el archivo. Revisar permisos y espacio disponible, además del log. Un temporal `galicia_por_validar_*.xlsx` se conserva si falla la validación o publicación. |
+| Al guardar aparece `Target page, context or browser has been closed` | El bot intenta rescatar solo el archivo nuevo que dejó el navegador: espera hasta 30 s, exige un único archivo estable durante 2 s y zip válido, y después valida el Excel antes de publicar. Si igual falla, mirar el log (cierre, caída o pestaña nueva y qué archivo encontró) y `.run/galicia/descargas_temp/`. El temporal se conserva si falla la validación o publicación. |
 | Drive o tarea fallan | Usuario de Windows, sesión iniciada, Drive montado, ruta informada en el error y `log.txt`. Un error de configuración puede aparecer sólo en consola antes de crear log. |
 
 Todo el recorrido de pantalla todavía necesita la corrida supervisada del bot. Revisar las capturas
