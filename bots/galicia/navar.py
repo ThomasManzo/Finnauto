@@ -228,16 +228,101 @@ class BotGaliciaNavar(BotGalicia):
         return nombre
 
     def _buscar_boton_descarga(self, page, timeout):
-        # Si el ícono no tiene nombre accesible, usamos el botón inmediatamente
-        # posterior a Filtros en los controles de Movimientos.
+        """Encuentra la flechita de descarga por su posición junto a Filtros."""
         filtros = self._esperar_unico_visible(page, [
-            lambda: page.get_by_role("button", name="Filtros", exact=True),
+            lambda: page.locator("button[aria-label='filter2']"),
+            lambda: page.locator("button").filter(
+                has_text=re.compile(r"^\s*Filtros\s*$")),
         ], "el botón Filtros de Movimientos", timeout)
-        return self._esperar_unico_visible(page, [
-            lambda: page.get_by_role("button", name=re.compile(r"descarg", re.I)),
-            lambda: page.locator("button[aria-label*='descarg' i]"),
-            lambda: filtros.locator("xpath=following::button[1]"),
-        ], "el botón de descarga junto a Filtros", timeout)
+
+        caja_filtros = filtros.bounding_box()
+        if not caja_filtros:
+            raise RuntimeError("el botón Filtros no tiene una posición legible")
+
+        limite = time.monotonic() + max(timeout, 0) / 1000.0
+        cantidad = 0
+        while True:
+            candidatos = []
+            try:
+                botones = page.locator("button")
+                centro_y_filtros = caja_filtros["y"] + caja_filtros["height"] / 2
+                borde_derecho_filtros = caja_filtros["x"] + caja_filtros["width"]
+                for i in range(botones.count()):
+                    boton = botones.nth(i)
+                    if not boton.is_visible():
+                        continue
+                    caja = boton.bounding_box()
+                    texto = (boton.inner_text() or "").strip()
+                    if not caja or texto:
+                        continue
+                    centro_y = caja["y"] + caja["height"] / 2
+                    if (abs(centro_y - centro_y_filtros) <= 10 and
+                            borde_derecho_filtros <= caja["x"] <=
+                            borde_derecho_filtros + 60):
+                        candidatos.append(boton)
+                cantidad = len(candidatos)
+            except Exception:
+                # Galicia reconstruye la barra mientras carga; volvemos a mirar hasta el límite.
+                candidatos = []
+                cantidad = 0
+
+            if cantidad > 1:
+                raise RuntimeError(
+                    "el botón de descarga junto a Filtros: encontré %d candidatos" % cantidad)
+            if cantidad == 1:
+                return candidatos[0]
+
+            restante_ms = int((limite - time.monotonic()) * 1000)
+            if restante_ms <= 0:
+                # La flechita no tiene nombre propio y la página deja copias escondidas;
+                # por eso se reconoce solo al botón vacío ubicado junto a Filtros.
+                raise RuntimeError(
+                    "el botón de descarga junto a Filtros: encontré %d candidatos" % cantidad)
+            page.wait_for_timeout(min(200, restante_ms))
+
+    @staticmethod
+    def _buscar_excel_del_menu(page, boton_descarga, timeout):
+        """Encuentra el Excel del menú abierto y descarta los modales escondidos."""
+        caja_boton = boton_descarga.bounding_box()
+        if not caja_boton:
+            raise RuntimeError("el botón de descarga no tiene una posición legible")
+
+        limite = time.monotonic() + max(timeout, 0) / 1000.0
+        cantidad = 0
+        while True:
+            candidatos = []
+            try:
+                opciones = page.get_by_text("Excel", exact=True)
+                borde_inferior = caja_boton["y"] + caja_boton["height"]
+                centro_x_boton = caja_boton["x"] + caja_boton["width"] / 2
+                for i in range(opciones.count()):
+                    opcion = opciones.nth(i)
+                    if not opcion.is_visible():
+                        continue
+                    caja = opcion.bounding_box()
+                    if not caja:
+                        continue
+                    centro_x = caja["x"] + caja["width"] / 2
+                    distancia_vertical = caja["y"] - borde_inferior
+                    if (0 <= distancia_vertical < 400 and
+                            centro_x_boton - 300 <= centro_x <= centro_x_boton + 50):
+                        candidatos.append(opcion)
+                cantidad = len(candidatos)
+            except Exception:
+                candidatos = []
+                cantidad = 0
+
+            if cantidad > 1:
+                raise RuntimeError(
+                    "la opción Excel del menú: encontré %d candidatos" % cantidad)
+            if cantidad == 1:
+                return candidatos[0]
+
+            restante_ms = int((limite - time.monotonic()) * 1000)
+            if restante_ms <= 0:
+                raise RuntimeError(
+                    "la opción Excel del menú: encontré %d candidatos" % cantidad)
+            page.wait_for_timeout(min(200, restante_ms))
 
     def descargar_csv(self, page, carpeta_destino, nombre_empresa, timeout, ctx):
         # El nombre del método viene del contrato compartido; NAVAR publica un Excel.
@@ -247,10 +332,7 @@ class BotGaliciaNavar(BotGalicia):
         boton = self._buscar_boton_descarga(page, timeout)
         boton.click(timeout=timeout)
         captura(page, "menu_descarga")
-        excel = self._esperar_unico_visible(page, [
-            lambda: page.get_by_text("Excel", exact=True),
-            lambda: page.get_by_role("menuitem", name="Excel", exact=True),
-        ], "la opción Excel", timeout)
+        excel = self._buscar_excel_del_menu(page, boton, timeout)
 
         with page.expect_download(timeout=timeout) as info:
             excel.click(timeout=timeout)
