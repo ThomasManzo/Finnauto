@@ -3,11 +3,13 @@ import datetime as dt
 import json
 import os
 import tempfile
+import time
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 
 from bots.galicia.navar import BotGaliciaNavar, URL_LOGIN
 
@@ -20,7 +22,7 @@ def _configuracion():
     return perfil["bancos"]["galicia"]
 
 
-def _escribir_excel(ruta, fechas, encabezado_creditos="Créditos"):
+def _escribir_excel(ruta, fechas, encabezado_creditos="Créditos", importe=100):
     """Imita el export real de Galicia, que no incluye ni cuenta ni columna Saldo."""
     libro = Workbook()
     hoja = libro.active
@@ -34,7 +36,7 @@ def _escribir_excel(ruta, fechas, encabezado_creditos="Créditos"):
     ])
     for fecha in fechas:
         hoja.append([
-            dt.datetime.combine(fecha, dt.time()), "Movimiento inventado", "", 0, 100,
+            dt.datetime.combine(fecha, dt.time()), "Movimiento inventado", "", 0, importe,
             "", "", "", "", "123", "", "", "", "",
         ])
     libro.save(ruta)
@@ -195,10 +197,55 @@ class PaginaQueNoSePuedeTocar:
         raise AssertionError("Intentó usar la página: %s" % nombre)
 
 
+class DescargaFalsa:
+    """Imita Windows: no deja guardar encima de un archivo que ya existe."""
+    suggested_filename = "Extracto_CC545950701.xlsx"
+
+    def __init__(self, importe=100, fallar=False):
+        self.importe = importe
+        self.fallar = fallar
+        self.destinos = []
+
+    def save_as(self, destino):
+        self.destinos.append(Path(destino))
+        if Path(destino).exists():
+            raise RuntimeError("el destino ya existe")
+        if self.fallar:
+            raise RuntimeError("Target page, context or browser has been closed")
+        _escribir_excel(destino, [dt.date.today()], importe=self.importe)
+
+    def failure(self):
+        return "descarga interrumpida" if self.fallar else None
+
+
+class PaginaConDescargaFalsa:
+    def __init__(self, descarga):
+        self.descarga = descarga
+
+    def expect_download(self, timeout=None):
+        return self
+
+    def __enter__(self):
+        return SimpleNamespace(value=self.descarga)
+
+    def __exit__(self, tipo, valor, traza):
+        return False
+
+
 class PruebaNavar(unittest.TestCase):
     def setUp(self):
         self.cfg = _configuracion()
         self.bot = BotGaliciaNavar(self.cfg)
+
+    def _correr_descarga(self, temporales, publicados, descarga):
+        boton = ElementoFalso("Descargar")
+        excel = ElementoFalso("Excel")
+        pagina = PaginaConDescargaFalsa(descarga)
+        ctx = SimpleNamespace(descargas_dir=str(temporales))
+        with patch.object(self.bot, "_buscar_boton_descarga", return_value=boton), \
+                patch.object(self.bot, "_buscar_excel_del_menu", return_value=excel), \
+                patch("bots.galicia.navar.captura"):
+            return self.bot.descargar_csv(pagina, str(publicados), "NAVAR SA", 10, ctx)
 
     def test_unico_visible_ignora_oculto(self):
         oculto = ElementoFalso(visible=False)
@@ -342,6 +389,98 @@ class PruebaNavar(unittest.TestCase):
             _escribir_excel(ruta, [dt.date.today()], "No es crédito")
             with self.assertRaises(ValueError):
                 self.bot.validar_excel(ruta)
+
+    def test_dos_corridas_publican_un_archivo_diario_sin_pisar_temporal(self):
+        with tempfile.TemporaryDirectory() as carpeta:
+            temporales = Path(carpeta) / "descargas_temp"
+            publicados = Path(carpeta) / "galicia"
+            temporales.mkdir()
+            publicados.mkdir()
+            primera = DescargaFalsa(100)
+            destino = self._correr_descarga(temporales, publicados, primera)
+            self.assertEqual(Path(destino).name,
+                             "Movimientos Galicia %s.xlsx" % dt.date.today())
+            self.assertFalse(primera.destinos[0].exists())
+
+            segunda = DescargaFalsa(200)
+            self.assertEqual(self._correr_descarga(temporales, publicados, segunda), destino)
+            self.assertNotEqual(primera.destinos[0], segunda.destinos[0])
+            self.assertFalse(segunda.destinos[0].exists())
+            self.assertEqual(list(publicados.iterdir()), [Path(destino)])
+            libro = load_workbook(destino, read_only=True)
+            try:
+                self.assertEqual(libro.active["E2"].value, 200)
+            finally:
+                libro.close()
+
+    def test_validacion_fallida_conserva_temporal_y_publicado_anterior(self):
+        with tempfile.TemporaryDirectory() as carpeta:
+            temporales = Path(carpeta) / "descargas_temp"
+            publicados = Path(carpeta) / "galicia"
+            temporales.mkdir()
+            publicados.mkdir()
+            destino = self._correr_descarga(temporales, publicados, DescargaFalsa(100))
+            fallida = DescargaFalsa(200)
+            with patch.object(self.bot, "validar_excel", side_effect=ValueError("mal encabezado")):
+                with self.assertRaisesRegex(ValueError, "mal encabezado"):
+                    self._correr_descarga(temporales, publicados, fallida)
+            self.assertTrue(fallida.destinos[0].exists())
+            self.assertEqual(list(publicados.iterdir()), [Path(destino)])
+            libro = load_workbook(destino, read_only=True)
+            try:
+                self.assertEqual(libro.active["E2"].value, 100)
+            finally:
+                libro.close()
+
+    def test_publicacion_fallida_conserva_temporal_y_publicado_anterior(self):
+        with tempfile.TemporaryDirectory() as carpeta:
+            temporales = Path(carpeta) / "descargas_temp"
+            publicados = Path(carpeta) / "galicia"
+            temporales.mkdir()
+            publicados.mkdir()
+            destino = self._correr_descarga(temporales, publicados, DescargaFalsa(100))
+            fallida = DescargaFalsa(200)
+            with patch("bots.galicia.navar.shutil.copyfile",
+                       side_effect=OSError("Drive no disponible")):
+                with self.assertRaisesRegex(OSError, "Drive no disponible"):
+                    self._correr_descarga(temporales, publicados, fallida)
+            self.assertTrue(fallida.destinos[0].exists())
+            self.assertEqual(list(publicados.iterdir()), [Path(destino)])
+            libro = load_workbook(destino, read_only=True)
+            try:
+                self.assertEqual(libro.active["E2"].value, 100)
+            finally:
+                libro.close()
+
+    def test_limpieza_solo_borra_temporales_permitidos_con_mas_de_siete_dias(self):
+        with tempfile.TemporaryDirectory() as carpeta:
+            temporales = Path(carpeta) / "descargas_temp"
+            publicados = Path(carpeta) / "galicia"
+            temporales.mkdir()
+            publicados.mkdir()
+            nombres = ["galicia_por_validar_viejo.xlsx", "descarga.tmp",
+                       "galicia_por_validar_nuevo.xlsx", "otro.xlsx", "otro.tmp"]
+            for nombre in nombres:
+                (temporales / nombre).write_text("inventado")
+            viejo = time.time() - 8 * 24 * 60 * 60
+            for nombre in ("galicia_por_validar_viejo.xlsx", "descarga.tmp", "otro.xlsx"):
+                os.utime(temporales / nombre, (viejo, viejo))
+            self._correr_descarga(temporales, publicados, DescargaFalsa())
+            self.assertEqual({p.name for p in temporales.iterdir()},
+                             {"galicia_por_validar_nuevo.xlsx", "otro.xlsx", "otro.tmp"})
+
+    def test_save_as_fallido_informa_causa_y_playwright(self):
+        with tempfile.TemporaryDirectory() as carpeta:
+            temporales = Path(carpeta) / "descargas_temp"
+            publicados = Path(carpeta) / "galicia"
+            temporales.mkdir()
+            publicados.mkdir()
+            fallida = DescargaFalsa(fallar=True)
+            with patch("bots.galicia.navar.log") as registrar:
+                with self.assertRaisesRegex(RuntimeError, "Target page"):
+                    self._correr_descarga(temporales, publicados, fallida)
+            self.assertIn("descarga interrumpida", registrar.call_args[0][0])
+            self.assertEqual(list(publicados.iterdir()), [])
 
     def test_filtro_no_toca_la_pagina(self):
         pagina = PaginaQueNoSePuedeTocar()

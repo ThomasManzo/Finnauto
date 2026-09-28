@@ -1,5 +1,5 @@
 # Tarea 27 — Galicia NAVAR: temporal único por corrida y nombre del archivo publicado
-Estado: pendiente
+Estado: lista para revisión
 Rama: tarea/galicia-temporal-unico
 
 ## Objetivo
@@ -92,5 +92,22 @@ No tocar `nucleo/` (ni `fechas.py`: el comportamiento de volver a bajar el últi
 3. Commit en la rama. La prueba real es en la notebook: dos corridas seguidas sin borrar nada a mano.
 
 ## Qué hice
+
+- Cada corrida guarda la descarga en un temporal propio con fecha, hora e identificador único. Si
+  valida y publica bien, borra ese temporal; si falla la validación o la publicación, lo conserva.
+  Al empezar, limpia solamente los `galicia_por_validar_*.xlsx` y `*.tmp` de más de siete días.
+- Si Playwright falla al guardar, el log muestra el error y también la causa que informa la
+  descarga, cuando está disponible. No agrega reintentos.
+- El archivo publicado se llama `Movimientos Galicia AAAA-MM-DD.xlsx`. Una segunda corrida del
+  mismo día lo reemplaza después de validar; una fallida deja intacto el anterior.
+- Corregí la nota del perfil y la sección 6 de la guía: Galicia vuelve a bajar sus últimos 30 días
+  en cada corrida; el lector descarta repetidos. Agregué cómo revisar el mensaje engañoso de
+  "página cerrada" y los archivos temporales.
+- Agregué pruebas con Excel inventados para dos corridas seguidas, reemplazo diario, conservación
+  ante fallas de validación o publicación, limpieza selectiva y registro de fallas de guardado.
+  `python -m unittest bots.galicia.test_navar`: **26 pruebas OK**. Compilación, JSON válido y
+  `git diff --check`: OK.
+- No pude probar el banco, Playwright real, los permisos de Windows, Drive ni la tarea programada.
+  La prueba final es en la notebook: correr Galicia dos veces seguidas sin borrar temporales.
 
 ## Revisión
