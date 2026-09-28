@@ -1,5 +1,5 @@
 # Tarea 28 — Galicia NAVAR: rescatar la descarga cuando la página se cierra
-Estado: lista para revisión
+Estado: aprobada (mergeada el 28/09/2026; falta: 3 corridas programadas seguidas con OK, una de ellas la de las 07:00)
 Rama: tarea/galicia-rescatar-descarga
 
 ## Objetivo
@@ -103,3 +103,22 @@ No tocar `nucleo/`.
   rato (por ejemplo 07:00). No se probó banco real, Windows ni Drive desde este entorno.
 
 ## Revisión
+
+**Claude, 28/09/2026.** Hace lo pedido. Toma la foto de la carpeta antes del clic. Si el `save_as`
+falla, rescata solo un archivo **nuevo**, único, estable 2 s y zip válido. Después sigue por el mismo
+camino (`validar_excel`, publicación, borrado), y el control del nombre original sigue siendo
+anterior y obligatorio. La espera del rescate no usa Playwright (la página puede no existir).
+Registra cierre, caída y pestaña nueva. 35 tests OK, compila, `git diff --check` limpio. No toca
+`nucleo/`. Además lo probé en la Mac con **un `.tmp` real de una corrida fallida del 28/09**:
+el rescate lo toma y `validar_excel` lo acepta (110 movimientos). Aprobada.
+
+Para mirar en las corridas, sin cambio ahora:
+- `page.on("close")` también se dispara cuando el motor cierra el navegador al terminar, así que en
+  las corridas buenas va a aparecer "la página se cerró" **después** de `TERMINADO`. Es normal. Solo
+  importa si aparece **antes** del error de guardado.
+- Si en algún momento hubiera dos archivos nuevos a la vez (por ejemplo, uno parcial y el final),
+  el rescate frena en el acto en lugar de esperar. En las fallas del 28/09 quedó uno solo por corrida.
+  Si pasa, la corrección es esperar hasta el límite antes de frenar.
+- Los `<guid>.tmp` de las corridas **buenas** también quedan en `descargas_temp` (Playwright no los
+  borra con `downloads_path` fijo). La limpieza de 7 días los mantiene acotados.
+
