@@ -237,9 +237,9 @@ class PruebaNavar(unittest.TestCase):
         self.cfg = _configuracion()
         self.bot = BotGaliciaNavar(self.cfg)
 
-    def _correr_descarga(self, temporales, publicados, descarga):
+    def _correr_descarga(self, temporales, publicados, descarga, al_click=None):
         boton = ElementoFalso("Descargar")
-        excel = ElementoFalso("Excel")
+        excel = ElementoFalso("Excel", al_click=al_click)
         pagina = PaginaConDescargaFalsa(descarga)
         ctx = SimpleNamespace(descargas_dir=str(temporales))
         with patch.object(self.bot, "_buscar_boton_descarga", return_value=boton), \
@@ -476,11 +476,132 @@ class PruebaNavar(unittest.TestCase):
             temporales.mkdir()
             publicados.mkdir()
             fallida = DescargaFalsa(fallar=True)
-            with patch("bots.galicia.navar.log") as registrar:
-                with self.assertRaisesRegex(RuntimeError, "Target page"):
+            with patch("bots.galicia.navar.log") as registrar,                     patch.object(self.bot, "_rescatar_descarga",
+                                 side_effect=RuntimeError("sin archivo nuevo")):
+                with self.assertRaisesRegex(RuntimeError, "sin archivo nuevo"):
                     self._correr_descarga(temporales, publicados, fallida)
             self.assertIn("descarga interrumpida", registrar.call_args[0][0])
             self.assertEqual(list(publicados.iterdir()), [])
+
+    def test_rescate_publica_excel_nuevo_y_descarta_anteriores_y_temporal(self):
+        with tempfile.TemporaryDirectory() as carpeta:
+            temporales = Path(carpeta) / "temp"
+            publicados = Path(carpeta) / "salida"
+            temporales.mkdir()
+            publicados.mkdir()
+            anterior = temporales / "anterior.tmp"
+            _escribir_excel(anterior, [dt.date.today()], importe=999)
+            descarga = DescargaFalsa(fallar=True)
+
+            def llegada():
+                _escribir_excel(temporales / "guid.tmp", [dt.date.today()], importe=123)
+                (temporales / "galicia_por_validar_parcial.xlsx").write_text("incompleto")
+
+            with patch("bots.galicia.navar.time.sleep"),                     patch("bots.galicia.navar.time.monotonic", side_effect=range(100)):
+                destino = self._correr_descarga(
+                    temporales, publicados, descarga, al_click=llegada)
+            libro = load_workbook(destino)
+            self.assertEqual(libro.active["E2"].value, 123)
+            libro.close()
+            self.assertTrue(anterior.exists())
+            self.assertFalse(descarga.destinos[0].exists())
+
+    def test_rescate_frena_con_dos_nuevos(self):
+        with tempfile.TemporaryDirectory() as carpeta:
+            ruta = Path(carpeta)
+            def llegada():
+                (ruta / "uno.tmp").write_text("uno")
+                (ruta / "dos.tmp").write_text("dos")
+            with self.assertRaisesRegex(RuntimeError, "2 archivos nuevos"):
+                self._correr_descarga(ruta, ruta, DescargaFalsa(fallar=True), llegada)
+
+    def test_rescate_sin_nuevo_no_toma_archivo_anterior(self):
+        for con_anterior in (False, True):
+            with self.subTest(con_anterior=con_anterior), tempfile.TemporaryDirectory() as carpeta:
+                ruta = Path(carpeta)
+                if con_anterior:
+                    _escribir_excel(ruta / "viejo.tmp", [dt.date.today()])
+                rescatar = self.bot._rescatar_descarga
+                def corto(*args):
+                    return rescatar(*args, espera=0.001)
+                with patch.object(self.bot, "_rescatar_descarga", side_effect=corto):
+                    with self.assertRaisesRegex(RuntimeError, "0 archivos nuevos"):
+                        self._correr_descarga(ruta, ruta, DescargaFalsa(fallar=True))
+                self.assertFalse(list(ruta.glob("Movimientos*")))
+
+    def test_rescate_no_zip_frena(self):
+        with tempfile.TemporaryDirectory() as carpeta:
+            ruta = Path(carpeta)
+            with patch("bots.galicia.navar.time.sleep"),                     patch("bots.galicia.navar.time.monotonic", side_effect=range(100)):
+                with self.assertRaisesRegex(RuntimeError, "no es zip válido"):
+                    self._correr_descarga(
+                        ruta, ruta, DescargaFalsa(fallar=True),
+                        lambda: (ruta / "guid.tmp").write_text("no es un Excel"))
+
+    def test_rescate_espera_dos_segundos_y_reinicia_si_cambia_tamano(self):
+        with tempfile.TemporaryDirectory() as carpeta:
+            ruta = Path(carpeta)
+            candidato = ruta / "guid.tmp"
+            _escribir_excel(candidato, [dt.date.today()])
+            reloj = [0.0]
+            esperas = []
+            def dormir(segundos):
+                reloj[0] += segundos
+                esperas.append(reloj[0])
+                if len(esperas) == 5:
+                    # Sigue siendo un zip válido, pero la descarga aún crecía.
+                    with candidato.open("ab") as archivo:
+                        archivo.write(b"mas")
+            with patch("bots.galicia.navar.time.monotonic", side_effect=lambda: reloj[0]),                     patch("bots.galicia.navar.time.sleep", side_effect=dormir):
+                self.bot._rescatar_descarga(ruta, set(), ruta / "copia.xlsx")
+            self.assertGreaterEqual(reloj[0], 3)
+            self.assertEqual((ruta / "copia.xlsx").read_bytes(), candidato.read_bytes())
+
+    def test_rescate_archivo_que_no_se_estabiliza_frena(self):
+        with tempfile.TemporaryDirectory() as carpeta:
+            ruta = Path(carpeta)
+            candidato = ruta / "guid.tmp"
+            candidato.write_bytes(b"a")
+            reloj = [0.0]
+            def dormir(segundos):
+                reloj[0] += segundos
+                with candidato.open("ab") as archivo:
+                    archivo.write(b"a")
+            with patch("bots.galicia.navar.time.monotonic", side_effect=lambda: reloj[0]),                     patch("bots.galicia.navar.time.sleep", side_effect=dormir):
+                with self.assertRaisesRegex(RuntimeError, "no se estabilizó"):
+                    self.bot._rescatar_descarga(ruta, set(), ruta / "copia.xlsx", espera=3)
+
+    def test_save_as_exitoso_no_busca_rescate(self):
+        with tempfile.TemporaryDirectory() as carpeta:
+            with patch.object(self.bot, "_rescatar_descarga") as rescatar:
+                self._correr_descarga(Path(carpeta), Path(carpeta), DescargaFalsa())
+            rescatar.assert_not_called()
+
+    def test_nombre_incorrecto_no_llega_al_rescate(self):
+        with tempfile.TemporaryDirectory() as carpeta:
+            descarga = DescargaFalsa(fallar=True)
+            descarga.suggested_filename = "Extracto_CC999999999.xlsx"
+            with patch.object(self.bot, "_rescatar_descarga") as rescatar:
+                with self.assertRaisesRegex(RuntimeError, "cuenta pedida"):
+                    self._correr_descarga(Path(carpeta), Path(carpeta), descarga)
+            rescatar.assert_not_called()
+            self.assertEqual(descarga.destinos, [])
+
+    def test_eventos_de_pagina_quedan_registrados(self):
+        eventos, contexto = {}, {}
+        pagina = SimpleNamespace(
+            on=lambda evento, funcion: eventos.update({evento: funcion}),
+            context=SimpleNamespace(
+                on=lambda evento, funcion: contexto.update({evento: funcion})))
+        with patch("bots.galicia.navar.log") as registrar:
+            self.bot._registrar_eventos_descarga(pagina)
+            eventos["close"]()
+            eventos["crash"]()
+            contexto["page"](SimpleNamespace(url="https://ejemplo.invalid/descarga"))
+        textos = [c.args[0] for c in registrar.call_args_list]
+        self.assertIn("la página se cerró", textos[0])
+        self.assertIn("la página se cayó", textos[1])
+        self.assertIn("https://ejemplo.invalid/descarga", textos[2])
 
     def test_filtro_no_toca_la_pagina(self):
         pagina = PaginaQueNoSePuedeTocar()
