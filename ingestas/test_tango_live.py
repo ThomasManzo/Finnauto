@@ -316,6 +316,50 @@ class TangoLiveTest(unittest.TestCase):
                 "", "")
         self.assertNotIn(dato_sensible_inventado, salida.getvalue())
 
+    def test_parte_tango_ocho_de_ocho_es_atomico(self):
+        marca = datetime.datetime(2026, 9, 28, 10, 31, tzinfo=datetime.timezone.utc)
+        with tempfile.TemporaryDirectory() as raiz:
+            live._escribir_parte_tango(raiz, 8, 8, [], "token-secreto", marca)
+            carpeta = os.path.join(raiz, "_para la Sheet")
+            archivos = os.listdir(carpeta)
+            with open(os.path.join(carpeta, "tango_ultima_bajada.txt"),
+                      encoding="utf-8") as archivo:
+                texto = archivo.read()
+        self.assertEqual(["tango_ultima_bajada.txt"], archivos)
+        self.assertEqual("2026-09-28T10:31:00+00:00\n8 de 8\n", texto)
+
+    def test_parte_tango_informa_fallas_sin_token(self):
+        marca = datetime.datetime(2026, 9, 28, 10, 31, tzinfo=datetime.timezone.utc)
+        secreto = "token-muy-secreto"
+        error_largo = RuntimeError("falló la consulta con %s " % secreto + "x" * 300)
+        with tempfile.TemporaryDirectory() as raiz:
+            live._escribir_parte_tango(
+                raiz, 6, 8,
+                [("A pagos 2026-09-28.xlsx", error_largo),
+                 ("AA cobranzas 2026-09-28.xlsx", "timeout")],
+                secreto, marca)
+            with open(os.path.join(raiz, "_para la Sheet", "tango_ultima_bajada.txt"),
+                      encoding="utf-8") as archivo:
+                texto = archivo.read()
+        self.assertIn("6 de 8", texto)
+        self.assertIn("A pagos 2026-09-28.xlsx:", texto)
+        self.assertIn("AA cobranzas 2026-09-28.xlsx: timeout", texto)
+        self.assertNotIn(secreto, texto)
+        self.assertLessEqual(len(texto.splitlines()[2].split(": ", 1)[1]), 150)
+
+    def test_error_al_escribir_parte_no_rompe_bajada(self):
+        with tempfile.TemporaryDirectory() as raiz, \
+                mock.patch.object(live, "perfil", return_value=self.cfg), \
+                mock.patch.object(live, "token", return_value="token-inventado"), \
+                mock.patch.object(live, "bajar_y_escribir", return_value=(1, 1)), \
+                mock.patch.object(live, "_escribir_parte_tango",
+                                  side_effect=OSError("Drive no disponible")), \
+                redirect_stdout(io.StringIO()) as salida:
+            rc = live.main([
+                "--cliente", "navar", "--destino", raiz, "--hoy", "2026-09-28"])
+        self.assertEqual(0, rc)
+        self.assertIn("no pude escribir el parte de Tango", salida.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()
