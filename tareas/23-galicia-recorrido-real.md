@@ -1,5 +1,5 @@
 # Tarea 23 — Galicia NAVAR: el recorrido real, sin calendario
-Estado: lista para revisión
+Estado: aprobada (mergeada el 27/09/2026; falta la corrida supervisada en la notebook)
 Rama: tarea/galicia-recorrido-real
 
 ## Objetivo
@@ -166,3 +166,25 @@ cero clics por coordenadas, nada de `.first` para **elegir dónde hacer clic**, 
   notebook.
 
 ## Revisión
+
+**Claude, 27/09/2026.** Leí el diff completo. No toca `nucleo/`, `orquestador/`, el bot original ni
+los lectores. 17 tests OK, compila, JSON válido, `git diff --check` limpio, sin nombres ni montos
+reales. Además la probé en la Mac con **el Excel real de Thomas del 27/09**: `validar_excel` lo
+acepta (111 movimientos, 27/08–22/09), `Extracto_CC545950701.xlsx` pasa, y un `.csv` o un número de
+cuenta distinto frenan.
+
+Bien: login directo con un solo intento · `_esperar_unico_visible` que ignora copias ocultas y dice
+la causa real · clic en la tarjeta de la cuenta y confirmación por URL + número · sin filtro ni
+calendario · opción `Excel` exacta · la cuenta se confirma con el nombre del archivo · ventana de
+hoy − 35 días · §6 al día. Aprobada.
+
+Para mirar en la corrida (sin cambio ahora):
+- **Saldos**: el xpath propio (`//*[normalize-space(.)='Actual']`) también puede agarrar el
+  contenedor que envuelve a la etiqueta. En ese caso encuentra dos visibles, avisa y sigue sin
+  saldo. Si pasa, la corrección es volver al selector probado del bot original
+  (`//p[normalize-space(text())='Actual']/following-sibling::h4[1]`) como primera opción.
+- **Clic en la tarjeta**: se hace sobre el texto `N° ...`. Si la tarjeta no reacciona al clic en el
+  número, `_esperar_cuenta_abierta` frena con la URL a la vista.
+- La primera corrida loguea "bajando 26/09 a 26/09" (sale del estado del motor), pero igual baja los
+  30 días. Es solo el texto.
+
