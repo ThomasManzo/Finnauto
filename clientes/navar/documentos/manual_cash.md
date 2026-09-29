@@ -175,7 +175,7 @@ los filtros del bloque 6 y no usa promedios, inflación ni cuotas decididas en P
 | 2 | la notebook de la empresa (**vigilante**, cada 15 min) | ve el archivo nuevo y corre el lector que corresponde; deja el `para_pegar_*.xlsx` en `_para la Sheet`; si una lista se achica o crece de golpe, lo retiene | `herramientas/vigilante.py` · log en `privado/vigilante.log` |
 | 3 | la Sheet (**disparador**, cada hora, Apps Script) | ve el `para_pegar` nuevo y lo importa; pisa lo que ese lector cargó antes, no toca fórmulas ni lo cargado a mano | solapa **Registro**: una fila por importación (o el error) |
 | 4 | las pantallas | recalculan solas: B3 avanza, lo real reemplaza lo estimado, la cobranza que entró sale del "a cobrar" | Cash · Cash Semanal · Cash Mensual |
-| cada mañana: el aviso | la Sheet (cerca de las 09:00 de Buenos Aires, una vez instalado) | prioriza una señal de vida atrasada o no verificable; recuerda qué falta subir y resume el circuito | `herramientas/aviso_diario.gs` → mail de la empresa |
+| cada mañana: el aviso | la Sheet (cerca de las 07:30 de Buenos Aires (07:15–07:45), una vez instalado) | prioriza una señal de vida atrasada o no verificable; recuerda qué falta subir y resume el circuito | `herramientas/aviso_diario.gs` → mail de la empresa |
 | a mano | quien hace el arqueo de caja | una fila por arqueo en Saldos Bancarios: fecha, Varios, AA, saldo, Manual | Saldos Bancarios |
 | a mano | la dirección | las decisiones: pagar / refinanciar / posponer, gracia, cuotas, tasa | Plan |
 
@@ -203,7 +203,7 @@ Si el vigilante no procesó, revisar la notebook y `NAVAR - Datos/_para la Sheet
 si la Sheet no importó, usar finauto → Importar lo nuevo ahora. Si hay un retenido, revisar el
 export antes de publicarlo; ante errores de lectura o importación, revisar Registro y pedir ayuda
 a finauto. Primero revisar `avisoDiarioPrueba()` (no manda mail); después instalar con
-`instalarAvisoDiario()`, desde una sola cuenta. Queda programado a las **09:00 de Buenos Aires**;
+`instalarAvisoDiario()`, desde una sola cuenta. Queda programado a las **07:30 de Buenos Aires (07:15–07:45)**;
 Google lo ejecuta cerca de esa hora, con un margen de 15 minutos. Falta verificarlo e instalarlo
 en la Sheet; este cambio de código por sí solo no crea el disparador.
 

@@ -119,7 +119,7 @@ function onOpen() {
     .addItem("Quitar actualización automática", "quitarDisparador")
     .addSeparator()
     .addItem("Ver el aviso de hoy (sin mandar)", "avisoDiarioPrueba")          // aviso_diario.gs
-    .addItem("Instalar aviso diario 09:00", "instalarAvisoDiario")
+    .addItem("Instalar aviso diario 07:30", "instalarAvisoDiario")
     .addItem("Quitar aviso diario", "quitarAvisoDiario")
     .addSeparator()
     .addItem("Armar solapa Cash (Cash, Semanal, Mensual)", "armarCash")
@@ -160,11 +160,11 @@ function instalarDisparador() {
   quitarDisparador();
   ScriptApp.newTrigger("importarLoNuevo").timeBased().everyHours(1).create();
   // Buscamos importar después del vigilante de las 05:53/06:08 y antes de las 07:00.
-  // nearMinute tiene ±15 minutos: puede correr entre 06:05 y 06:35, incluso antes
-  // de la pasada de las 06:08; el horario por sí solo no garantiza datos nuevos.
-  ScriptApp.newTrigger("importarLoNuevo").timeBased().atHour(6).nearMinute(20).everyDays(1).create();
-  _registrar_("sistema", "", "ok", "disparadores instalados: importarLoNuevo cada hora y diariamente entre 06:05 y 06:35");
-  try { SpreadsheetApp.getActiveSpreadsheet().toast("Listo: la Sheet importa lo nuevo cada hora y diariamente entre 06:05 y 06:35.", "finauto", 10); } catch (e) {}
+  // nearMinute tiene ±15 minutos: puede correr entre 06:15 y 06:45, después
+  // de ambas pasadas; verificar en Registro que los datos se hayan importado.
+  ScriptApp.newTrigger("importarLoNuevo").timeBased().atHour(6).nearMinute(30).everyDays(1).create();
+  _registrar_("sistema", "", "ok", "disparadores instalados: importarLoNuevo cada hora y diariamente entre 06:15 y 06:45");
+  try { SpreadsheetApp.getActiveSpreadsheet().toast("Listo: la Sheet importa lo nuevo cada hora y diariamente entre 06:15 y 06:45.", "finauto", 10); } catch (e) {}
 }
 
 function quitarDisparador() {

@@ -227,18 +227,24 @@ desactivados y sin adaptación en esta tarea.
 | 05:45 | Tango y Galicia | Carpetas de Tango y `Bancos\galicia\` · logs `privado\tango_live.log` y `privado\galicia.log` |
 | 05:48 | Galicia (seguro si falla en frío) | Reemplaza el Excel del día en `Bancos\galicia\` |
 | 05:53 / 06:08 | vigilante → lectores (sigue cada 15 min) | `_para la Sheet\` |
-| 06:05–06:35 | importación diaria de la Sheet, además de la de cada hora | solapas de la Sheet + Registro |
+| 06:15–06:45 | importación diaria de la Sheet, además de la de cada hora | solapas de la Sheet + Registro |
 | 07:00 | Objetivo: cash al día | Verificar Registro y fechas de los datos |
+| 07:30 (07:15–07:45) | Aviso diario por mail | Mail de la empresa |
 
-La notebook debe estar **prendida y sin suspenderse a las 05:45**. Después de pegar el
-`importar_cashflow.gs` nuevo, correr una vez **`instalarDisparador`** desde el editor de Apps
-Script. Reemplaza los activadores de `importarLoNuevo`, incluido el diario cargado a mano,
-y deja exactamente dos: uno por hora y otro diario alrededor de las 06:20. El manual ya no
-hace falta. Los horarios se interpretan en la zona horaria del proyecto (Buenos Aires).
+La notebook debe estar **prendida y sin suspenderse a las 05:45**. Después de pegar los dos
+scripts nuevos, `importar_cashflow.gs` y `aviso_diario.gs`, correr una vez
+**`instalarDisparador`** y una vez **`instalarAvisoDiario`** desde el editor de Apps Script.
+Los disparadores viejos conservan el horario anterior hasta que se reinstalan.
 
-Google puede adelantar o atrasar `nearMinute(20)` hasta 15 minutos: la pasada diaria podría
-ser a las 06:05, antes del vigilante de las 06:08. El objetivo de las 07:00 depende de que los
-archivos se hayan procesado e importado; comprobarlo en Registro.
+La primera función reemplaza los activadores de `importarLoNuevo`, incluido el diario cargado
+a mano, y deja exactamente dos: uno por hora y otro diario alrededor de las 06:30. El activador
+manual ya no hace falta. La segunda reemplaza sólo el aviso y deja uno diario cerca de las
+07:30, en Buenos Aires. La importación usa la zona horaria del proyecto (Buenos Aires).
+
+Google puede adelantar o atrasar `nearMinute(30)` hasta 15 minutos: la importación diaria corre
+entre 06:15 y 06:45, después de las pasadas del vigilante de 05:53/06:08; el aviso entre 07:15
+y 07:45. El objetivo de las 07:00 depende de que los archivos se hayan procesado e importado;
+comprobarlo en Registro.
 
 Los errores del bot se revisan en su `log.txt` y capturas; pueden ocurrir antes de que el
 vigilante vea un archivo. Los del procesamiento se revisan en `vigilante.log` y Registro.
