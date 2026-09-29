@@ -63,6 +63,49 @@ USD 400/mes desde el mes 2, revisable a los 3 meses contra el acierto medido.
 La presentación (PDF de propuesta + vista rápida del tablero + la Sheet) fue
 lo que cerró. Primer peso cobrado de finauto.
 
+## Dónde estamos (29/09/2026) — la mañana corre sola; bancos: Galicia sí, el resto no
+
+**La mañana de NAVAR** (pedido del cliente: cash al día a las 07:00), instalado y verificado el 29/09:
+
+| Hora | Qué | Dónde |
+|---|---|---|
+| 05:45 | Tango (`finauto NAVAR Tango`) y Galicia (`finauto NAVAR Galicia`) | notebook, Programador de tareas |
+| 05:48 | Galicia otra vez (seguro: la primera corrida a veces falla en frío) | notebook |
+| 05:53 / 06:08 | vigilante → lectores | notebook, cada 15 min |
+| 06:15–06:45 | la Sheet importa (diario) + la de cada hora | Apps Script, `instalarDisparador` |
+| 07:15–07:45 | aviso diario por mail | Apps Script, `instalarAvisoDiario` |
+
+- Aviso: `aviso_diario.gs → DESTINATARIOS` tiene **4 casillas** (la de la empresa + 3 personas de
+  NAVAR, pedido de Thomas 29/09). Para sumar/quitar, se edita esa línea (repo + Apps Script); no hace
+  falta reinstalar el disparador.
+- Zona horaria del proyecto de Apps Script: Buenos Aires (verificado 29/09).
+- **Cómo se actualiza el código de Apps Script sin errores** (29/09): comparar primero el editor con la
+  versión anterior del repo (hash), traer la nueva desde GitHub por commit, reemplazar el archivo
+  con el editor (Monaco `executeEdits`), guardar, **recargar y volver a comparar**. Las funciones de
+  instalación se corren **desde el menú finauto de la Sheet**, no desde el selector del editor: el
+  selector, automatizado, corrió otra función (una vez `onOpen`, otra casi `avisoDiario`, que manda
+  el mail). Confirmar siempre en Ejecuciones qué corrió.
+- Los `.gs` al día siguen en `NAVAR - Datos/Scripts/` (`*.gs.txt`).
+
+**Bancos:**
+- **Galicia**: automático y cerrado (ver abajo, 28/09).
+- **Macro**: **bloqueado** (28/09) y **con claves expuestas**. En un diagnóstico, las claves se
+  tipearon en la consola y quedaron unos 15 min como nombres de archivo en Drive; se borraron. Falta:
+  que el administrador de banca empresas de NAVAR desbloquee el usuario y **cambiar la clave personal
+  y la clave empresa**. Después: diagnóstico corregido (**solo Enter, nunca texto**), consigna,
+  claves nuevas en la notebook (Macro pide 3 datos: usuario, clave y clave empresa). El recorrido a
+  mano y el export ya se vieron: `macro.com.ar/biempresas` → usuario → clave → clave empresa →
+  "CUENTA CORRIENTE BANCARIA" → al pie, **XLS** de "Descargar listado completo" (no el del inicio, que
+  baja la lista de cuentas). El export trae ~30 días y el número de cuenta adentro.
+- **BBVA**: el login entra y vuelve al inicio en un loop. Espera **usuario de consulta propio**.
+- **Nación / Corrientes**: sin bot. Nación: tarea 21 (cuenta con 13 o 14 dígitos) sigue pendiente.
+- Decidido: **usuarios de consulta propios por banco** (checklist 1.3b). NAVAR ofreció crearlos.
+
+**Pendiente, en orden:** tarea 32 (el mail como checklist; no pasada a Codex) · método fijo por banco
+(checklist, diagnóstico único en el repo y ayudas comunes) antes de Macro, **esperando OK de Thomas** ·
+Macro (desbloqueo + claves nuevas) · BBVA (usuario propio) · `_SALDOS_` de Galicia a la Sheet · probar
+el modo invisible de Galicia · tarea 20 (pegar el `.gs`, pendiente desde el 25/09) · tarea 21 (Nación).
+
 ## Dónde estamos (28/09/2026) — Galicia baja solo
 
 **El bot de Galicia anduvo de punta a punta el 28/09 a las 00:27** en la notebook (`--modo prueba`):
