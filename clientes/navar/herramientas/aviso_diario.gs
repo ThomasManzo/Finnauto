@@ -13,7 +13,7 @@
  * Registro: {fecha, tipo, estado, detalle}. Log: {fecha, texto}.
  * Con esa foto el armado es puro; con solo ahora, primero lee Google.
  */
-var DESTINATARIOS = "cuenta-empresa@ejemplo.com";
+var DESTINATARIOS = "cuenta-empresa@ejemplo.com,persona1@ejemplo.com,persona2@ejemplo.com,persona3@ejemplo.com";
 var AVISO_ZONA = "America/Argentina/Buenos_Aires";
 var AVISO_DIA = 24 * 60 * 60 * 1000;
 // Estas fuentes ya llegan solas. Al automatizar otro banco, se lo agrega acá para
