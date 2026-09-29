@@ -1,5 +1,5 @@
 # Tarea 32 — El mail diario como checklist simple
-Estado: pendiente
+Estado: lista para revisión
 Rama: tarea/aviso-checklist
 
 > **Renumerada el 29/09/2026** (antes era "30-aviso-checklist-y-madrugada": chocaba con la tarea 30
@@ -131,5 +131,27 @@ Reglas:
 3. `grep` de nombres propios de personas vacío en lo agregado. Commit en la rama.
 
 ## Qué hice
+
+- Reemplacé el cuerpo por LLEGÓ HOY, FALTA y REVISAR (sólo si hay alertas). Hay una casilla
+  por Tango A, Tango AA, banco identificado, arqueo AA e importación de la Sheet. El asunto
+  cuenta exclusivamente las casillas faltantes. No incluye deuda ni impuestos en la checklist.
+- Tango usa el parte 8/8; si está incompleto identifica las fotos por empresa, el motivo y
+  el último archivo disponible. Distingue cheques propios de terceros y tesorería de AA.
+- Galicia usa el último estado del día, nunca la fecha del movimiento para decidir si llegó.
+  Ante falla muestra el Excel más reciente por modificación, aceptando ambos nombres históricos
+  y sólo dentro de la carpeta del banco. La lectura de partes admite los bancos declarados
+  automáticos con el formato compartido de _ESTADO_.
+- Manuales y arqueo usan el cierre hábil anterior. La Sheet exige un ok de hoy posterior a los
+  partes automáticos de hoy; no toma registros de sistema ni fechas futuras.
+- REVISAR muestra falta de señal de vida, lecturas fallidas, retenciones pendientes y errores
+  sin ok posterior del mismo tipo. Saqué el detalle técnico por archivo y los logs históricos
+  del cuerpo. Prueba y envío siguen usando la misma función de armado.
+- Verificado con Node del runtime local: 20 casos de checklist más parseo de partes, todos OK.
+  En cada caso se verifica asunto, líneas y una sola casilla por fuente. Incluye lunes, 6/8,
+  Galicia OK con movimiento antiguo, ambos nombres de Excel, error resuelto y pendiente.
+- git diff --check y búsqueda de nombres propios en lo agregado: limpios. Confirmé que
+  DESTINATARIOS y las funciones de horarios no cambiaron. Sólo tres archivos autorizados.
+- No envié correos ni accedí a datos reales. Pendiente: pegar el .gs y ejecutar avisoDiarioPrueba
+  (Ver el aviso de hoy, sin mandar) para revisar la checklist en Google antes de usarla.
 
 ## Revisión
