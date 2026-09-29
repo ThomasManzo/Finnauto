@@ -1,5 +1,5 @@
 # Tarea 33 — Aviso: nombres de banco prolijos y sin avisar dos veces el mismo faltante
-Estado: pendiente
+Estado: lista para revisión
 Rama: tarea/aviso-detalles
 
 ## Objetivo
@@ -50,5 +50,17 @@ La clave del banco para comparar con `FUENTES_AUTOMATICAS` y armar rutas es la m
 3. Claude lo pega en Apps Script y lo prueba con "Ver el aviso de hoy (sin mandar)".
 
 ## Qué hice
+
+- Agregué _nombreBancoAviso_: mapa para los cinco bancos conocidos y primera letra mayúscula
+  para desconocidos. Lo usan las líneas automáticas y manuales; claves y rutas no cambiaron.
+- Si no existe el estado del día, la lectura termina sin agregar error y la checklist conserva
+  su único faltante. Duplicados, falta de acceso y cabecera incorrecta siguen siendo errores.
+- Pruebas OK con Node del runtime local: los 20 casos anteriores, nombres conocidos y desconocidos,
+  nombres en el cuerpo y lectura con dobles de Drive para parte ausente, duplicado, ilegible y ajeno.
+  El caso ausente verifica asunto con un faltante y ausencia de REVISAR.
+- git diff --check y búsqueda de nombres propios en lo agregado: limpios. Confirmé que los
+  destinatarios y las funciones de horarios están intactos.
+- No accedí a Google ni envié correos. Pendiente: pegar en Apps Script y probar con
+  «Ver el aviso de hoy (sin mandar)».
 
 ## Revisión

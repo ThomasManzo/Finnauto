@@ -107,6 +107,14 @@ function _bancoExtractoAviso_(fila) {
   return _textoAviso_(fila.origen).replace(/^extracto/i, "").trim() || _textoAviso_(fila.banco);
 }
 
+// Sólo cambia la presentación: las claves internas y las rutas siguen iguales.
+function _nombreBancoAviso_(nombre) {
+  var clave = _textoAviso_(nombre).toLowerCase();
+  var conocidos = {galicia: "Galicia", nacion: "Nación", corrientes: "Corrientes",
+    macro: "Macro", bbva: "BBVA"};
+  return conocidos[clave] || clave.charAt(0).toUpperCase() + clave.slice(1);
+}
+
 // Mantiene cada sección corta, pero dice cuántos renglones quedaron afuera.
 function _seccionAviso_(titulo, lineas) {
   var visibles = lineas.slice(0, 5);
@@ -220,7 +228,8 @@ function _leerDatosAviso_(ahora) {
       if (carpetas.hasNext()) throw new Error("Hay más de una carpeta del banco");
       var nombre = "_ESTADO_" + etiqueta + "_" + _fechaAviso_(ahora, "dd-MM") + ".txt";
       var archivos = carpeta.getFilesByName(nombre);
-      if (!archivos.hasNext()) throw new Error("Falta " + nombre);
+      // Sin parte hoy, la checklist ya pide revisar la notebook. No es una lectura fallida.
+      if (!archivos.hasNext()) return;
       var archivo = archivos.next();
       if (archivos.hasNext()) throw new Error("Hay más de un estado de hoy");
       // Los bots comparten el formato de nucleo/salidas; verificamos el banco de la cabecera.
@@ -363,7 +372,7 @@ function _armarAviso_(ahora, datos) {
   if (datos.galiciaParte) partes = Object.assign({}, partes, {galicia: datos.galiciaParte});
   Object.keys(bancos).sort().forEach(function (clave) {
     var banco = bancos[clave];
-    if (FUENTES_AUTOMATICAS.indexOf(clave) < 0) { manual(banco.nombre, banco.dia, false); return; }
+    if (FUENTES_AUTOMATICAS.indexOf(clave) < 0) { manual(_nombreBancoAviso_(banco.nombre), banco.dia, false); return; }
     var p = partes[clave];
     var archivo = ultimo(entradas.filter(function (f) {
       var ruta = String(f.ruta || "").replace(/\\/g, "/").toLowerCase();
@@ -371,7 +380,7 @@ function _armarAviso_(ahora, datos) {
         f.nombre.toLowerCase().indexOf("movimientos " + clave + " ") === 0 && /\.xlsx$/i.test(f.nombre);
     }));
     var ok = p && deHoy(p.fecha) && p.ok && !errores[clave === "galicia" ? "GaliciaParte" : clave + "Parte"];
-    poner(ok, banco.nombre + ": " + (ok ? _fechaAviso_(p.fecha, "HH:mm") + " · movimientos hasta " + dia(banco.dia) :
+    poner(ok, _nombreBancoAviso_(banco.nombre) + ": " + (ok ? _fechaAviso_(p.fecha, "HH:mm") + " · movimientos hasta " + dia(banco.dia) :
       (p && deHoy(p.fecha) ? "el bot falló a las " + _fechaAviso_(p.fecha, "HH:mm") + " (" +
         _textoAviso_(p.detalle || "sin motivo disponible", 140) + ")" : "el bot no corrió hoy · revisar la notebook") +
       " · Último extracto: " + (errores.Drive ? "no se pudo verificar" : fecha(archivo && archivo.fecha))));
