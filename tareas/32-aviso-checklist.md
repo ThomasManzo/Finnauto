@@ -1,6 +1,13 @@
-# Tarea 30 — El mail diario como checklist simple, y todo el circuito a la madrugada
+# Tarea 32 — El mail diario como checklist simple
 Estado: pendiente
 Rama: tarea/aviso-checklist
+
+> **Renumerada el 29/09/2026** (antes era "30-aviso-checklist-y-madrugada": chocaba con la tarea 30
+> de horarios, escrita en paralelo en otro chat). **La parte de horarios ya está hecha e instalada**
+> por las tareas 30 y 31: bajadas a las 05:45 (Galicia también a las 05:48, de seguro), importación
+> diaria de la Sheet entre 06:15 y 06:45 además de la de cada hora, y **el mail a las 07:30** (07:15–07:45),
+> que es lo último que pidió Thomas. `DESTINATARIOS` ya tiene cuatro casillas. Esta tarea queda
+> **solo con la checklist**; no tocar horarios, instaladores ni `DESTINATARIOS`.
 
 ## Objetivo
 
@@ -9,8 +16,7 @@ Dos cosas que pidió NAVAR (29/09/2026):
 1. **El mail diario tiene que ser una checklist**: qué llegó, qué falta y, de lo que falta, cuál es
    lo último que hay. Hoy tiene demasiado ruido técnico: lo que procesó el vigilante, lo que importó
    la Sheet línea por línea y errores viejos ya resueltos.
-2. **A las 07:00 el cash tiene que estar actualizado.** Las bajadas automáticas pasan a las 05:45 y
-   el mail sale a las 07:00.
+2. ~~A las 07:00 el cash tiene que estar actualizado~~ → **hecho** en las tareas 30 y 31 (ver arriba).
 
 ## Contexto
 
@@ -31,15 +37,16 @@ tarea deja los scripts y la guía iguales a lo que corre):
 - 05:45: bot de Galicia y bajada de Tango, a la vez.
 - Vigilante cada 15 min: procesa entre las 05:53 y las 06:08.
 - La Sheet importa cada hora, hoy cerca del minuto :32, o sea hacia las 06:33.
-- 07:00: el mail. El disparador de Google tiene ±15 min de margen.
+- La Sheet además importa todos los días entre 06:15 y 06:45 (tarea 31).
+- 07:30: el mail (entre 07:15 y 07:45). **Ya instalado.**
 
 ## Archivos permitidos
 
 - `clientes/navar/herramientas/aviso_diario.gs`
 - `lector/pruebas/probar_aviso_bajadas.cjs`
-- `clientes/navar/herramientas/instalar_tango.ps1` e `instalar_galicia.ps1` (solo la hora)
-- `clientes/navar/documentos/instalar_notebook.md` (solo las horas que se mencionan)
-- `tareas/30-aviso-checklist-y-madrugada.md`
+- `tareas/32-aviso-checklist.md`
+
+(Los instaladores y la guía ya no: sus horarios los resolvieron las tareas 30 y 31.)
 
 ## Resultado esperado
 
@@ -99,13 +106,7 @@ Reglas:
 
 ### 2. Horarios
 
-- `aviso_diario.gs`: el disparador pasa a **07:00** (`atHour(7)`); actualizar comentarios, el texto
-  del menú y el mensaje del Registro ("cerca de las 07:00").
-- `instalar_tango.ps1` e `instalar_galicia.ps1`: **05:45**. Que la hora quede en una variable al
-  principio del script, comentada.
-- `instalar_notebook.md`: las horas nuevas donde se mencionan (07:00 → 05:45, 07:30 → 05:45, mail
-  09:00 → 07:00), y una línea con la cadena completa (05:45 bajadas → ~06:08 vigilante → ~06:33
-  Sheet → 07:00 mail).
+**Ya hecho** (tareas 30 y 31, instalado el 29/09). No tocar.
 
 ## Comprobaciones
 
