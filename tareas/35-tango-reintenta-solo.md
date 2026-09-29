@@ -1,5 +1,5 @@
 # Tarea 35 — La bajada de Tango reintenta sola si falló
-Estado: lista para revisión
+Estado: aprobada (mergeada 29/09; falta actualizar la notebook y volver a correr instalar_tango.ps1)
 Rama: tarea/tango-reintento
 
 ## Objetivo
@@ -102,3 +102,15 @@ Lo que ya existe y no cambia:
   Esta tarea no modifica la notebook, la Sheet ni el aviso diario; no hace merge ni push.
 
 ## Revisión
+
+**Claude, 29/09/2026.** Leí el diff completo y corrí `python -m unittest ingestas.test_tango_live`:
+18 OK. Aprobado.
+- `--si-falta` decide **antes** de pedir el token o tocar la red, y solo saltea con parte de hoy
+  (hora local), `8 de 8` exacto contra `TOTAL_BAJADAS_DIARIAS` y sin líneas de falla. Cualquier
+  otra cosa (parte viejo, incompleto, ausente o ilegible) baja las 8. Es lo pedido, y ante la duda
+  prefiere bajar de más.
+- Sin `--si-falta` no cambia nada: la corrida manual del 29/09 sigue funcionando igual.
+- `instalar_tango.ps1`: una tarea, seis disparadores y la acción con el flag; se mantienen
+  `IgnoreNew` (si la de 05:45 sigue corriendo a las 06:15, no se pisa), el límite de 1 hora y el log.
+- Falta en Windows: `actualizar.ps1` y volver a correr `instalar_tango.ps1`. Verificar con
+  `Get-ScheduledTask "finauto NAVAR Tango" | Select -Expand Triggers` que aparezcan las 6 horas.
