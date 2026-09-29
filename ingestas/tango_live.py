@@ -463,6 +463,32 @@ def _escribir_parte_tango(raiz, ok, total, fallas, tok="", ahora=None):
             os.unlink(temporal)
 
 
+def _bajada_completa_hoy(raiz, hoy):
+    """Sólo evitamos la bajada cuando el parte confirma todas las fotos del día."""
+    ruta = os.path.join(raiz, "_para la Sheet", "tango_ultima_bajada.txt")
+    try:
+        with open(ruta, encoding="utf-8") as f:
+            lineas = f.read().splitlines()
+        marca = datetime.datetime.fromisoformat(lineas[0])
+        if marca.tzinfo is None:
+            raise ValueError("fecha sin zona horaria")
+        ok, total = (int(n) for n in lineas[1].split(" de "))
+        if not 0 <= ok <= total or total <= 0:
+            raise ValueError("conteo inválido")
+        # La fecha UTC puede ser de mañana cuando acá todavía es hoy.
+        local = marca.astimezone()
+    except FileNotFoundError:
+        return False
+    except (OSError, UnicodeError, ValueError, IndexError, OverflowError):
+        log("AVISO: parte de Tango ilegible; vuelvo a intentar la bajada completa")
+        return False
+    if (local.date() == hoy and ok == total == TOTAL_BAJADAS_DIARIAS
+            and not any(linea.strip() for linea in lineas[2:])):
+        log("ya bajó hoy completo a las %s; no hago nada" % local.strftime("%H:%M"))
+        return True
+    return False
+
+
 def pendientes(cfg):
     """Las ocho fotos válidas: cuatro de A y cuatro de AA."""
     return [(empresa, consulta, proceso)
@@ -502,6 +528,8 @@ def main(argv=None):
                     help="consulta: trae 5 filas y muestra sólo estructura y conteos")
     ap.add_argument("--empresa", default="A")
     ap.add_argument("--simular", action="store_true")
+    ap.add_argument("--si-falta", action="store_true",
+                    help="baja sólo si el parte no confirma todas las fotos de hoy")
     a = ap.parse_args(argv)
     cfg = perfil(a.cliente)
     hoy = datetime.date.fromisoformat(a.hoy)
@@ -539,6 +567,9 @@ def main(argv=None):
             except Exception as ex:
                 log("%s: FALLÓ: %s" % (nombre, ex))
                 return 1
+        return 0
+
+    if a.si_falta and _bajada_completa_hoy(raiz, hoy):
         return 0
 
     tok = token(a.cliente)

@@ -1,5 +1,5 @@
 # Tarea 35 — La bajada de Tango reintenta sola si falló
-Estado: pendiente
+Estado: aprobada (mergeada 29/09; falta actualizar la notebook y volver a correr instalar_tango.ps1)
 Rama: tarea/tango-reintento
 
 ## Objetivo
@@ -81,4 +81,36 @@ Lo que ya existe y no cambia:
 
 ## Qué hice
 
+- Agregué `--si-falta`: lee el parte antes del llavero y la red. Sólo saltea cuando
+  confirma las ocho fotos del día local de `--hoy`; conserva archivos y parte sin escribir.
+  Partes ausentes, incompletos, viejos, inválidos o inaccesibles dejan correr la bajada;
+  los ilegibles se avisan. La conversión usa `astimezone()` sin base de zonas adicional.
+- La bajada manual sin el flag mantiene su comportamiento. `--probar` y `--simular`
+  siguen siendo modos de diagnóstico y conservan su comportamiento incluso con el flag.
+- El instalador conserva una única tarea con seis disparadores diarios y `--si-falta`,
+  el log agregado, `IgnoreNew` y el límite de una hora. Actualicé únicamente §5 del manual.
+- Validación local: `python -m py_compile ingestas/tango_live.py` y
+  `python -m unittest ingestas.test_tango_live`: **18 pruebas OK**, sin red ni llavero real.
+  Cubren salida sin escrituras, parte viejo, 0/8, 5/8, ausente, ilegible, sin permiso,
+  total incorrecto, fecha sin zona, bajada manual y cruce de medianoche UTC/hora local.
+- Revisión manual del instalador: una llamada a `Register-ScheduledTask`, seis horas,
+  acción con el flag y opciones conservadas. Esta Mac no tiene PowerShell: falta probar
+  el registro efectivo en Windows. `git diff --check` sin errores; sin nombres de personas
+  en las líneas agregadas.
+- Para instalar después de revisar e integrar: actualizar la notebook y volver a ejecutar
+  `powershell -ExecutionPolicy Bypass -File clientes\navar\herramientas\instalar_tango.ps1`.
+  Esta tarea no modifica la notebook, la Sheet ni el aviso diario; no hace merge ni push.
+
 ## Revisión
+
+**Claude, 29/09/2026.** Leí el diff completo y corrí `python -m unittest ingestas.test_tango_live`:
+18 OK. Aprobado.
+- `--si-falta` decide **antes** de pedir el token o tocar la red, y solo saltea con parte de hoy
+  (hora local), `8 de 8` exacto contra `TOTAL_BAJADAS_DIARIAS` y sin líneas de falla. Cualquier
+  otra cosa (parte viejo, incompleto, ausente o ilegible) baja las 8. Es lo pedido, y ante la duda
+  prefiere bajar de más.
+- Sin `--si-falta` no cambia nada: la corrida manual del 29/09 sigue funcionando igual.
+- `instalar_tango.ps1`: una tarea, seis disparadores y la acción con el flag; se mantienen
+  `IgnoreNew` (si la de 05:45 sigue corriendo a las 06:15, no se pisa), el límite de 1 hora y el log.
+- Falta en Windows: `actualizar.ps1` y volver a correr `instalar_tango.ps1`. Verificar con
+  `Get-ScheduledTask "finauto NAVAR Tango" | Select -Expand Triggers` que aparezcan las 6 horas.
