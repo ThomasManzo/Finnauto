@@ -1,5 +1,5 @@
 # Tarea 34 — Último cobro de cada cliente y último pago a cada proveedor
-Estado: lista para revisión
+Estado: en curso
 Rama: tarea/ultimos-pagos
 
 ## Objetivo
@@ -214,3 +214,55 @@ Sheet con fórmulas sobre las listas, como el resto de las pantallas.
 
 
 ## Revisión
+
+**29/09/2026 (Claude): vuelve a `en curso`.** El lector, el vigilante, el importador y las pruebas
+están bien (carpetas separadas, las dos empresas obligatorias, marca `Tango tesorería`, fecha como
+fecha). Faltan dos cosas **antes de mergear**; sin ellas, instalar esto rompe la mañana.
+
+### 1. La bajada de A fallaría todos los días (`validar_tesoreria`)
+
+Comprobado con el export real de A (16/09), mirando solo los últimos 400 días:
+**27 renglones** traen un Tipo con otra Clase que la que espera `validar_tesoreria`:
+
+| Tipo | Clase que trae A | Renglones en la ventana |
+|---|---|---|
+| `OPF` | Otros movimientos de bancos y carteras | 23 |
+| `REC` | Otros movimientos de bancos y carteras | 4 |
+
+Hoy eso lanza "Tipo/Clase incompatibles" y **no escribe el archivo de A**: el parte quedaría
+`8 de 9` todos los días y `--si-falta` repetiría la bajada completa seis veces cada mañana. En AA
+esos pares no aparecen, por eso nunca saltó.
+
+Qué hacer: que `esperado` admita **varias clases por tipo**: `REC` → Cobros **u** Otros movimientos
+de bancos y carteras; `OPF` → Pagos **u** Otros movimientos de bancos y carteras. El resto igual (un
+REC que venga como "Pagos" tiene que seguir frenando). Pruebas: A con esos dos pares escribe el
+archivo; un REC como "Pagos" sigue fallando. `lector/ultimos_pagos.py` ya los deja afuera ("tipo o
+clase fuera de alcance"), que es lo correcto: no son cobros de un cliente ni pagos a un proveedor.
+
+Para tener en cuenta (no cambiar): en la ventana también hay clases "Depósitos" (324) y "Otros
+movimientos" (15) cuyo código no está en `TRADUCCIONES`; `preparar_filas` ya las saca del archivo y
+quedan visibles en el conteo. Está bien así.
+
+### 2. Adaptar el mail diario a 9 bajadas (se suma `aviso_diario.gs` a los archivos permitidos)
+
+Lo que marcaste en "Antes de instalar" es correcto y va en esta misma tarea, porque se instala
+junto. **Archivos permitidos que se agregan**: `clientes/navar/herramientas/aviso_diario.gs` (solo la
+parte de Tango de `_armarAviso_` y el `mapa` de carpetas de `_leerDatosAviso_`),
+`lector/pruebas/probar_aviso_bajadas.cjs` y `clientes/navar/herramientas/instalar_tango.ps1` (solo
+textos que digan "ocho").
+
+- El "todo llegó" no puede comparar con 8 fijo: una constante al principio (`TANGO_BAJADAS = 9`,
+  comentada: "tiene que coincidir con `TOTAL_BAJADAS_DIARIAS` de `ingestas/tango_live.py`") y
+  `parte.ok === parte.total && parte.total === TANGO_BAJADAS`.
+- `fotos.A` suma `"movimientos tesoreria"` (se muestra como "tesorería", igual que en AA).
+- El `mapa` de carpetas suma `"Tesoreria A"` para que el aviso encuentre el archivo de A cuando
+  hay que decir qué foto falta. Revisá que el tipo que le pongas no cambie otros controles del aviso
+  (en qué listas se usa `f.tipo`); el archivo de A **no** es caja de AA.
+- "las 4 fotos llegaron" → la cantidad real de esa empresa (`fotos[empresa].length`: 5 en A, 4 en AA).
+- Pruebas en `probar_aviso_bajadas.cjs`: parte de hoy `9 de 9` → las dos casillas tildadas y A
+  nombra la tesorería; `8 de 9` con falla `A movimientos tesoreria ...` → A sin tildar, diciendo que
+  falta la tesorería; un `8 de 8` de hoy (código viejo) → no se muestra como completo.
+- La prueba vieja de `probar_importador_filtros.cjs` que busca "NO CUADRÓ" queda como está (no es de
+  esta tarea); anotala en "Qué hice" si sigue fallando.
+
+Cuando esté, `Estado: lista para revisión` otra vez, con lo que hiciste agregado al final de "Qué hice".
