@@ -1,5 +1,5 @@
 # Tarea 33 — Aviso: nombres de banco prolijos y sin avisar dos veces el mismo faltante
-Estado: lista para revisión
+Estado: aprobada (mergeada e instalada en Apps Script el 29/09/2026)
 Rama: tarea/aviso-detalles
 
 ## Objetivo
@@ -64,3 +64,12 @@ La clave del banco para comparar con `FUENTES_AUTOMATICAS` y armar rutas es la m
   «Ver el aviso de hoy (sin mandar)».
 
 ## Revisión
+
+**Claude, 29/09/2026.** `_nombreBancoAviso_` solo cambia cómo se muestra el nombre: claves y rutas
+siguen en minúscula. Un `_ESTADO_` que no existe ya no se cuenta como error de lectura; un duplicado,
+uno ilegible o uno con la cabecera de otro banco siguen yendo a ⚠️. `DESTINATARIOS` y los horarios
+no cambiaron. Instalada en Apps Script (editando el contenido del archivo directamente, verificado
+por hash después de recargar) y probada con datos reales en "Ver el aviso de hoy (sin mandar)":
+ahora dice "Galicia", "Nación", "Macro", "Corrientes", "BBVA", y el resto queda igual que en la
+prueba de la 32. Aprobada.
+
