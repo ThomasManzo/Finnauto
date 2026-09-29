@@ -3,9 +3,9 @@
  * Primero correr avisoDiarioPrueba; instalar recién después de revisar el texto.
  * Agregar al menú finauto existente estas tres líneas (acá no hay otro onOpen):
  * .addItem("Ver el aviso de hoy (sin mandar)", "avisoDiarioPrueba")
- * .addItem("Instalar aviso diario 09:00", "instalarAvisoDiario")
+ * .addItem("Instalar aviso diario 07:30", "instalarAvisoDiario")
  * .addItem("Quitar aviso diario", "quitarAvisoDiario")
- * Google ejecuta cerca de las 09:00 (nearMinute tiene un margen de 15 minutos).
+ * Google ejecuta cerca de las 07:30: entre 07:15 y 07:45 (nearMinute tiene ±15 min).
  * Para probar sin Google, _armarAviso_(ahora, datos) acepta una foto inventada:
  * { entradas: [], publicados: [], retenidos: [], registro: [], log: [],
  *   ultimaPasada: Date o null, tangoParte: {...}, galiciaParte: {...}, extracto: Date o null,
@@ -37,9 +37,9 @@ function avisoDiarioPrueba() {
 // Deja un solo aviso diario para esta cuenta, con horario de Buenos Aires.
 function instalarAvisoDiario() {
   _borrarDisparadoresAviso_();
-  ScriptApp.newTrigger("avisoDiario").timeBased().atHour(9).nearMinute(0)
+  ScriptApp.newTrigger("avisoDiario").timeBased().atHour(7).nearMinute(30)
     .everyDays(1).inTimezone(AVISO_ZONA).create();
-  _registrar_("sistema", "", "ok", "aviso diario instalado: cerca de las 09:00 de Buenos Aires");
+  _registrar_("sistema", "", "ok", "aviso diario instalado: cerca de las 07:30 de Buenos Aires (07:15–07:45)");
 }
 
 // Quita solamente el aviso; la actualización horaria sigue funcionando.
