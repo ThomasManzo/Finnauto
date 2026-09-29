@@ -1,5 +1,5 @@
 # Tarea 30 — NAVAR: todo corre a las 05:45 para tener el cash al día a las 7
-Estado: pendiente
+Estado: lista para revisión
 Rama: tarea/horarios-madrugada
 
 ## Objetivo
@@ -62,5 +62,20 @@ corrida **diaria entre las 6 y las 7**. Thomas la agrega a mano desde Activadore
 3. Commit en la rama.
 
 ## Qué hice
+
+- Galicia queda con dos disparadores diarios (05:45 y 05:48) en un solo registro de tarea;
+  Tango queda a las 05:45. Actualicé comentarios y mensajes. Las acciones, opciones, logs
+  y demás configuración de ambos instaladores se mantienen.
+- instalarDisparador crea exactamente dos activadores de importarLoNuevo: cada hora y diario
+  a las 06:20 aproximadas (±15 minutos). Actualicé Registro y toast. quitarDisparador no cambió.
+- Actualicé sólo los horarios de §5/§6 y la tabla de la mañana, con la notebook encendida desde
+  las 05:45 y el paso de ejecutar instalarDisparador después de pegar el .gs.
+- Aclaré que 06:05 puede ser antes del vigilante de 06:08: estos horarios cumplen la consigna
+  pero no garantizan por sí solos el cash al día a las 07:00; hay que verificar Registro.
+- Verificación estática: revisé los diffs de ambos instaladores y la función completa; confirmé
+  horarios, un Register-ScheduledTask por instalador, exactamente dos newTrigger y ningún cambio
+  fuera de instalarDisparador en el .gs. git diff --check OK.
+- No pude correr PowerShell en esta Mac (no está instalado). No ejecuté Apps Script ni cambié
+  tareas o activadores reales: queda pendiente verificar la instalación en Windows y en la Sheet.
 
 ## Revisión
