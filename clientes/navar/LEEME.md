@@ -145,7 +145,7 @@ descarga en las tareas 27 a 29.
 
 ## Dónde estábamos (25/09/2026) — Tango llega solo, por API
 
-**Tango ya no se exporta a mano.** Recorrido de cada mañana: 07:30 la tarea "finauto NAVAR Tango"
+**Tango ya no se exporta a mano.** (Desde el 29/09 la bajada es a las 05:45 y reintenta sola a las 06:15, 06:45, 07:15, 09:00 y 12:00 si no bajó 8 de 8; tarea 35. El 29/09 falló a las 05:45 porque el servidor de Tango no estaba en la red.) Recorrido de cada mañana: 07:30 la tarea "finauto NAVAR Tango"
 de la notebook corre `ingestas/tango_live.py`, que deja 8 Excel en Drive con el mismo formato que
 los exports a mano (4 de A y 4 de AA). Después el vigilante corre los lectores (cada 15 min) y el
 disparador de la Sheet importa (cada hora). Primera corrida real el 25/09: Registro ok con 374
