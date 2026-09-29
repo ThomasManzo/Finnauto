@@ -62,11 +62,11 @@ class TangoLiveTest(unittest.TestCase):
             },
             "consultas_personalizadas": {
                 "A": {"cobranzas": 10, "pagos": 11, "cheques_terceros": 12,
-                      "cheques_propios": 13},
+                      "cheques_propios": 13, "movimientos_tesoreria": 19},
                 "AA": {"cobranzas": 14, "pagos": 15, "cheques_terceros": 16,
                        "movimientos_tesoreria": 17},
             },
-            "dias_atras": {"cheques_propios": 60},
+            "dias_atras": {"cheques_propios": 60, "movimientos_tesoreria_A": 400},
         }
 
     def test_url_headers_timeout_y_paginacion(self):
@@ -112,6 +112,28 @@ class TangoLiveTest(unittest.TestCase):
         self.assertEqual("", hasta)
         self.assertEqual(("", ""), live.rango_fechas(
             self.cfg, datetime.date(2026, 9, 25), "cobranzas"))
+
+    def test_tesorerias_rangos_y_destinos_separados(self):
+        hoy = datetime.date(2026, 9, 29)
+        self.assertEqual(("25/08/2025", ""), live.rango_fechas(
+            self.cfg, hoy, "movimientos_tesoreria", "A"))
+        self.assertEqual(("", ""), live.rango_fechas(
+            self.cfg, hoy, "movimientos_tesoreria", "AA"))
+        self.cfg["dias_atras"]["movimientos_tesoreria_A"] = 30
+        self.assertEqual(("30/08/2026", ""), live.rango_fechas(
+            self.cfg, hoy, "movimientos_tesoreria", "A"))
+        with tempfile.TemporaryDirectory() as raiz:
+            con_tilde = os.path.join(raiz, "Tesorería AA")
+            os.makedirs(con_tilde)
+            self.assertEqual(con_tilde, live.carpeta_consulta(raiz, "movimientos_tesoreria", "AA"))
+            carpeta_a = live.carpeta_consulta(raiz, "movimientos_tesoreria", "A")
+            self.assertEqual(os.path.join(raiz, "Tesoreria A"), carpeta_a)
+            ruta = os.path.join(carpeta_a, "A movimientos tesoreria 2026-09-29.xlsx")
+            with mock.patch.object(live, "bajar", return_value=[]):
+                live.bajar_y_escribir(self.cfg, "ficticio", "A", "movimientos_tesoreria",
+                                     105, ruta, "30/08/2026", "")
+            self.assertTrue(os.path.isfile(ruta))
+            self.assertEqual([], os.listdir(con_tilde))
 
     def test_total_incompleto_no_escribe_archivo(self):
         respuesta = RespuestaInventada(cuerpo([{"RAZON_SOCIAL": "Ejemplo"}], total=2))
@@ -187,10 +209,37 @@ class TangoLiveTest(unittest.TestCase):
         self.assertEqual("(código Z sin traducir)", desconocido[0]["Estado"])
         self.assertEqual("Z", desconocido[0]["Cód. estado"])
 
+    def test_tesoreria_a_exporta_otros_sin_contarlos_como_ultimos_pagos(self):
+        from lector import ultimos_pagos
+        import openpyxl
+        filas = [{"TIPO": tipo, "CLASE": 4, "TOTAL_CTE": 100,
+                  "COMPROBANTE": "0009", "FECHA": "2026-09-29T00:00:00",
+                  "COD_RELACIONADO": "001", "DESC_RELACIONADO": "Relacionado inventado"}
+                 for tipo in ("REC", "OPF")]
+        with tempfile.TemporaryDirectory() as raiz:
+            ruta = os.path.join(raiz, "A movimientos tesoreria 2026-09-29.xlsx")
+            with mock.patch.object(live, "bajar", return_value=filas), redirect_stdout(io.StringIO()):
+                self.assertEqual(live.bajar_y_escribir(
+                    self.cfg, "ficticio", "A", "movimientos_tesoreria", 105, ruta, "", ""), (2, 2))
+            wb = openpyxl.load_workbook(ruta)
+            try:
+                self.assertEqual(wb.active.max_row, 3)
+            finally:
+                wb.close()
+            pagos, control = ultimos_pagos.leer(ruta, "A")
+            self.assertEqual(pagos, [])
+            self.assertEqual(control["ignorados"]["tipo o clase fuera de alcance"], 2)
+
     def test_tesoreria_frena_tipo_clase_incompatible(self):
         filas = [{"TIPO": "REC", "CLASE": 2, "TOTAL_CTE": 100}]
-        with self.assertRaisesRegex(RuntimeError, "Tipo/Clase incompatibles"):
-            live.preparar_filas("movimientos_tesoreria", "AA", filas)
+        for empresa in ("A", "AA"):
+            with self.subTest(empresa=empresa), tempfile.TemporaryDirectory() as raiz:
+                ruta = os.path.join(raiz, "tesoreria.xlsx")
+                with mock.patch.object(live, "bajar", return_value=filas):
+                    with self.assertRaisesRegex(RuntimeError, "Tipo/Clase incompatibles"):
+                        live.bajar_y_escribir(self.cfg, "ficticio", empresa,
+                                             "movimientos_tesoreria", 105, ruta, "", "")
+                self.assertFalse(os.path.exists(ruta))
 
     def test_tesoreria_no_publica_clase_desconocida(self):
         filas = [{"TIPO": "REV", "CLASE": 9, "TOTAL_CTE": 100}]
@@ -288,7 +337,7 @@ class TangoLiveTest(unittest.TestCase):
             self.assertEqual(["Cobranza AA", "Proveedores AA"], [m["Categoria"] for m in movimientos])
             self.assertEqual([1000, -600], [m["Importe"] for m in movimientos])
 
-    def test_simular_lista_ocho_sin_leer_token(self):
+    def test_simular_lista_nueve_sin_leer_token(self):
         with tempfile.TemporaryDirectory() as carpeta, \
                 mock.patch.object(live, "token", side_effect=AssertionError("no debe leer token")), \
                 redirect_stdout(io.StringIO()) as salida:
@@ -296,11 +345,16 @@ class TangoLiveTest(unittest.TestCase):
                             "--hoy", "2026-09-25"])
         texto = salida.getvalue()
         self.assertEqual(0, rc)
-        self.assertEqual(8, texto.count("bajaría"))
-        self.assertEqual(8, texto.count("/Api/GetApiLiveQueryData?"))
+        self.assertEqual(9, texto.count("bajaría"))
+        self.assertEqual(9, texto.count("/Api/GetApiLiveQueryData?"))
         self.assertEqual(7, texto.count("fromDate=&toDate="))
         self.assertIn("fromDate=27%2F07%2F2026&toDate=", texto)
-        self.assertEqual(8, texto.count("customQuery="))
+        self.assertEqual(9, texto.count("customQuery="))
+        linea_a = next(l for l in texto.splitlines() if "Tesoreria A/" in l)
+        self.assertIn("customQuery=19", linea_a)
+        self.assertIn("fromDate=21%2F08%2F2025", linea_a)
+        linea_aa = next(l for l in texto.splitlines() if "Tesoreria AA/" in l)
+        self.assertIn("fromDate=&toDate=", linea_aa)
 
     def test_probar_no_imprime_datos(self):
         dato_sensible_inventado = "NOMBRE QUE NO DEBE SALIR"
@@ -316,17 +370,17 @@ class TangoLiveTest(unittest.TestCase):
                 "", "")
         self.assertNotIn(dato_sensible_inventado, salida.getvalue())
 
-    def test_parte_tango_ocho_de_ocho_es_atomico(self):
+    def test_parte_tango_nueve_de_nueve_es_atomico(self):
         marca = datetime.datetime(2026, 9, 28, 10, 31, tzinfo=datetime.timezone.utc)
         with tempfile.TemporaryDirectory() as raiz:
-            live._escribir_parte_tango(raiz, 8, 8, [], "token-secreto", marca)
+            live._escribir_parte_tango(raiz, 9, 9, [], "token-secreto", marca)
             carpeta = os.path.join(raiz, "_para la Sheet")
             archivos = os.listdir(carpeta)
             with open(os.path.join(carpeta, "tango_ultima_bajada.txt"),
                       encoding="utf-8") as archivo:
                 texto = archivo.read()
         self.assertEqual(["tango_ultima_bajada.txt"], archivos)
-        self.assertEqual("2026-09-28T10:31:00+00:00\n8 de 8\n", texto)
+        self.assertEqual("2026-09-28T10:31:00+00:00\n9 de 9\n", texto)
 
     def test_parte_tango_informa_fallas_sin_token(self):
         marca = datetime.datetime(2026, 9, 28, 10, 31, tzinfo=datetime.timezone.utc)
@@ -334,14 +388,14 @@ class TangoLiveTest(unittest.TestCase):
         error_largo = RuntimeError("falló la consulta con %s " % secreto + "x" * 300)
         with tempfile.TemporaryDirectory() as raiz:
             live._escribir_parte_tango(
-                raiz, 6, 8,
+                raiz, 7, 9,
                 [("A pagos 2026-09-28.xlsx", error_largo),
                  ("AA cobranzas 2026-09-28.xlsx", "timeout")],
                 secreto, marca)
             with open(os.path.join(raiz, "_para la Sheet", "tango_ultima_bajada.txt"),
                       encoding="utf-8") as archivo:
                 texto = archivo.read()
-        self.assertIn("6 de 8", texto)
+        self.assertIn("7 de 9", texto)
         self.assertIn("A pagos 2026-09-28.xlsx:", texto)
         self.assertIn("AA cobranzas 2026-09-28.xlsx: timeout", texto)
         self.assertNotIn(secreto, texto)
@@ -350,7 +404,7 @@ class TangoLiveTest(unittest.TestCase):
     def test_si_falta_completo_no_toca_nada(self):
         with tempfile.TemporaryDirectory() as raiz:
             marca = datetime.datetime(2026, 9, 28, 10, 31).astimezone()
-            live._escribir_parte_tango(raiz, 8, 8, [], ahora=marca)
+            live._escribir_parte_tango(raiz, 9, 9, [], ahora=marca)
             ruta = os.path.join(raiz, "_para la Sheet", "tango_ultima_bajada.txt")
             with open(ruta, "rb") as f:
                 antes = f.read()
@@ -375,15 +429,16 @@ class TangoLiveTest(unittest.TestCase):
         hoy = datetime.datetime(2026, 9, 28, 10, 31).astimezone().isoformat()
         ayer = datetime.datetime(2026, 9, 27, 10, 31).astimezone().isoformat()
         casos = [
-            ("ayer", ayer + "\n8 de 8\n", True),
-            ("falló todo", hoy + "\n0 de 8\n", True),
-            ("parcial", hoy + "\n5 de 8\n", True),
+            ("ayer", ayer + "\n9 de 9\n", True),
+            ("falló todo", hoy + "\n0 de 9\n", True),
+            ("parcial", hoy + "\n8 de 9\n", True),
             ("sin parte", None, True),
             ("ilegible", "no es un parte", True),
             ("sin permiso", None, True),
             ("otro total", hoy + "\n7 de 7\n", True),
-            ("sin zona", "2026-09-28T10:31:00\n8 de 8\n", True),
-            ("manual", hoy + "\n8 de 8\n", False),
+            ("parte anterior a tarea 34", hoy + "\n8 de 8\n", True),
+            ("sin zona", "2026-09-28T10:31:00\n9 de 9\n", True),
+            ("manual", hoy + "\n9 de 9\n", False),
         ]
         for nombre, parte, automatico in casos:
             with self.subTest(nombre=nombre), tempfile.TemporaryDirectory() as raiz:
@@ -409,9 +464,9 @@ class TangoLiveTest(unittest.TestCase):
                     rc = live.main(args + (["--si-falta"] if automatico else []))
                 self.assertEqual(rc, 0)
                 cred.assert_called_once()
-                self.assertEqual(bajar.call_count, 8)
+                self.assertEqual(bajar.call_count, 9)
                 with open(ruta, encoding="utf-8") as f:
-                    self.assertEqual(f.read().splitlines()[1], "8 de 8")
+                    self.assertEqual(f.read().splitlines()[1], "9 de 9")
                 if nombre in ("ilegible", "sin permiso", "sin zona"):
                     self.assertIn("parte de Tango ilegible", salida.getvalue())
 
@@ -419,7 +474,7 @@ class TangoLiveTest(unittest.TestCase):
     def test_parte_usa_dia_local_no_dia_utc(self):
         import time
         with tempfile.TemporaryDirectory() as raiz:
-            live._escribir_parte_tango(raiz, 8, 8, [], ahora=datetime.datetime(
+            live._escribir_parte_tango(raiz, 9, 9, [], ahora=datetime.datetime(
                 2026, 9, 29, 1, 30, tzinfo=datetime.timezone.utc))
             try:
                 with mock.patch.dict(os.environ, {"TZ": "UTC+3"}):
