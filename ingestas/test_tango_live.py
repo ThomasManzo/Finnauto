@@ -347,6 +347,92 @@ class TangoLiveTest(unittest.TestCase):
         self.assertNotIn(secreto, texto)
         self.assertLessEqual(len(texto.splitlines()[2].split(": ", 1)[1]), 150)
 
+    def test_si_falta_completo_no_toca_nada(self):
+        with tempfile.TemporaryDirectory() as raiz:
+            marca = datetime.datetime(2026, 9, 28, 10, 31).astimezone()
+            live._escribir_parte_tango(raiz, 8, 8, [], ahora=marca)
+            ruta = os.path.join(raiz, "_para la Sheet", "tango_ultima_bajada.txt")
+            with open(ruta, "rb") as f:
+                antes = f.read()
+            fecha = os.stat(ruta).st_mtime_ns
+            with mock.patch.object(live, "perfil", return_value=self.cfg), \
+                    mock.patch.object(live, "token") as cred, \
+                    mock.patch.object(live, "llamar") as red, \
+                    mock.patch.object(live, "bajar_y_escribir") as bajar, \
+                    mock.patch.object(live, "_escribir_parte_tango") as escribir, \
+                    mock.patch.object(live.os, "makedirs") as carpetas, \
+                    redirect_stdout(io.StringIO()) as salida:
+                rc = live.main(["--destino", raiz, "--hoy", "2026-09-28", "--si-falta"])
+            self.assertEqual(rc, 0)
+            for accion in (cred, red, bajar, escribir, carpetas):
+                accion.assert_not_called()
+            self.assertIn("ya bajó hoy completo a las 10:31; no hago nada", salida.getvalue())
+            with open(ruta, "rb") as f:
+                self.assertEqual(f.read(), antes)
+            self.assertEqual(os.stat(ruta).st_mtime_ns, fecha)
+
+    def test_reintentos_y_bajada_manual(self):
+        hoy = datetime.datetime(2026, 9, 28, 10, 31).astimezone().isoformat()
+        ayer = datetime.datetime(2026, 9, 27, 10, 31).astimezone().isoformat()
+        casos = [
+            ("ayer", ayer + "\n8 de 8\n", True),
+            ("falló todo", hoy + "\n0 de 8\n", True),
+            ("parcial", hoy + "\n5 de 8\n", True),
+            ("sin parte", None, True),
+            ("ilegible", "no es un parte", True),
+            ("sin permiso", None, True),
+            ("otro total", hoy + "\n7 de 7\n", True),
+            ("sin zona", "2026-09-28T10:31:00\n8 de 8\n", True),
+            ("manual", hoy + "\n8 de 8\n", False),
+        ]
+        for nombre, parte, automatico in casos:
+            with self.subTest(nombre=nombre), tempfile.TemporaryDirectory() as raiz:
+                carpeta = os.path.join(raiz, "_para la Sheet")
+                os.makedirs(carpeta)
+                ruta = os.path.join(carpeta, "tango_ultima_bajada.txt")
+                if parte is not None:
+                    with open(ruta, "w", encoding="utf-8") as f:
+                        f.write(parte)
+                abrir_real = open
+
+                def abrir(*args, **kwargs):
+                    if nombre == "sin permiso" and args[0] == ruta:
+                        raise PermissionError("parte bloqueado")
+                    return abrir_real(*args, **kwargs)
+
+                with mock.patch.object(live, "perfil", return_value=self.cfg), \
+                        mock.patch.object(live, "token", return_value="ficticio") as cred, \
+                        mock.patch.object(live, "bajar_y_escribir", return_value=(1, 1)) as bajar, \
+                        mock.patch("builtins.open", side_effect=abrir), \
+                        redirect_stdout(io.StringIO()) as salida:
+                    args = ["--destino", raiz, "--hoy", "2026-09-28"]
+                    rc = live.main(args + (["--si-falta"] if automatico else []))
+                self.assertEqual(rc, 0)
+                cred.assert_called_once()
+                self.assertEqual(bajar.call_count, 8)
+                with open(ruta, encoding="utf-8") as f:
+                    self.assertEqual(f.read().splitlines()[1], "8 de 8")
+                if nombre in ("ilegible", "sin permiso", "sin zona"):
+                    self.assertIn("parte de Tango ilegible", salida.getvalue())
+
+    @unittest.skipUnless(hasattr(__import__("time"), "tzset"), "requiere tzset")
+    def test_parte_usa_dia_local_no_dia_utc(self):
+        import time
+        with tempfile.TemporaryDirectory() as raiz:
+            live._escribir_parte_tango(raiz, 8, 8, [], ahora=datetime.datetime(
+                2026, 9, 29, 1, 30, tzinfo=datetime.timezone.utc))
+            try:
+                with mock.patch.dict(os.environ, {"TZ": "UTC+3"}):
+                    time.tzset()
+                    with redirect_stdout(io.StringIO()) as salida:
+                        self.assertTrue(live._bajada_completa_hoy(
+                            raiz, datetime.date(2026, 9, 28)))
+                        self.assertFalse(live._bajada_completa_hoy(
+                            raiz, datetime.date(2026, 9, 29)))
+                    self.assertIn("22:30", salida.getvalue())
+            finally:
+                time.tzset()
+
     def test_error_al_escribir_parte_no_rompe_bajada(self):
         with tempfile.TemporaryDirectory() as raiz, \
                 mock.patch.object(live, "perfil", return_value=self.cfg), \

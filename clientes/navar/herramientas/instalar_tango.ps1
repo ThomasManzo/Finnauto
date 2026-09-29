@@ -1,5 +1,5 @@
 # Instala la bajada de Tango Live en la notebook de NAVAR: corre todos los días
-# a las 05:45 y agrega su salida a privado\tango_live.log. Las credenciales se
+# desde las 05:45 y agrega su salida a privado\tango_live.log. Las credenciales se
 # leen del llavero de Windows; nunca se guardan en esta tarea ni en el log.
 #
 #   Instalar (desde C:\finauto):
@@ -8,6 +8,9 @@
 #     powershell -ExecutionPolicy Bypass -File clientes\navar\herramientas\instalar_tango.ps1 quitar
 
 param([string]$accion = "instalar")
+
+# La primera hora baja; las demás sólo reintentan si todavía falta completar el día.
+$horas = @("05:45", "06:15", "06:45", "07:15", "09:00", "12:00")
 
 $repo = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
 $nombre = "finauto NAVAR Tango"
@@ -29,14 +32,14 @@ New-Item -ItemType Directory -Path (Split-Path $log) -Force | Out-Null
 
 # cmd.exe deja stdout y stderr juntos, agregados al final: si falla de madrugada
 # se conserva tanto el resumen de Tango como el motivo del error.
-$argumentos = '/d /c ""{0}" "{1}" --cliente navar >> "{2}" 2>&1"' -f $python, $script, $log
+$argumentos = '/d /c ""{0}" "{1}" --cliente navar --si-falta >> "{2}" 2>&1"' -f $python, $script, $log
 $accionTarea = New-ScheduledTaskAction -Execute "cmd.exe" -Argument $argumentos -WorkingDirectory $repo
-$disparador = New-ScheduledTaskTrigger -Daily -At "05:45"
+$disparadores = @($horas | ForEach-Object { New-ScheduledTaskTrigger -Daily -At $_ })
 $opciones = New-ScheduledTaskSettingsSet -StartWhenAvailable `
     -ExecutionTimeLimit (New-TimeSpan -Hours 1) -MultipleInstances IgnoreNew
 
 Unregister-ScheduledTask -TaskName $nombre -Confirm:$false -ErrorAction SilentlyContinue
-Register-ScheduledTask -TaskName $nombre -Action $accionTarea -Trigger $disparador `
+Register-ScheduledTask -TaskName $nombre -Action $accionTarea -Trigger $disparadores `
     -Settings $opciones -Description "finauto: baja las ocho fotos diarias de Tango Live" | Out-Null
 
-Write-Host "Tango instalado: corre todos los días a las 05:45. Log: clientes\navar\privado\tango_live.log"
+Write-Host "Tango instalado: corre todos los días a las $($horas -join ", "). Log: clientes\navar\privado\tango_live.log"
