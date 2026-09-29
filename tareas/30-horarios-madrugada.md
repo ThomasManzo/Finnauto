@@ -1,5 +1,5 @@
 # Tarea 30 — NAVAR: todo corre a las 05:45 para tener el cash al día a las 7
-Estado: lista para revisión
+Estado: aprobada (mergeada el 29/09/2026)
 Rama: tarea/horarios-madrugada
 
 ## Objetivo
@@ -79,3 +79,12 @@ corrida **diaria entre las 6 y las 7**. Thomas la agrega a mano desde Activadore
   tareas o activadores reales: queda pendiente verificar la instalación en Windows y en la Sheet.
 
 ## Revisión
+
+**Claude, 29/09/2026.** Los `.ps1` cambian solo los horarios, los comentarios y los mensajes. Galicia
+queda con dos disparadores en un solo `Register-ScheduledTask`. `instalarDisparador` crea exactamente
+dos (cada hora y diario ~06:20) y `quitarDisparador` borra los dos antes. La guía está al día. Buena
+la advertencia de Codex: con `nearMinute(20)` la importación diaria podría caer a las 06:05, antes de
+la pasada de las 06:08. En la práctica la de las 05:53 ya tendría todo (Tango y Galicia terminan
+antes de las 05:50), pero es mejor no depender de eso: se pasa a `nearMinute(30)` (06:15–06:45) en la
+tarea 31. Aprobada.
+
