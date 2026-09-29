@@ -88,6 +88,14 @@ var IMPORTS = {
         fechas: ["Fecha"], texto: ["Referencia", "Concepto / Detalle"], colMarca: "Origen", marcas: ["Tango AA"], conId: true },
     ]
   },
+  ultimos_pagos: {
+    prefijo: "para_pegar_ultimos_pagos_",
+    solapas: [
+      { xlsx: "Ultimos Pagos", sheet: "Ultimos Pagos", formulas: [],
+        fechas: ["Fecha Ultimo Pago"], texto: ["Codigo", "Comprobante"],
+        colMarca: "Origen", marcas: ["Tango tesorería"], conId: false },
+    ]
+  },
   impuestos: {
     prefijo: "para_pegar_impuestos_",
     solapas: [
@@ -113,6 +121,7 @@ function onOpen() {
     .addItem("Importar Deuda (deuda bancaria)", "importarDeuda")
     .addItem("Importar Impuestos (deuda impositiva)", "importarImpuestos")
     .addItem("Importar Tesorería AA (efectivo)", "importarTesoreriaAA")
+    .addItem("Importar Últimos pagos (Tango)", "importarUltimosPagos")
     .addSeparator()
     .addItem("Importar lo nuevo ahora (lo que haría el disparador)", "importarLoNuevo")
     .addItem("Instalar actualización automática (cada hora)", "instalarDisparador")
@@ -132,7 +141,7 @@ function onOpen() {
 // ---- actualización automática ------------------------------------------------------
 // Orden: deuda e impuestos antes que bancos y Tango, porque las pantallas leen todo junto
 // y da igual; pero si un import falla, los demás siguen (cada uno con su try).
-var ORDEN_AUTO = ["deuda", "impuestos", "bancos", "tesoreria_aa", "tango"];
+var ORDEN_AUTO = ["deuda", "impuestos", "bancos", "tesoreria_aa", "tango", "ultimos_pagos"];
 
 function importarLoNuevo() {
   var props = PropertiesService.getDocumentProperties();
@@ -194,6 +203,7 @@ function importarBancos()    { _importarManual_("bancos"); }
 function importarDeuda()     { _importarManual_("deuda"); }
 function importarImpuestos() { _importarManual_("impuestos"); }
 function importarTesoreriaAA() { _importarManual_("tesoreria_aa"); }
+function importarUltimosPagos() { _importarManual_("ultimos_pagos"); }
 
 
 // Los botones y el reloj dejan la misma evidencia; un fallo nunca se disfraza de ok.
