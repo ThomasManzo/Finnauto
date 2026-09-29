@@ -1,5 +1,5 @@
 # Tarea 36 — Últimos pagos: el código viene en la descripción, no en "Cód. relacionado"
-Estado: pendiente
+Estado: aprobada
 Rama: tarea/ultimos-pagos-codigo
 
 ## Objetivo
@@ -72,4 +72,27 @@ Comprobado (Claude, simulando la regla de abajo sobre la salida real): de los 80
 
 ## Qué hice
 
+- Corregí únicamente `_relacionado()` en el lector: el prefijo de 3 a 8 caracteres
+  sin espacios pasa a ser el código cuando la columna separada está vacía, contiene
+  una sola letra o coincide con el prefijo. Admite Ñ, & y otros caracteres sin espacios.
+  Si hay un código distinto, conserva ese código y la descripción entera.
+- Las descripciones vacías o `" - "` quedan sin nombre y se descartan por el motivo
+  existente `sin relacionado`. Se conservan los espacios internos de la razón social.
+  El agrupado y las demás reglas no cambiaron: ahora reciben el nombre limpio.
+- Agregué pruebas inventadas de C/P/otra letra, Ñ y &, coincidencia y conflicto de
+  códigos, límites de longitud, prefijos con espacios, nombre faltante y agrupado de
+  dos códigos en un solo cliente. Comprobé también los valores escritos en el Excel.
+- `python -m unittest lector.pruebas.test_ultimos_pagos ingestas.test_tango_live`:
+  **29 pruebas OK** (9 del lector/vigilante y 20 de Tango). `git diff --check`: OK.
+  Persisten las advertencias previas de archivos de estado sin cerrar en el vigilante;
+  no se modificó ese archivo. No se tocaron datos reales ni se agregaron dependencias.
+- Queda para después de integrar: actualizar la notebook, reprocesar `ultimos_pagos`
+  e importar la salida para comprobar el cruce real con la Sheet. Sin merge ni push.
+
+
 ## Revisión
+
+**29/09/2026 (Claude): aprobada.** Probada con los archivos reales de la bajada del 29/09 (A y AA):
+1142 renglones, ninguno con código `C`/`P` ni con el código pegado al nombre; los clientes con dos
+códigos quedan en un renglón (p. ej. `[cliente 2]` → `032265 / 032301`). De los 80
+nombres de "Principales 20" cruzan 73 (19/18/17/19); los otros 7 no tienen pagos en la ventana.

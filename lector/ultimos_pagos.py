@@ -59,12 +59,14 @@ def _numero(v):
 
 def _relacionado(codigo, nombre):
     codigo, nombre = _texto(codigo), _texto(nombre)
-    prefijo = re.match(r"^(\S+)\s+-\s+(.+)$", nombre)
-    # Con código separado, sólo se quita ese mismo prefijo. Sin él, se usa el
-    # formato del export manual: un código alfanumérico, espacio, guion y nombre.
-    if prefijo and (prefijo[1] == codigo or
-                    (not codigo and re.fullmatch(r"[A-Za-z0-9]+", prefijo[1]))):
-        codigo = codigo or prefijo[1]
+    if nombre in ("", "-"):
+        return codigo, ""
+    prefijo = re.match(r"^(\S{3,8}) +-[ ]+(.+)$", nombre)
+    # La API pone C/P (el tipo) en Cód. relacionado. El código verdadero está
+    # adelante del nombre y puede tener Ñ o &. Un código distinto se conserva.
+    es_tipo = len(codigo) == 1 and codigo.isalpha()
+    if prefijo and (not codigo or es_tipo or codigo == prefijo[1]):
+        codigo = prefijo[1]
         nombre = prefijo[2].strip()
     return codigo, nombre
 
