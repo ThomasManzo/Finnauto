@@ -84,9 +84,15 @@ coincide uno por uno con un export a mano, y el saldo final coincide con la pant
   algo falla, un script de diagnóstico que **solo lista** lo que ve ahorra vueltas.
 - Credenciales: llavero de la notebook, `finauto:navar:galicia` (usuario de consulta, sin segundo factor).
 
-**Pendiente de Galicia**: tarea 26 (tarea programada 07:00 con navegador visible) · primera corrida
-programada · probar el modo invisible · conectar los saldos a la Sheet · borrar
-`NAVAR - Datos/_diagnostico/` (capturas con datos reales).
+**Galicia cerrado el 29/09/2026 00:54**: cinco corridas seguidas de la tarea programada con OK,
+una en frío. El rescate de la tarea 29 se probó en real a las 00:50: la página se cerró al guardar
+y el bot tomó el `.tmp` de `C:\Users\USer\Downloads`. Historia de la falla intermitente de la
+descarga en las tareas 27 a 29.
+- Horario: tarea `finauto NAVAR Galicia` con dos disparadores (el segundo, 3 minutos después, de
+  seguro). Pedido del cliente: que todo corra a las **05:45** para tener el cash actualizado a las 7.
+  Los instaladores del repo todavía tienen los horarios viejos (07:00 Galicia, 07:30 Tango).
+- Pendiente: probar el modo invisible · conectar `_SALDOS_` a la Sheet · pasar los horarios nuevos
+  a los instaladores y sumar a la Sheet una importación diaria entre las 6 y las 7.
 
 ## Dónde estábamos (25/09/2026) — Tango llega solo, por API
 
