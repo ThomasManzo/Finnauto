@@ -93,3 +93,45 @@ contexto.FUENTES_AUTOMATICAS.push('macro');
 probar(d=>{d.bancosPartes={macro:{fecha:fecha('28','05:49'),ok:true}};},0,['☑ Macro: 05:49 · movimientos hasta 25/09']);
 contexto.FUENTES_AUTOMATICAS.pop();
 console.log(`OK total: ${casos} casos de checklist.`);
+// Nombres de presentación: no cambian las claves ni las rutas.
+for (const [entrada, salida] of Object.entries({
+  GALICIA:'Galicia', NACION:'Nación', CORRIENTES:'Corrientes', MACRO:'Macro', BBVA:'BBVA', ITAU:'Itau'
+})) assert.equal(contexto._nombreBancoAviso_(entrada),salida);
+probar(d=>{d.saldos[0].banco='GALICIA';d.saldos[0].origen='Extracto GALICIA';},0,['☑ Galicia:'],['☑ GALICIA:']);
+for (const [entrada,salida] of [['NACION','Nación'],['ITAU','Itau']]) {
+  const d=foto();d.saldos[1].banco=entrada;d.saldos[1].origen='Extracto '+entrada;
+  const a=contexto._armarAviso_(ahora,d);
+  assert.equal(a.asunto,'NAVAR · 28/09 · todo al día');
+  assert.ok(a.cuerpo.includes('☑ '+salida+': al día'));
+}
+// Ejercita la lectura real con dobles de Drive: no basta inyectar errores ya armados.
+function iterador(elementos) {
+  let i=0;return {hasNext:()=>i<elementos.length,next:()=>elementos[i++]};
+}
+function leerParte(archivos) {
+  const carpeta={getFilesByName: nombre=>{
+    assert.equal(nombre,'_ESTADO_Galicia_28-09.txt');return iterador(archivos);
+  }};
+  const bancos={getFoldersByName:()=>iterador([carpeta])};
+  const raiz={
+    getFolders:()=>iterador([]),
+    getFoldersByName:nombre=>iterador(nombre==='Bancos'?[bancos]:[])
+  };
+  contexto.CARPETA_RAIZ='Datos inventados';
+  contexto.DriveApp={getFoldersByName:()=>iterador([raiz])};
+  contexto.SpreadsheetApp={getActiveSpreadsheet:()=>{throw Error('sin Sheet de prueba');}};
+  return contexto._leerDatosAviso_(ahora);
+}
+const ausente=leerParte([]);
+assert.equal(ausente.errores.GaliciaParte,undefined);
+probar(d=>{d.galiciaParte=ausente.galiciaParte;d.bancosPartes=ausente.bancosPartes;},1,
+  ['☐ Galicia: el bot no corrió hoy'],['⚠️','No se pudo leer GaliciaParte']);
+const duplicado=leerParte([{},{}]);
+assert.match(duplicado.errores.GaliciaParte,/más de un estado/);
+probar(d=>{d.galiciaParte=null;d.errores.GaliciaParte=duplicado.errores.GaliciaParte;},1,
+  ['⚠️ REVISAR','No se pudo leer GaliciaParte: Hay más de un estado']);
+const ilegible=leerParte([{getBlob:()=>{throw Error('acceso denegado');}}]);
+assert.equal(ilegible.errores.GaliciaParte,'acceso denegado');
+const ajeno=leerParte([{getBlob:()=>({getDataAsString:()=> 'Bot Otro - 28/09/2026 05:48'})}]);
+assert.match(ajeno.errores.GaliciaParte,/no corresponde al banco/);
+console.log('OK: nombres en checklist y lectura de partes ausentes, duplicados, ilegibles y ajenos.');
