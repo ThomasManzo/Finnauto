@@ -1,5 +1,5 @@
 # Tarea 36 — Últimos pagos: el código viene en la descripción, no en "Cód. relacionado"
-Estado: lista para revisión
+Estado: aprobada
 Rama: tarea/ultimos-pagos-codigo
 
 ## Objetivo
@@ -91,3 +91,8 @@ Comprobado (Claude, simulando la regla de abajo sobre la salida real): de los 80
 
 
 ## Revisión
+
+**29/09/2026 (Claude): aprobada.** Probada con los archivos reales de la bajada del 29/09 (A y AA):
+1142 renglones, ninguno con código `C`/`P` ni con el código pegado al nombre; los clientes con dos
+códigos quedan en un renglón (p. ej. `[cliente 2]` → `032265 / 032301`). De los 80
+nombres de "Principales 20" cruzan 73 (19/18/17/19); los otros 7 no tienen pagos en la ventana.
