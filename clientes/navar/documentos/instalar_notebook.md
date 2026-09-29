@@ -124,7 +124,7 @@ Después, en este orden:
    ```
    Los archivos quedan con los mismos nombres y encabezados que los exports manuales. El
    vigilante procesa Cuentas a cobrar, Cuentas a pagar, Cheques y `Tesoreria AA` como siempre.
-4. **Programar todos los días a las 07:30**:
+4. **Programar todos los días a las 05:45**:
    ```powershell
    powershell -ExecutionPolicy Bypass -File clientes\navar\herramientas\instalar_tango.ps1
    ```
@@ -189,14 +189,16 @@ la opción Excel. No abre el menú Cuentas ni usa filtros de fechas: Galicia ent
    ```powershell
    powershell -ExecutionPolicy Bypass -File clientes\navar\herramientas\instalar_galicia.ps1
    ```
-   La notebook tiene que quedar prendida, sin suspensión, con Drive montado y con la sesión del
-   mismo usuario que cargó las claves iniciada. A las 07:00 el navegador se abre solo porque por
-   ahora el perfil de Galicia está en modo visible.
+   La notebook tiene que estar **prendida y sin suspenderse a las 05:45**, con Drive montado y
+   con la sesión del mismo usuario que cargó las claves iniciada. A las **05:45 y 05:48** el
+   navegador se abre solo porque por ahora el perfil de Galicia está en modo visible.
+   La segunda corrida es el seguro si la primera falla en frío; reemplaza el archivo del día
+   sin duplicar movimientos.
 
    En el Programador de tareas, elegir **finauto NAVAR Galicia** y usar «Ejecutar». Comprobar el
    archivo en `Bancos\galicia\`, el log en `clientes\navar\privado\galicia.log` y después Registro
    en la Sheet. El horario solo no certifica funcionamiento. Revisar también una pasada posterior
-   del vigilante, por ejemplo 07:15: corre cada 15 minutos y, si Galicia tarda, recoge el Excel en
+   del vigilante, a las 05:53/06:08: corre cada 15 minutos y, si Galicia tarda, recoge el Excel en
    la siguiente. El comando explícito no requiere activar las corridas generales.
 
 ### Qué puede fallar la primera vez
@@ -222,10 +224,21 @@ desactivados y sin adaptación en esta tarea.
 
 | Hora | Qué | Dónde deja |
 |---|---|---|
-| 7:00 | Galicia | `Bancos\galicia\` · log `privado\galicia.log` |
-| 7:30 | `tango_live.py` | `Cuentas a cobrar`, `Cuentas a pagar`, `Cheques` |
-| cada 15 min | vigilante → lectores | `_para la Sheet\` |
-| cada hora | disparador de la Sheet | solapas de la Sheet + Registro |
+| 05:45 | Tango y Galicia | Carpetas de Tango y `Bancos\galicia\` · logs `privado\tango_live.log` y `privado\galicia.log` |
+| 05:48 | Galicia (seguro si falla en frío) | Reemplaza el Excel del día en `Bancos\galicia\` |
+| 05:53 / 06:08 | vigilante → lectores (sigue cada 15 min) | `_para la Sheet\` |
+| 06:05–06:35 | importación diaria de la Sheet, además de la de cada hora | solapas de la Sheet + Registro |
+| 07:00 | Objetivo: cash al día | Verificar Registro y fechas de los datos |
+
+La notebook debe estar **prendida y sin suspenderse a las 05:45**. Después de pegar el
+`importar_cashflow.gs` nuevo, correr una vez **`instalarDisparador`** desde el editor de Apps
+Script. Reemplaza los activadores de `importarLoNuevo`, incluido el diario cargado a mano,
+y deja exactamente dos: uno por hora y otro diario alrededor de las 06:20. El manual ya no
+hace falta. Los horarios se interpretan en la zona horaria del proyecto (Buenos Aires).
+
+Google puede adelantar o atrasar `nearMinute(20)` hasta 15 minutos: la pasada diaria podría
+ser a las 06:05, antes del vigilante de las 06:08. El objetivo de las 07:00 depende de que los
+archivos se hayan procesado e importado; comprobarlo en Registro.
 
 Los errores del bot se revisan en su `log.txt` y capturas; pueden ocurrir antes de que el
 vigilante vea un archivo. Los del procesamiento se revisan en `vigilante.log` y Registro.

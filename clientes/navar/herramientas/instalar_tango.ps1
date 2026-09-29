@@ -1,5 +1,5 @@
 # Instala la bajada de Tango Live en la notebook de NAVAR: corre todos los días
-# a las 07:30 y agrega su salida a privado\tango_live.log. Las credenciales se
+# a las 05:45 y agrega su salida a privado\tango_live.log. Las credenciales se
 # leen del llavero de Windows; nunca se guardan en esta tarea ni en el log.
 #
 #   Instalar (desde C:\finauto):
@@ -31,7 +31,7 @@ New-Item -ItemType Directory -Path (Split-Path $log) -Force | Out-Null
 # se conserva tanto el resumen de Tango como el motivo del error.
 $argumentos = '/d /c ""{0}" "{1}" --cliente navar >> "{2}" 2>&1"' -f $python, $script, $log
 $accionTarea = New-ScheduledTaskAction -Execute "cmd.exe" -Argument $argumentos -WorkingDirectory $repo
-$disparador = New-ScheduledTaskTrigger -Daily -At "07:30"
+$disparador = New-ScheduledTaskTrigger -Daily -At "05:45"
 $opciones = New-ScheduledTaskSettingsSet -StartWhenAvailable `
     -ExecutionTimeLimit (New-TimeSpan -Hours 1) -MultipleInstances IgnoreNew
 
@@ -39,4 +39,4 @@ Unregister-ScheduledTask -TaskName $nombre -Confirm:$false -ErrorAction Silently
 Register-ScheduledTask -TaskName $nombre -Action $accionTarea -Trigger $disparador `
     -Settings $opciones -Description "finauto: baja las ocho fotos diarias de Tango Live" | Out-Null
 
-Write-Host "Tango instalado: corre todos los días a las 07:30. Log: clientes\navar\privado\tango_live.log"
+Write-Host "Tango instalado: corre todos los días a las 05:45. Log: clientes\navar\privado\tango_live.log"

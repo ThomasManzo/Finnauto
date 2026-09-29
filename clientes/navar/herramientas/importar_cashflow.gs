@@ -159,8 +159,12 @@ function importarLoNuevo() {
 function instalarDisparador() {
   quitarDisparador();
   ScriptApp.newTrigger("importarLoNuevo").timeBased().everyHours(1).create();
-  _registrar_("sistema", "", "ok", "disparador instalado: importarLoNuevo cada hora");
-  try { SpreadsheetApp.getActiveSpreadsheet().toast("Listo: la Sheet se actualiza sola cada hora con lo nuevo de Drive.", "finauto", 10); } catch (e) {}
+  // Buscamos importar después del vigilante de las 05:53/06:08 y antes de las 07:00.
+  // nearMinute tiene ±15 minutos: puede correr entre 06:05 y 06:35, incluso antes
+  // de la pasada de las 06:08; el horario por sí solo no garantiza datos nuevos.
+  ScriptApp.newTrigger("importarLoNuevo").timeBased().atHour(6).nearMinute(20).everyDays(1).create();
+  _registrar_("sistema", "", "ok", "disparadores instalados: importarLoNuevo cada hora y diariamente entre 06:05 y 06:35");
+  try { SpreadsheetApp.getActiveSpreadsheet().toast("Listo: la Sheet importa lo nuevo cada hora y diariamente entre 06:05 y 06:35.", "finauto", 10); } catch (e) {}
 }
 
 function quitarDisparador() {
