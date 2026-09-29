@@ -1,5 +1,5 @@
 # Tarea 35 — La bajada de Tango reintenta sola si falló
-Estado: aprobada (mergeada 29/09; falta actualizar la notebook y volver a correr instalar_tango.ps1)
+Estado: aprobada e instalada (29/09: notebook actualizada, tarea con los 6 horarios)
 Rama: tarea/tango-reintento
 
 ## Objetivo
