@@ -21,7 +21,7 @@ Dos cosas que pidió NAVAR (29/09/2026):
 ## Contexto
 
 Leer antes: `AGENTS.md`, `tareas/LEEME.md`, `CLAUDE.md`, `clientes/navar/LEEME.md` (secciones del
-25 y 28/09), `tareas/27-aviso-con-bajadas-automaticas.md` (qué se hizo recién y por qué),
+25, 28 y 29/09), `tareas/27-aviso-con-bajadas-automaticas.md` (qué se hizo recién y por qué),
 `clientes/navar/herramientas/aviso_diario.gs` entero, `lector/pruebas/probar_aviso_bajadas.cjs`,
 `clientes/navar/herramientas/instalar_tango.ps1` e `instalar_galicia.ps1`.
 
@@ -85,8 +85,13 @@ Reglas:
   Sin parte de hoy: ❌ "la bajada de Tango no corrió hoy · última: dd/mm hh:mm · revisar la notebook".
 - **Galicia (y todo banco en `FUENTES_AUTOMATICAS`):** ✅ si el `_ESTADO_` de hoy dice OK: hora y
   "movimientos hasta dd/mm" (la última fecha que tiene en Saldos Bancarios). ❌ si falló o no hay parte
-  de hoy: motivo corto + "Último extracto: dd/mm hh:mm", que es la fecha y hora del último
-  `Movimientos GALICIA *.xlsx` en `Bancos/galicia`. **No** se usa la fecha del último movimiento
+  de hoy: motivo corto + "Último extracto: dd/mm hh:mm", que es la fecha y hora (de modificación) del
+  último Excel publicado en `Bancos/galicia`. **Ojo con el nombre:** desde la tarea 27 el bot publica
+  `Movimientos Galicia AAAA-MM-DD.xlsx` (uno por día, se reemplaza); antes publicaba
+  `Movimientos GALICIA <fecha_hora>.xlsx`. Buscar `^Movimientos Galicia .*\.xlsx$` **sin distinguir
+  mayúsculas** y quedarse con el más nuevo por fecha de modificación.
+  Galicia corre **dos veces** (05:45 y 05:48) y la segunda **pisa** el `_ESTADO_` del día: se usa ese
+  archivo tal como está (si la primera falló y la segunda anduvo, es ✅). **No** se usa la fecha del último movimiento
   para decidir si falta (ver la revisión de la tarea 27).
 - **Bancos manuales y arqueo:** ✅ si están al cierre hábil anterior ("Macro: al día, extracto hasta
   dd/mm"); ❌ si no: "último extracto del dd/mm (hace N días) · subir a mano". Misma lógica que hoy
@@ -116,6 +121,7 @@ Reglas:
    - sin parte de Tango hoy;
    - Galicia ATENCIÓN (❌ con motivo y "Último extracto");
    - Galicia OK con último movimiento de hace 4 días (✅, no ❌);
+   - "Último extracto" de Galicia con los dos nombres de archivo (viejo y nuevo) en la carpeta: toma el más nuevo;
    - manual atrasado y manual al día;
    - Sheet sin importar hoy;
    - ERROR con `ok` posterior (no sale) y ERROR sin `ok` posterior (sale en ⚠️);
