@@ -1,5 +1,5 @@
 # Tarea 32 — El mail diario como checklist simple
-Estado: lista para revisión
+Estado: aprobada (mergeada e instalada en Apps Script el 29/09/2026)
 Rama: tarea/aviso-checklist
 
 > **Renumerada el 29/09/2026** (antes era "30-aviso-checklist-y-madrugada": chocaba con la tarea 30
@@ -155,3 +155,32 @@ Reglas:
   (Ver el aviso de hoy, sin mandar) para revisar la checklist en Google antes de usarla.
 
 ## Revisión
+
+**Claude, 29/09/2026.** Leí el diff completo. `DESTINATARIOS` y los horarios no cambiaron. Galicia usa
+el `_ESTADO_` del día (el de la segunda corrida pisa al de la primera) y busca el último Excel con los
+dos nombres, sin distinguir mayúsculas. Tango se arma con el parte 8/8 y cae a foto por foto si falta
+algo. La Sheet cuenta solo los `ok` de hoy posteriores a las bajadas, sin los `sistema`. Un ERROR
+con un `ok` posterior del mismo tipo ya no sale. No pude correr `probar_aviso_bajadas.cjs` (no hay Node
+en la Mac); los 20 casos los corrió Codex. **Prueba con datos reales** (29/09 02:05, pegado en Apps
+Script, "Ver el aviso de hoy (sin mandar)"):
+
+```
+NAVAR · 29/09 · faltan 7 cosas
+✅ LLEGÓ HOY
+☑ GALICIA: 00:54 · movimientos hasta 22/09
+☑ La Sheet se actualizó (01:32)
+❌ FALTA
+☐ Tango A / Tango AA: la bajada de Tango no corrió hoy · última: 28/09 07:30   (correcto a las 2 AM)
+☐ BBVA 24/09 (5 días) · CORRIENTES 16/09 (13) · MACRO 25/09 (4) · NACION 24/09 (5) · subir a mano
+☐ Arqueo caja AA: último arqueo del 21/09 (hace 8 días) · cargar a mano
+```
+
+Todo cierra con la Sheet. No aparece el viejo "Falló la importación de tesoreria_aa". Aprobada.
+
+Menores (→ tarea 33):
+- Los bancos salen en mayúsculas y sin tilde (`GALICIA`, `NACION`), como vienen en Saldos Bancarios.
+  Mostrarlos como "Galicia", "Macro", "BBVA", "Nación", "Corrientes".
+- Si el bot de un banco automático no corre, falta su `_ESTADO_` del día y el mail lo dice **dos
+  veces**: en ❌ ("el bot no corrió hoy") y en ⚠️ ("No se pudo leer GaliciaParte: Falta …"). El
+  archivo faltante de un parte no es un error de lectura: no tiene que ir a ⚠️.
+
