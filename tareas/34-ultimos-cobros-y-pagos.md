@@ -1,5 +1,5 @@
 # Tarea 34 — Último cobro de cada cliente y último pago a cada proveedor
-Estado: lista para revisión
+Estado: aprobada
 Rama: tarea/ultimos-pagos
 
 ## Objetivo
@@ -295,3 +295,11 @@ textos que digan "ocho").
   esta tarea); anotala en "Qué hice" si sigue fallando.
 
 Cuando esté, `Estado: lista para revisión` otra vez, con lo que hiciste agregado al final de "Qué hice".
+
+**29/09/2026 (Claude), segunda pasada: aprobada.** Las dos correcciones están: `validar_tesoreria`
+admite REC/OPF con "Otros movimientos de bancos y carteras" (los 27 renglones reales de A ya no
+frenan el archivo) y un REC como "Pagos" sigue frenando; el aviso usa `TANGO_BAJADAS = 9`, lista la
+tesorería en Tango A y el tipo `tesoreria_a` solo se usa para buscar la foto (no entra en caja ni en
+bancos). 27 pruebas de Python OK en la Mac; las `.cjs` no se pudieron correr acá (no hay Node): se
+leyó la prueba y se toma el OK de Codex. Falta la prueba real: notebook (9 de 9, archivo en
+`Tesoreria A`), Sheet (lista "Ultimos Pagos", importador y aviso pegados en Apps Script).
