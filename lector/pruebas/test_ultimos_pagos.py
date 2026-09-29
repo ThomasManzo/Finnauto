@@ -39,6 +39,54 @@ def excel(ruta, filas, encabezado=ENC):
 
 
 class UltimosPagos(unittest.TestCase):
+    def test_codigo_en_descripcion_con_letra_de_tipo(self):
+        casos = [
+            ("C", "900001 - CLIENTE INVENTADO S.A.", "900001", "CLIENTE INVENTADO S.A."),
+            ("P", " U&G001 - U & G  SRL ", "U&G001", "U & G  SRL"),
+            ("X", "NUÑ004 - PROVEEDOR INVENTADO", "NUÑ004", "PROVEEDOR INVENTADO"),
+            (None, "C&D000 - OTRO INVENTADO", "C&D000", "OTRO INVENTADO"),
+            ("NUÑ004", "NUÑ004 - PROVEEDOR INVENTADO", "NUÑ004", "PROVEEDOR INVENTADO"),
+            ("REAL01", "900001 - CLIENTE INVENTADO", "REAL01", "900001 - CLIENTE INVENTADO"),
+            ("C", "AB - NOMBRE", "C", "AB - NOMBRE"),
+            ("C", "ABCDEFGHI - NOMBRE", "C", "ABCDEFGHI - NOMBRE"),
+            ("C", "AB CD - NOMBRE", "C", "AB CD - NOMBRE"),
+            ("C", "ABC - NOMBRE", "ABC", "NOMBRE"),
+            ("P", "12345678 - NOMBRE", "12345678", "NOMBRE"),
+            ("C", "ABC - ", "C", "ABC -"),
+            ("C", " - ", "C", ""),
+            ("P", "", "P", ""),
+            ("C", "NOMBRE SIN PREFIJO", "C", "NOMBRE SIN PREFIJO"),
+            ("1", "ABC - NOMBRE", "1", "ABC - NOMBRE"),
+        ]
+        for codigo, descripcion, esperado_codigo, esperado_nombre in casos:
+            with self.subTest(codigo=codigo, descripcion=descripcion):
+                self.assertEqual(lector._relacionado(codigo, descripcion),
+                                 (esperado_codigo, esperado_nombre))
+
+    def test_agrupa_codigos_extraidos_y_descarta_relacionado_vacio(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = excel(Path(tmp) / "A.xlsx", [
+                fila(codigo="C", nombre="900001 - CLIENTE  INVENTADO", numero="9"),
+                fila(codigo="C", nombre="900002 - CLIENTE  INVENTADO", numero="10",
+                     fecha=dt.date(2026, 9, 2)),
+                fila(codigo="P", nombre=" - ", tipo="OPF", clase="Pagos"),
+                fila(codigo="P", nombre="", tipo="OPF", clase="Pagos"),
+            ])
+            filas, control = lector.leer(ruta, "A")
+            self.assertEqual(len(filas), 1)
+            self.assertEqual(filas[0]["Razon Social"], "CLIENTE  INVENTADO")
+            self.assertEqual(filas[0]["Codigo"], "900001 / 900002")
+            self.assertEqual(filas[0]["Comprobante"], "REC 10")
+            self.assertEqual(filas[0]["Fecha Ultimo Pago"], dt.date(2026, 9, 2))
+            self.assertEqual(control["ignorados"], {"sin relacionado": 2})
+            salida = lector.escribir(filas, tmp, dt.date(2026, 9, 29))
+            wb = openpyxl.load_workbook(salida)
+            try:
+                self.assertEqual(wb.active["C2"].value, "900001 / 900002")
+                self.assertEqual(wb.active["D2"].value, "CLIENTE  INVENTADO")
+            finally:
+                wb.close()
+
     def test_dos_empresas_reglas_y_salida(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
