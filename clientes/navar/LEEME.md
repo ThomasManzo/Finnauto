@@ -104,7 +104,8 @@ lo que cerró. Primer peso cobrado de finauto.
 **Pendiente, en orden:** tarea 32 (el mail como checklist; no pasada a Codex) · método fijo por banco
 (checklist, diagnóstico único en el repo y ayudas comunes) antes de Macro, **esperando OK de Thomas** ·
 Macro (desbloqueo + claves nuevas) · BBVA (usuario propio) · `_SALDOS_` de Galicia a la Sheet · probar
-el modo invisible de Galicia · tarea 20 (pegar el `.gs`, pendiente desde el 25/09) · tarea 21 (Nación).
+el modo invisible de Galicia · tarea 21 (Nación). (La 20 dice "falta pegar el .gs" en su estado, pero se instaló y probó el
+25/09: el `importar_cashflow.gs` que había en Apps Script el 29/09 era idéntico al del repo con la 20.)
 
 ## Dónde estamos (28/09/2026) — Galicia baja solo
 
