@@ -28,6 +28,21 @@
 - **Para qué:** entrar sin que nadie tenga que aceptar del otro lado.
 - **Listo cuando:** entrás y ves el escritorio del Windows.
 
+### [ ] 1.3b Usuarios de consulta propios en cada banco — N → T — ⏱ ___
+- **Qué:** un usuario **a nombre de Thomas, solo consulta**, en cada banco con el que opera la empresa
+  (sin firma, sin transferencias ni pagos). Con consulta de: cuentas y movimientos, saldos y acuerdos,
+  **cheques**, **vencimientos**, **financiaciones/préstamos** y fondos. Si el banco deja elegir, sin
+  segundo factor al entrar (o uno que maneje Thomas).
+- **Cómo:** lo da de alta el administrador de banca empresas de cada banco. Pedirlo en la misma
+  reunión de arranque, con la lista de bancos y de permisos.
+- **Para qué:** los bots de banco entran con este usuario. **No se usan los usuarios del personal**:
+  suelen poder mover plata (un bot que guarda esas claves es mucho más riesgo), un bloqueo por
+  intentos los deja sin operar, chocan sesiones con quien está trabajando, cambian la clave y el bot
+  se rompe, y sin usuario propio el recorrido y los diagnósticos dependen de que alguien de la empresa
+  esté presente. Con usuario propio, al terminar el contrato se da de baja y listo.
+- **Listo cuando:** Thomas entra a mano en cada banco con su usuario y ve cuentas, movimientos y la
+  descarga del extracto. (Aprendido con NAVAR, 28/09/2026.)
+
 ### [ ] 1.4 Instalar AnyDesk en la Mac — T — ⏱ ___
 - **Cómo:** anydesk.com → Descargar para macOS → abrir el .dmg → arrastrar a Aplicaciones. La primera vez macOS pide permisos de "Grabación de pantalla" y "Accesibilidad" en Ajustes → Privacidad y seguridad: darlos, si no se ve la pantalla remota en negro.
 - **Para qué:** es la ventana a la notebook de ellos.
