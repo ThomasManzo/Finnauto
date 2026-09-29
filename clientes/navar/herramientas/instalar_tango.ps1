@@ -40,6 +40,6 @@ $opciones = New-ScheduledTaskSettingsSet -StartWhenAvailable `
 
 Unregister-ScheduledTask -TaskName $nombre -Confirm:$false -ErrorAction SilentlyContinue
 Register-ScheduledTask -TaskName $nombre -Action $accionTarea -Trigger $disparadores `
-    -Settings $opciones -Description "finauto: baja las ocho fotos diarias de Tango Live" | Out-Null
+    -Settings $opciones -Description "finauto: baja las nueve fotos diarias de Tango Live" | Out-Null
 
 Write-Host "Tango instalado: corre todos los días a las $($horas -join ", "). Log: clientes\navar\privado\tango_live.log"

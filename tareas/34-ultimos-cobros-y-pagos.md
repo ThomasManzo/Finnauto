@@ -1,5 +1,5 @@
 # Tarea 34 — Último cobro de cada cliente y último pago a cada proveedor
-Estado: en curso
+Estado: lista para revisión
 Rama: tarea/ultimos-pagos
 
 ## Objetivo
@@ -212,6 +212,35 @@ Sheet con fórmulas sobre las listas, como el resto de las pantallas.
   reconocido en el archivo leído", no "nunca pagó". El ranking Principales 20 queda para
   la Sheet como indica la consigna. No se tocó `lector/tesoreria_aa.py`.
 
+
+### Correcciones de la revisión del 29/09/2026
+
+- Resueltos los dos puntos de Revisión. `validar_tesoreria` admite varias clases
+  por tipo: REC acepta Cobros u Otros movimientos de bancos y carteras; OPF acepta
+  Pagos u Otros movimientos de bancos y carteras. Los demás pares mantienen su control.
+  Las clases desconocidas siguen con el mismo tratamiento, sin tocar `TRADUCCIONES`.
+- Prueba nueva con datos inventados: A exporta los dos pares admitidos y el lector de
+  últimos pagos los descarta por tipo/clase fuera de alcance. REC como Pagos sigue
+  fallando sin escribir archivo, tanto para A como para AA.
+- Aviso diario adaptado dentro del alcance ampliado: `TANGO_BAJADAS = 9`, con comentario
+  de sincronización con Python; A enumera cinco fotos, incluida tesorería, y AA cuatro.
+  El mapa lee `Tesoreria A` como `tesoreria_a`, distinto de caja AA. Ese tipo sólo se
+  agrega a la búsqueda de fotos de Tango: no se agrega a fuentes de bancos automáticos
+  ni modifica controles de caja. Texto del instalador actualizado a nueve fotos.
+- El bloqueo del aviso 8/8 documentado arriba queda **resuelto por esta corrección**.
+  Para instalar hay que pegar también el `aviso_diario.gs` actualizado junto al
+  importador y actualizar la notebook; siguen pendientes las pruebas reales de Live,
+  Windows y Sheet. No se enviaron mails ni se modificaron servicios reales.
+- Validación: compilación de `ingestas/tango_live.py` OK; **27 pruebas Python OK** con
+  `python -m unittest ingestas.test_tango_live lector.pruebas.test_ultimos_pagos`.
+  `node lector/pruebas/probar_aviso_bajadas.cjs` OK: 9/9 tilda ambas empresas y nombra
+  tesorería A; 8/9 con falla de tesorería A desmarca sólo A y muestra su último archivo;
+  8/8 antiguo no confirma completitud. También se prueba la lectura del mapa de Drive
+  con dobles y la cantidad dinámica de fotos por empresa. `git diff --check` OK.
+- La prueba antigua `probar_importador_filtros.cjs` sigue fallando únicamente en su
+  expectativa final `NO CUADRÓ`, ya documentada; se volvió a comprobar y no se modificó,
+  tal como pidió Revisión. Continúan las advertencias previas del vigilante sobre
+  archivos de estado sin cerrar. Sin dependencias nuevas, merge ni push.
 
 ## Revisión
 
