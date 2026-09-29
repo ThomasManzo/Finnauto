@@ -80,8 +80,10 @@ lo que cerró. Primer peso cobrado de finauto.
   falta reinstalar el disparador.
 - Zona horaria del proyecto de Apps Script: Buenos Aires (verificado 29/09).
 - **Cómo se actualiza el código de Apps Script sin errores** (29/09): comparar primero el editor con la
-  versión anterior del repo (hash), traer la nueva desde GitHub por commit, reemplazar el archivo
-  con el editor (Monaco `executeEdits`), guardar, **recargar y volver a comparar**. Las funciones de
+  versión anterior del repo (hash), traer la nueva desde GitHub por commit, reemplazar el contenido
+  del modelo de ese archivo (`monaco.editor.getModels()` → el que corresponde → `pushEditOperations`;
+  no hace falta abrirlo en pantalla, que con clics automatizados cambia de archivo con retraso),
+  guardar (Cmd+S), **recargar y volver a comparar**. Las funciones de
   instalación se corren **desde el menú finauto de la Sheet**, no desde el selector del editor: el
   selector, automatizado, corrió otra función (una vez `onOpen`, otra casi `avisoDiario`, que manda
   el mail). Confirmar siempre en Ejecuciones qué corrió.
@@ -101,7 +103,10 @@ lo que cerró. Primer peso cobrado de finauto.
 - **Nación / Corrientes**: sin bot. Nación: tarea 21 (cuenta con 13 o 14 dígitos) sigue pendiente.
 - Decidido: **usuarios de consulta propios por banco** (checklist 1.3b). NAVAR ofreció crearlos.
 
-**Pendiente, en orden:** tarea 32 (el mail como checklist; no pasada a Codex) · método fijo por banco
+**Hecho 29/09:** el mail diario ya es una checklist (tareas 32 y 33, instaladas y probadas con datos
+reales).
+
+**Pendiente, en orden:** método fijo por banco
 (checklist, diagnóstico único en el repo y ayudas comunes) antes de Macro, **esperando OK de Thomas** ·
 Macro (desbloqueo + claves nuevas) · BBVA (usuario propio) · `_SALDOS_` de Galicia a la Sheet · probar
 el modo invisible de Galicia · tarea 21 (Nación). (La 20 dice "falta pegar el .gs" en su estado, pero se instaló y probó el
