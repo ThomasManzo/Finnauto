@@ -236,6 +236,13 @@ class PruebaNavar(unittest.TestCase):
     def setUp(self):
         self.cfg = _configuracion()
         self.bot = BotGaliciaNavar(self.cfg)
+        # Ninguna prueba debe mirar ni limpiar Descargas reales de esta máquina.
+        self.casa = tempfile.TemporaryDirectory()
+        self.addCleanup(self.casa.cleanup)
+        self.home = Path(self.casa.name)
+        parche = patch("bots.galicia.navar.Path.home", return_value=self.home)
+        parche.start()
+        self.addCleanup(parche.stop)
 
     def _correr_descarga(self, temporales, publicados, descarga, al_click=None):
         boton = ElementoFalso("Descargar")
@@ -522,8 +529,8 @@ class PruebaNavar(unittest.TestCase):
                 if con_anterior:
                     _escribir_excel(ruta / "viejo.tmp", [dt.date.today()])
                 rescatar = self.bot._rescatar_descarga
-                def corto(*args):
-                    return rescatar(*args, espera=0.001)
+                def corto(*args, **kwargs):
+                    return rescatar(*args, espera=0.001, **kwargs)
                 with patch.object(self.bot, "_rescatar_descarga", side_effect=corto):
                     with self.assertRaisesRegex(RuntimeError, "0 archivos nuevos"):
                         self._correr_descarga(ruta, ruta, DescargaFalsa(fallar=True))
@@ -602,6 +609,102 @@ class PruebaNavar(unittest.TestCase):
         self.assertIn("la página se cerró", textos[0])
         self.assertIn("la página se cayó", textos[1])
         self.assertIn("https://ejemplo.invalid/descarga", textos[2])
+
+    def test_rescate_desde_downloads_publica_y_borra_guid(self):
+        descargas = self.home / "Downloads"
+        descargas.mkdir()
+        guid = descargas / "ABCDEF12-1234-1234-1234-123456789ABC.TMP"
+        with tempfile.TemporaryDirectory() as carpeta:
+            ruta = Path(carpeta)
+            def llegada():
+                _escribir_excel(guid, [dt.date.today()])
+                os.utime(guid, (time.time() + 1, time.time() + 1))
+            with patch("bots.galicia.navar.time.sleep"),                     patch("bots.galicia.navar.time.monotonic", side_effect=range(100)):
+                destino = self._correr_descarga(ruta, ruta, DescargaFalsa(fallar=True), llegada)
+            self.assertTrue(Path(destino).exists())
+            self.assertFalse(guid.exists())
+
+    def test_downloads_ignora_anterior_nombre_comun_y_fecha_anterior(self):
+        for caso in ("ya estaba", "nombre común", "fecha anterior"):
+            with self.subTest(caso=caso), tempfile.TemporaryDirectory() as carpeta:
+                descargas = self.home / "Downloads"
+                descargas.mkdir(exist_ok=True)
+                archivo = descargas / (
+                    "informe.xlsx" if caso == "nombre común"
+                    else "abcdef12-1234-1234-1234-123456789abc.tmp")
+                def escribir():
+                    _escribir_excel(archivo, [dt.date.today()])
+                    if caso == "fecha anterior":
+                        os.utime(archivo, (time.time() - 60, time.time() - 60))
+                if caso == "ya estaba":
+                    escribir()
+                rescatar = self.bot._rescatar_descarga
+                def corto(*args, **kwargs):
+                    return rescatar(*args, espera=0.001, **kwargs)
+                with patch.object(self.bot, "_rescatar_descarga", side_effect=corto):
+                    with self.assertRaisesRegex(RuntimeError, "Downloads: 0 archivos nuevos"):
+                        self._correr_descarga(
+                            Path(carpeta), Path(carpeta), DescargaFalsa(fallar=True),
+                            None if caso == "ya estaba" else escribir)
+                self.assertTrue(archivo.exists())
+                archivo.unlink()
+
+    def test_rescate_candidatos_en_ambas_carpetas_frena(self):
+        descargas = self.home / "Downloads"
+        descargas.mkdir()
+        with tempfile.TemporaryDirectory() as carpeta:
+            ruta = Path(carpeta)
+            def llegada():
+                for archivo in (ruta / "bot.tmp",
+                                descargas / "abcdef12-1234-1234-1234-123456789abc.tmp"):
+                    _escribir_excel(archivo, [dt.date.today()])
+                    os.utime(archivo, (time.time() + 1, time.time() + 1))
+            with self.assertRaisesRegex(RuntimeError, "2 archivos nuevos") as error:
+                self._correr_descarga(ruta, ruta, DescargaFalsa(fallar=True), llegada)
+            self.assertIn(str(descargas), str(error.exception))
+            self.assertIn("bot.tmp", str(error.exception))
+
+    def test_limpieza_downloads_solo_guid_viejo_con_formato_galicia(self):
+        descargas = self.home / "Downloads"
+        descargas.mkdir()
+        archivos = [
+            descargas / ("%08x-1234-1234-1234-123456789abc.tmp" % i)
+            for i in range(5)]
+        viejo_galicia, nuevo_galicia, no_zip, otra_hoja, otro_encabezado = archivos
+        _escribir_excel(viejo_galicia, [dt.date.today()])
+        _escribir_excel(nuevo_galicia, [dt.date.today()])
+        no_zip.write_text("ajeno")
+        for archivo, hoja, encabezado in (
+                (otra_hoja, "Otra", "Fecha"), (otro_encabezado, "Movimientos", "Otro")):
+            libro = Workbook()
+            libro.active.title = hoja
+            libro.active["A1"] = encabezado
+            libro.save(archivo)
+        cualquiera = descargas / "informe.xlsx"
+        _escribir_excel(cualquiera, [dt.date.today()])
+        viejo = time.time() - 8 * 24 * 60 * 60
+        for archivo in [viejo_galicia, no_zip, otra_hoja, otro_encabezado, cualquiera]:
+            os.utime(archivo, (viejo, viejo))
+        with tempfile.TemporaryDirectory() as carpeta:
+            self._correr_descarga(Path(carpeta), Path(carpeta), DescargaFalsa())
+        self.assertFalse(viejo_galicia.exists())
+        for archivo in [nuevo_galicia, no_zip, otra_hoja, otro_encabezado, cualquiera]:
+            self.assertTrue(archivo.exists(), archivo.name)
+
+    def test_rescate_avisa_si_no_puede_borrar_downloads_y_publica(self):
+        descargas = self.home / "Downloads"
+        descargas.mkdir()
+        guid = descargas / "abcdef12-1234-1234-1234-123456789abc.tmp"
+        with tempfile.TemporaryDirectory() as carpeta:
+            ruta = Path(carpeta)
+            def llegada():
+                _escribir_excel(guid, [dt.date.today()])
+                os.utime(guid, (time.time() + 1, time.time() + 1))
+            with patch("bots.galicia.navar.time.sleep"),                     patch("bots.galicia.navar.time.monotonic", side_effect=range(100)),                     patch.object(Path, "unlink", side_effect=PermissionError("ocupado")),                     patch("bots.galicia.navar.log") as registrar:
+                destino = self._correr_descarga(ruta, ruta, DescargaFalsa(fallar=True), llegada)
+            self.assertTrue(Path(destino).exists())
+            self.assertTrue(guid.exists())
+            self.assertTrue(any("no pude borrar" in c.args[0] for c in registrar.call_args_list))
 
     def test_filtro_no_toca_la_pagina(self):
         pagina = PaginaQueNoSePuedeTocar()
