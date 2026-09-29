@@ -124,10 +124,12 @@ Después, en este orden:
    ```
    Los archivos quedan con los mismos nombres y encabezados que los exports manuales. El
    vigilante procesa Cuentas a cobrar, Cuentas a pagar, Cheques y `Tesoreria AA` como siempre.
-4. **Programar todos los días a las 05:45**:
+4. **Programar la bajada y los reintentos diarios**:
    ```powershell
    powershell -ExecutionPolicy Bypass -File clientes\navar\herramientas\instalar_tango.ps1
    ```
+   Baja a las **05:45** y reintenta a las **06:15, 06:45, 07:15, 09:00 y 12:00**; si el parte ya confirma las ocho bajadas de hoy, no hace nada.
+   Después de actualizar el código, **volver a correr `instalar_tango.ps1`** para registrar los nuevos horarios.
    La tarea se llama `finauto NAVAR Tango`, no arranca una segunda instancia si la anterior
    sigue corriendo y corta después de una hora. El historial queda agregado en
    `clientes\navar\privado\tango_live.log`. Para quitarla, agregar `quitar` al comando.
