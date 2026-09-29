@@ -54,12 +54,11 @@ DESTINO = {
     "cheques_propios": ("Cheques", "%s cheques propios %s.xlsx"),
     "movimientos_tesoreria": ("Tesoreria AA", "%s movimientos tesoreria %s.xlsx"),
 }
-SOLO_EMPRESA = {"movimientos_tesoreria": "AA"}
 PAGINA = 5000
 TIMEOUT_PAGINA = 300
-# El circuito diario tiene cuatro fotos de A y cuatro de AA. Si una configuración
+# El circuito diario tiene cinco fotos de A y cuatro de AA. Si una configuración
 # queda incompleta, el parte debe mostrar que faltó algo en vez de decir 5 de 5.
-TOTAL_BAJADAS_DIARIAS = 8
+TOTAL_BAJADAS_DIARIAS = 9
 
 # Qué encabezado manual corresponde a cada campo comprobado de la API. El orden
 # es el orden útil del export manual; todo campo no listado se agrega después sin
@@ -161,16 +160,19 @@ def token(cliente):
     return tok
 
 
-def rango_fechas(cfg, hoy, consulta):
-    """Live trae todo sin fechas; propios usa una ventana configurable de seguridad."""
-    if consulta != "cheques_propios":
+def rango_fechas(cfg, hoy, consulta, empresa="AA"):
+    """Propios y tesorería de A tienen ventana; AA conserva toda su historia."""
+    clave = consulta
+    if consulta == "movimientos_tesoreria" and empresa == "A":
+        clave = "movimientos_tesoreria_A"
+    elif consulta != "cheques_propios":
         return "", ""
     try:
-        dias = int(cfg.get("dias_atras", {}).get("cheques_propios"))
+        dias = int(cfg.get("dias_atras", {}).get(clave))
     except (TypeError, ValueError):
-        raise RuntimeError("falta dias_atras.cheques_propios válido en perfil.json")
+        raise RuntimeError("falta dias_atras.%s válido en perfil.json" % clave)
     if dias <= 0:
-        raise RuntimeError("dias_atras.cheques_propios debe ser mayor que cero")
+        raise RuntimeError("dias_atras.%s debe ser mayor que cero" % clave)
     return (hoy - datetime.timedelta(days=dias)).strftime("%d/%m/%Y"), ""
 
 
@@ -341,7 +343,7 @@ def conteo_codigos(consulta, empresa, filas):
     return "%s %s: %s" % (consulta.replace("_", " "), empresa, " · ".join(partes) or "sin filas")
 
 
-def validar_tesoreria(filas):
+def validar_tesoreria(filas, empresa="AA"):
     """La relación Tipo/Clase detecta si Live cambió la traducción ya confirmada."""
     esperado = {
         "REC": "Cobros",
@@ -361,7 +363,7 @@ def validar_tesoreria(filas):
         raise RuntimeError(
             "Tesorería tiene Tipo/Clase incompatibles (%s). Conteo: %s. No se escribe el archivo"
             % (detalle, texto))
-    return "tesorería AA pares Tipo/Clase: " + texto
+    return "tesorería %s pares Tipo/Clase: " % empresa + texto
 
 
 def preparar_filas(consulta, empresa, filas):
@@ -370,7 +372,7 @@ def preparar_filas(consulta, empresa, filas):
     traducidas, columnas = traducir_filas(consulta, filas)
     linea_pares = None
     if consulta == "movimientos_tesoreria":
-        linea_pares = validar_tesoreria(traducidas)
+        linea_pares = validar_tesoreria(traducidas, empresa)
         # El lector viejo toma cualquier clase desconocida como "Otros". Como no
         # podemos tocarlo en esta tarea, la dejamos visible en el conteo pero no
         # la publicamos: sería adivinar una categoría de caja.
@@ -421,9 +423,11 @@ def bajar_y_escribir(cfg, tok, empresa, consulta, proceso, ruta, desde, hasta):
     return len(originales), len(filas)
 
 
-def carpeta_consulta(raiz, consulta):
+def carpeta_consulta(raiz, consulta, empresa="AA"):
     if consulta != "movimientos_tesoreria":
         return os.path.join(raiz, DESTINO[consulta][0])
+    if empresa == "A":
+        return os.path.join(raiz, "Tesoreria A")
     sin_tilde = os.path.join(raiz, "Tesoreria AA")
     con_tilde = os.path.join(raiz, "Tesorería AA")
     if os.path.isdir(sin_tilde):
@@ -490,12 +494,11 @@ def _bajada_completa_hoy(raiz, hoy):
 
 
 def pendientes(cfg):
-    """Las ocho fotos válidas: cuatro de A y cuatro de AA."""
+    """Las nueve fotos válidas: cinco de A y cuatro de AA."""
     return [(empresa, consulta, proceso)
             for empresa, empresa_id in cfg.get("empresas", {}).items() if empresa_id
             for consulta, proceso in cfg.get("consultas", {}).items() if proceso
-            if not (empresa == "AA" and consulta == "cheques_propios")
-            if consulta not in SOLO_EMPRESA or SOLO_EMPRESA[consulta] == empresa]
+            if not (empresa == "AA" and consulta == "cheques_propios")]
 
 
 def _mostrar_prueba(cfg, tok, consulta, empresa, proceso, desde, hasta):
@@ -540,7 +543,7 @@ def main(argv=None):
         proceso = cfg.get("consultas", {}).get(a.probar)
         if not proceso:
             raise SystemExit("la consulta %s no tiene número de proceso en perfil.json" % a.probar)
-        desde, hasta = rango_fechas(cfg, hoy, a.probar)
+        desde, hasta = rango_fechas(cfg, hoy, a.probar, a.empresa)
         _mostrar_prueba(cfg, token(a.cliente), a.probar, a.empresa, proceso, desde, hasta)
         return 0
 
@@ -558,10 +561,10 @@ def main(argv=None):
 
     if a.simular:
         for empresa, consulta, proceso in trabajos:
-            carpeta = carpeta_consulta(raiz, consulta)
+            carpeta = carpeta_consulta(raiz, consulta, empresa)
             nombre = DESTINO[consulta][1] % (empresa, a.hoy)
             try:
-                desde, hasta = rango_fechas(cfg, hoy, consulta)
+                desde, hasta = rango_fechas(cfg, hoy, consulta, empresa)
                 url = armar_url(cfg, empresa, consulta, proceso, desde, hasta, 0, PAGINA)
                 log("bajaría %s · GET %s" % (os.path.join(carpeta, nombre), url))
             except Exception as ex:
@@ -576,11 +579,11 @@ def main(argv=None):
     ok = 0
     fallas = []
     for empresa, consulta, proceso in trabajos:
-        carpeta = carpeta_consulta(raiz, consulta)
+        carpeta = carpeta_consulta(raiz, consulta, empresa)
         nombre = DESTINO[consulta][1] % (empresa, a.hoy)
         ruta = os.path.join(carpeta, nombre)
         try:
-            desde, hasta = rango_fechas(cfg, hoy, consulta)
+            desde, hasta = rango_fechas(cfg, hoy, consulta, empresa)
             recibidas, escritas = bajar_y_escribir(
                 cfg, tok, empresa, consulta, proceso, ruta, desde, hasta)
             detalle = "%d filas" % escritas

@@ -1,5 +1,5 @@
 # Tarea 34 — Último cobro de cada cliente y último pago a cada proveedor
-Estado: pendiente
+Estado: lista para revisión
 Rama: tarea/ultimos-pagos
 
 ## Objetivo
@@ -146,5 +146,71 @@ Sheet con fórmulas sobre las listas, como el resto de las pantallas.
   y el importador en la Sheet. Lo prueba Claude con Thomas después del merge.
 
 ## Qué hice
+
+- Rama creada desde `main` `5e3c9a7`, con la tarea 35 ya integrada.
+- Tango baja nueve archivos: tesorería de A usa consulta 19 y
+  `dias_atras.movimientos_tesoreria_A = 400`, con carpeta exclusiva `Tesoreria A/`.
+  AA conserva consulta 17, fechas vacías y la tolerancia a `Tesorería AA/`.
+  El parte y `--si-falta` usan nueve: 9/9 saltea, 8/9 y los partes viejos 8/8 reintentan.
+- Nuevo `lector/ultimos_pagos.py`: exige ambos archivos y valida sus encabezados antes
+  de escribir. Agrupa por empresa/tipo/razón social, conserva espacios internos y códigos
+  con ceros, desempata por número de comprobante y resume descartes y fechas por archivo.
+  No suma importes: sólo usa su signo para descartar negativos. También descarta importes
+  no legibles, fechas no válidas y comprobantes vacíos, dejando el motivo en el resumen.
+  Las salidas se generan junto al archivo de A; el Excel se reemplaza de una vez.
+- Vigilante: `ultimos_pagos` toma el último `.xlsx` por modificación de cada carpeta,
+  sin subcarpetas ni temporales `.parte.xlsx`. Si falta una empresa no corre. Usa
+  `mover_salidas` y sus controles existentes. Para esta fuente la firma incluye también
+  modificación: una corrección del mismo tamaño debe volver a leerse. La fuente de caja
+  `tesoreria_aa` no cambió.
+- Importador: nueva entrada, menú y orden automático; reemplaza sólo la marca
+  `Tango tesorería`, conserva otras filas, fecha como fecha, códigos/comprobantes como texto.
+- Con autorización expresa en este chat, ajusté **sólo el conteo de importadores** de la
+  prueba existente `lector/pruebas/probar_importador_filtros.cjs`: usa el largo de
+  `ORDEN_AUTO` en lugar del número fijo anterior. No cambié su prueba del aviso.
+
+### Validación local (sin red, credenciales ni datos reales)
+
+- `python -m py_compile ingestas/tango_live.py lector/ultimos_pagos.py clientes/navar/herramientas/vigilante.py`: OK.
+- `python -m unittest ingestas.test_tango_live lector.pruebas.test_ultimos_pagos lector.pruebas.test_cheques_en_cartera lector.pruebas.test_extractos_tolerantes`:
+  **42 pruebas OK**. Las 19 de Tango incluyen fechas de A/AA, carpetas separadas y partes
+  9/9, 8/9 y 8/8. Las 7 nuevas del lector/vigilante cubren los casos de la consigna y
+  ejecutan lectores reales sobre Excel inventados, publicando en una carpeta temporal.
+  Un nuevo A dispara sólo `ultimos_pagos`; un nuevo AA dispara éste y `tesoreria_aa`.
+  Repetir sin cambios no corre; cambiar la modificación del mismo archivo sí.
+- `--simular --hoy 2026-09-29 --destino /private/tmp/tango34-simulacion`: nueve bajadas,
+  A desde 25/08/2025, AA sin fechas. No consulta Tango ni escribe archivos.
+- `node lector/pruebas/probar_importador_ultimos_pagos.cjs`: OK (marca, manuales, otros
+  orígenes, texto, fecha a medianoche de Buenos Aires, menú y repetición sin duplicados).
+- `node lector/pruebas/probar_importador_zona_horaria.cjs`: OK.
+- `probar_importador_filtros.cjs`: pasan las comprobaciones del importador, incluido el
+  nuevo conteo. Su última prueba del **aviso** falla buscando la frase `NO CUADRÓ`;
+  comprobado el mismo fallo en `main` sin estos cambios. El aviso ahora dice
+  `Falló la importación de ... VERIFICACION_NO_CUADRA`. Es una expectativa previa
+  desactualizada, fuera del ajuste autorizado del conteo; queda para el responsable del aviso.
+- El vigilante emite advertencias previas `ResourceWarning` por sus `open(ESTADO)` sin
+  contexto; no afectan estas pruebas y no se modificaron. Sin dependencias nuevas.
+
+### Antes de instalar / límites
+
+- **Pendiente importante fuera del alcance:** `aviso_diario.gs` compara literalmente
+  `parte.ok === 8 && parte.total === 8`. Con 9/9, el mail puede decir "parte incompleto
+  (9 de 9)" y tampoco enumera tesorería de A. **Hay que adaptar el aviso antes de desplegar
+  este cambio**. No se tocó porque la consigna lo prohíbe expresamente. El instalador y
+  algunos documentos anteriores también conservan textos de "ocho"; no afectan el reloj,
+  pero conviene actualizarlos junto al despliegue (fuera de los archivos permitidos).
+- Crear en la Sheet **Ultimos Pagos**, encabezados en **fila 1**, columnas A:G:
+  `Empresa | Tipo | Codigo | Razon Social | Fecha Ultimo Pago | Comprobante | Origen`.
+  Sin fórmulas. Dar formato fecha a E, texto a C/F y suficientes filas para todos los
+  relacionados más los manuales (el importador no amplía la cantidad de filas).
+  No dejar vistas de filtro guardadas; mantiene el requisito de Sheets API habilitada.
+- Tras integrar: actualizar notebook y pegar el importador revisado en Apps Script;
+  probar la consulta 19, la bajada 9/9, la publicación de las dos empresas, el registro
+  de importación y que A no entre en la caja de AA. Nada de eso se probó contra servicios
+  reales aquí. No hubo merge, push, cambios en Drive ni en la Sheet.
+- La ventana de A limita la historia: no aparecer en esta lista significa "sin pago
+  reconocido en el archivo leído", no "nunca pagó". El ranking Principales 20 queda para
+  la Sheet como indica la consigna. No se tocó `lector/tesoreria_aa.py`.
+
 
 ## Revisión
