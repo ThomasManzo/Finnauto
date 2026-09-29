@@ -209,10 +209,37 @@ class TangoLiveTest(unittest.TestCase):
         self.assertEqual("(código Z sin traducir)", desconocido[0]["Estado"])
         self.assertEqual("Z", desconocido[0]["Cód. estado"])
 
+    def test_tesoreria_a_exporta_otros_sin_contarlos_como_ultimos_pagos(self):
+        from lector import ultimos_pagos
+        import openpyxl
+        filas = [{"TIPO": tipo, "CLASE": 4, "TOTAL_CTE": 100,
+                  "COMPROBANTE": "0009", "FECHA": "2026-09-29T00:00:00",
+                  "COD_RELACIONADO": "001", "DESC_RELACIONADO": "Relacionado inventado"}
+                 for tipo in ("REC", "OPF")]
+        with tempfile.TemporaryDirectory() as raiz:
+            ruta = os.path.join(raiz, "A movimientos tesoreria 2026-09-29.xlsx")
+            with mock.patch.object(live, "bajar", return_value=filas), redirect_stdout(io.StringIO()):
+                self.assertEqual(live.bajar_y_escribir(
+                    self.cfg, "ficticio", "A", "movimientos_tesoreria", 105, ruta, "", ""), (2, 2))
+            wb = openpyxl.load_workbook(ruta)
+            try:
+                self.assertEqual(wb.active.max_row, 3)
+            finally:
+                wb.close()
+            pagos, control = ultimos_pagos.leer(ruta, "A")
+            self.assertEqual(pagos, [])
+            self.assertEqual(control["ignorados"]["tipo o clase fuera de alcance"], 2)
+
     def test_tesoreria_frena_tipo_clase_incompatible(self):
         filas = [{"TIPO": "REC", "CLASE": 2, "TOTAL_CTE": 100}]
-        with self.assertRaisesRegex(RuntimeError, "Tipo/Clase incompatibles"):
-            live.preparar_filas("movimientos_tesoreria", "AA", filas)
+        for empresa in ("A", "AA"):
+            with self.subTest(empresa=empresa), tempfile.TemporaryDirectory() as raiz:
+                ruta = os.path.join(raiz, "tesoreria.xlsx")
+                with mock.patch.object(live, "bajar", return_value=filas):
+                    with self.assertRaisesRegex(RuntimeError, "Tipo/Clase incompatibles"):
+                        live.bajar_y_escribir(self.cfg, "ficticio", empresa,
+                                             "movimientos_tesoreria", 105, ruta, "", "")
+                self.assertFalse(os.path.exists(ruta))
 
     def test_tesoreria_no_publica_clase_desconocida(self):
         filas = [{"TIPO": "REV", "CLASE": 9, "TOTAL_CTE": 100}]

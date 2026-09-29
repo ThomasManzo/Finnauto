@@ -345,19 +345,22 @@ def conteo_codigos(consulta, empresa, filas):
 
 def validar_tesoreria(filas, empresa="AA"):
     """La relación Tipo/Clase detecta si Live cambió la traducción ya confirmada."""
+    # En A algunos recibos y órdenes son movimientos entre bancos/carteras:
+    # se pueden exportar, pero el lector de últimos pagos no los toma como pagos.
     esperado = {
-        "REC": "Cobros",
-        "O/P": "Pagos",
-        "OPF": "Pagos",
-        "FPR": "Pagos",
-        "EXT": "Otros movimientos de bancos y carteras",
-        "RCT": "Rechazo de cheques de terceros",
+        "REC": ("Cobros", "Otros movimientos de bancos y carteras"),
+        "O/P": ("Pagos",),
+        "OPF": ("Pagos", "Otros movimientos de bancos y carteras"),
+        "FPR": ("Pagos",),
+        "EXT": ("Otros movimientos de bancos y carteras",),
+        "RCT": ("Rechazo de cheques de terceros",),
     }
     pares = Counter((str(f.get("Tipo") or "").strip().upper(), str(f.get("Clase") or "").strip())
                     for f in filas)
     texto = " · ".join("%s→%s %s" % (t or "vacío", c or "vacío", n)
                        for (t, c), n in sorted(pares.items())) or "sin filas"
-    malos = [(t, c, esperado[t]) for (t, c) in pares if t in esperado and c != esperado[t]]
+    malos = [(t, c, " o ".join(esperado[t])) for (t, c) in pares
+             if t in esperado and c not in esperado[t]]
     if malos:
         detalle = "; ".join("%s vino como '%s' y debía ser '%s'" % x for x in malos)
         raise RuntimeError(
