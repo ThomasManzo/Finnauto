@@ -1,5 +1,5 @@
 # Tarea 29 — Galicia NAVAR: el rescate tiene que mirar la carpeta Descargas de Windows
-Estado: lista para revisión
+Estado: aprobada (mergeada el 29/09/2026; falta la corrida en frío en la notebook)
 Rama: tarea/galicia-rescate-descargas
 
 ## Objetivo
@@ -103,3 +103,13 @@ No tocar `nucleo/`.
   dos con OK; no se probó Windows, banco ni Drive desde este entorno.
 
 ## Revisión
+
+**Claude, 29/09/2026.** Hace lo pedido. Vigila las dos carpetas y saca la foto de las dos antes del
+clic. En Descargas del usuario solo toma GUID.tmp nuevos y posteriores al clic, y los borra después
+de rescatarlos. Exige un único candidato entre las dos carpetas. La limpieza de Descargas solo borra
+GUID.tmp de más de 7 días que además son un Excel con hoja `Movimientos` y `Fecha` en A1. 40 tests OK,
+compila, `git diff --check` limpio. No toca `nucleo/`. Probado en la Mac con **el `.tmp` real de una
+falla**, en una carpeta que simulaba Descargas con un `informe.xlsx` ajeno: rescata y valida (110
+movimientos), borra el `.tmp` y deja el `informe.xlsx`. La limpieza borra un GUID.tmp viejo de Galicia
+y no uno ajeno. Aprobada.
+
