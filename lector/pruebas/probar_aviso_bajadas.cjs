@@ -34,97 +34,62 @@ const contexto = vm.createContext({Date, Intl, Utilities});
 vm.runInContext(fs.readFileSync(path.join(__dirname,
   '../../clientes/navar/herramientas/aviso_diario.gs'), 'utf8'), contexto);
 
-const ahora = new Date('2026-09-28T12:00:00Z'); // lunes, 09:00 de Buenos Aires
+const ahora = new Date('2026-09-28T10:30:00Z'); // lunes 07:30
+const fecha = (dia, hora='00:00') => new Date(`2026-09-${dia}T${hora}:00-03:00`);
 function foto() {
-  const llegada = new Date('2026-09-28T11:35:00Z');
   const entradas = [];
-  for (const empresa of ['A', 'AA']) for (const lista of ['cobranzas', 'pagos', 'cheques']) {
-    entradas.push({
-      nombre: `${empresa} ${lista} 2026-09-28.xlsx`, ruta: `${lista}/inventado.xlsx`,
-      tipo: 'tango', fecha: llegada
-    });
-  }
-  entradas.push({nombre: 'AA movimientos tesoreria 2026-09-28.xlsx',
-    ruta: 'Tesoreria AA/inventado.xlsx', tipo: 'tesoreria_aa', fecha: llegada});
-  return {
-    entradas,
-    publicados: [{nombre: 'para_pegar_en_la_sheet_2026-09-28.xlsx', ruta: '_para la Sheet',
-      tipo: 'tango', fecha: new Date('2026-09-28T11:40:00Z')}],
-    retenidos: [], registro: [], log: [], ultimaPasada: new Date('2026-09-28T11:45:00Z'),
-    tangoParte: {fecha: new Date('2026-09-28T10:31:00Z'), ok: 8, total: 8, fallas: []},
-    galiciaParte: {fecha: new Date('2026-09-28T10:00:00Z'), ok: true, detalle: ''},
-    extracto: new Date('2026-09-28T03:00:00Z'),
-    saldos: [
-      {banco: 'Galicia', empresa: 'A', origen: 'Extracto Galicia', fecha: new Date('2026-09-28T03:00:00Z')},
-      {banco: 'Macro', empresa: 'A', origen: 'Extracto Macro', fecha: new Date('2026-09-25T03:00:00Z')},
-      {banco: '(varios)', empresa: 'AA', origen: 'Manual', fecha: new Date('2026-09-25T03:00:00Z')}
-    ],
-    errores: {}
-  };
+  for (const empresa of ['A','AA']) for (const lista of ['cobranzas','pagos','cheques terceros', empresa==='A'?'cheques propios':'movimientos tesoreria'])
+    entradas.push({nombre:`${empresa} ${lista} 2026-09-28.xlsx`,ruta:'Tango/inventado.xlsx',tipo:lista.includes('tesoreria')?'tesoreria_aa':'tango',fecha:fecha('28','05:46')});
+  entradas.push({nombre:'Movimientos Galicia 2026-09-28.xlsx',ruta:'Bancos/galicia/Movimientos Galicia 2026-09-28.xlsx',tipo:'bancos',fecha:fecha('28','05:48')});
+  return {entradas, publicados:[],retenidos:[],log:[],errores:{},ultimaPasada:fecha('28','07:08'),
+    tangoParte:{fecha:fecha('28','05:46'),ok:8,total:8,fallas:[]},
+    galiciaParte:{fecha:fecha('28','05:48'),ok:true,detalle:''},
+    registro:[{tipo:'tango',estado:'ok',fecha:fecha('28','06:33'),detalle:'listo'}],
+    saldos:[{banco:'Galicia',origen:'Extracto Galicia',empresa:'A',fecha:fecha('24')},
+      {banco:'Macro',origen:'Extracto Macro',empresa:'A',fecha:fecha('25')},
+      {banco:'(varios)',origen:'Manual',empresa:'AA',fecha:fecha('25')}]};
 }
-
-let datos = foto(), aviso = contexto._armarAviso_(ahora, datos);
-assert.ok(aviso.cuerpo.includes('Bajada de Tango: hoy 07:31 · 8 de 8'));
-assert.ok(!aviso.alertas.some(a => a.includes('La bajada de Tango terminó')));
-
-datos = foto();
-datos.tangoParte = {fecha: new Date('2026-09-28T10:31:00Z'), ok: 6, total: 8,
-  fallas: ['A pagos 2026-09-28.xlsx: timeout', 'AA cobranzas 2026-09-28.xlsx: HTTP 500']};
-aviso = contexto._armarAviso_(ahora, datos);
-assert.ok(aviso.cuerpo.includes('Bajada de Tango: hoy 07:31 · 6 de 8'));
-assert.ok(aviso.alertas.some(a => a.includes('A pagos 2026-09-28.xlsx: timeout')));
-
-datos = foto();
-datos.tangoParte.fecha = new Date('2026-09-27T10:31:00Z');
-aviso = contexto._armarAviso_(ahora, datos);
-assert.ok(aviso.alertas.some(a => a.includes(
-  'La bajada de Tango de hoy no corrió (último parte: 27/09 07:31)')));
-
-datos = foto();
-aviso = contexto._armarAviso_(ahora, datos);
-assert.ok(aviso.cuerpo.includes('Bot de Galicia: hoy 07:00 · OK'));
-
-datos = foto();
-datos.galiciaParte = {fecha: new Date('2026-09-28T10:02:00Z'), ok: false,
-  detalle: 'falló la descarga inventada'};
-aviso = contexto._armarAviso_(ahora, datos);
-assert.ok(aviso.cuerpo.includes('Bot de Galicia: hoy 07:02 · ATENCIÓN'));
-assert.ok(aviso.alertas.some(a => a.includes('falló la descarga inventada')));
-
-datos = foto();
-datos.galiciaParte = null;
-datos.errores.GaliciaParte = 'Falta el estado de hoy';
-aviso = contexto._armarAviso_(ahora, datos);
-assert.ok(aviso.alertas.includes(
-  'El bot de Galicia no corrió hoy. Revisar la tarea "finauto NAVAR Galicia"'));
-
-// Un lunes, lo manual puede estar al viernes; lo automático debe haber llegado hoy.
-datos = foto();
-datos.saldos[0].fecha = new Date('2026-09-27T03:00:00Z');
-datos.entradas = datos.entradas.filter(f =>
-  !f.nombre.startsWith('A pagos') && f.tipo !== 'tesoreria_aa');
-const faltantesLunes = contexto._faltantesAviso_(ahora, datos);
-// Galicia es automático: su frescura la da el parte del bot, no la fecha del último movimiento.
-assert.ok(!faltantesLunes.some(l => l.includes('Extracto de Galicia')));
-assert.ok(faltantesLunes.some(l => l.includes('Tango A — pagos: no llegó la bajada automática de hoy')));
-assert.ok(faltantesLunes.some(l => l.includes('Tesorería AA: no llegó la bajada automática de hoy')));
-assert.ok(!faltantesLunes.some(l => l.includes('Extracto de Macro')));
-assert.ok(!faltantesLunes.some(l => l.includes('subida manual')));
-
-// Caso real del 25/09: Galicia sin movimientos hace días, pero el bot corrió bien hoy.
-datos = foto();
-datos.saldos[0].fecha = new Date('2026-09-24T03:00:00Z');
-aviso = contexto._armarAviso_(ahora, datos);
-assert.ok(!contexto._faltantesAviso_(ahora, datos).some(l => l.includes('Galicia')));
-assert.ok(!aviso.alertas.some(a => a.includes('Galicia')));
-
-const tangoParseado = contexto._parteTangoAviso_(
-  '2026-09-28T10:31:00+00:00\n6 de 8\nA pagos 2026-09-28.xlsx: timeout\n');
-assert.equal(tangoParseado.ok, 6);
-assert.deepEqual(Array.from(tangoParseado.fallas), ['A pagos 2026-09-28.xlsx: timeout']);
-const galiciaParseada = contexto._parteGaliciaAviso_(
-  'Bot Galicia - 28/09/2026 07:02\n\n>>> ATENCION: 1 descarga falló\n   - error inventado\n\nBajadas OK (0): -');
-assert.equal(galiciaParseada.ok, false);
-assert.ok(galiciaParseada.detalle.includes('error inventado'));
-
-console.log('OK: Tango y Galicia hoy, fallas, partes viejos o ausentes y cierre de lunes. Datos inventados.');
+let casos=0;
+function probar(cambio, n, presentes=[], ausentes=[]) {
+  const datos=foto(); cambio(datos);
+  const aviso=contexto._armarAviso_(ahora,datos);
+  assert.equal(aviso.asunto, `NAVAR · 28/09 · ${n?'faltan '+n+' cosas':'todo al día'}`);
+  presentes.forEach(t=>assert.ok(aviso.cuerpo.includes(t), t+'\n'+aviso.cuerpo));
+  ausentes.forEach(t=>assert.ok(!aviso.cuerpo.includes(t),t+'\n'+aviso.cuerpo));
+  const lineas=aviso.cuerpo.split('\n').filter(l=>/^[☑☐]/.test(l));
+  assert.equal(lineas.length,6); // una por fuente, sin repetir ninguna
+  for (const fuente of ['Tango A:','Tango AA:','Galicia:','Macro:','Arqueo caja AA:','La Sheet'])
+    assert.equal(lineas.filter(l=>l.includes(fuente)).length,1);
+  assert.equal(lineas.filter(l=>l.startsWith('☐')).length,n);
+  casos++;return aviso;
+}
+probar(()=>{},0,['☑ Galicia: 05:48 · movimientos hasta 24/09','☑ Macro: al día, extracto hasta 25/09','☑ La Sheet se actualizó (06:33)'],['❌','⚠️','El vigilante procesó','Llegó a Drive']);
+probar(d=>{d.tangoParte.ok=6;d.tangoParte.fallas=['A pagos 2026-09-28.xlsx: timeout','AA cobranzas 2026-09-28.xlsx: HTTP 500'];},2,['☐ Tango A: pagos: timeout','☐ Tango AA: cobranzas: HTTP 500','último archivo: 28/09 05:46']);
+probar(d=>{d.tangoParte.fecha=fecha('27','05:46');},2,['la bajada de Tango no corrió hoy · última: 27/09 05:46']);
+probar(d=>{d.tangoParte=null;},2,['última: no disponible']);
+probar(d=>{d.galiciaParte.ok=false;d.galiciaParte.detalle='se cerró el navegador al guardar';},1,['☐ Galicia: el bot falló a las 05:48 (se cerró el navegador al guardar)','Último extracto: 28/09 05:48']);
+probar(d=>{d.galiciaParte=null;},1,['el bot no corrió hoy']);
+probar(d=>{d.galiciaParte.ok=false;d.entradas.push({nombre:'Movimientos GALICIA 2026-09-28_062000.xlsx',ruta:'Bancos/galicia/viejo.xlsx',tipo:'bancos',fecha:fecha('28','06:20')});},1,['Último extracto: 28/09 06:20']);
+probar(d=>{d.saldos[1].fecha=fecha('24');},1,['☐ Macro: último extracto del 24/09 (hace 4 días) · subir a mano']);
+probar(d=>{d.saldos[2].fecha=fecha('21');},1,['☐ Arqueo caja AA: último arqueo del 21/09 (hace 7 días) · cargar a mano']);
+probar(d=>{d.registro[0].fecha=fecha('27','06:33');},1,['La Sheet no importó lo de hoy · última importación: 27/09 06:33']);
+probar(d=>{d.registro[0].fecha=fecha('28','05:47');},1,['La Sheet no importó lo de hoy']);
+probar(d=>{d.registro.push({tipo:'tesoreria_aa',estado:'ERROR',fecha:fecha('26','08:32'),detalle:'rate limit'}, {tipo:'tesoreria_aa',estado:'ok',fecha:fecha('26','09:33'),detalle:''});},0,[],['rate limit','⚠️']);
+probar(d=>{d.registro.push({tipo:'tesoreria_aa',estado:'ERROR',fecha:fecha('26','08:32'),detalle:'rate limit'});},0,['⚠️ REVISAR','Falló la importación de tesoreria_aa: rate limit']);
+probar(d=>{d.ultimaPasada=fecha('28','05:00');},0,['La notebook no está procesando']);
+probar(d=>{d.errores.Drive='sin acceso';},0,['No se pudo leer Drive']);
+probar(d=>{d.retenidos.push({nombre:'retenido.xlsx',tipo:'bancos',fecha:fecha('28','06:08')});},0,['Archivo retenido: retenido.xlsx']);
+assert.equal(contexto._parteTangoAviso_('2026-09-28T08:46:00+00:00\n8 de 8').ok,8);
+assert.equal(contexto._parteGaliciaAviso_('Bot Galicia - 28/09/2026 05:48\nOK: no fallo ninguna empresa.').ok,true);
+console.log(`OK: ${casos} casos de checklist y lectura de partes; sin Google ni envío de mails.`);
+// Un ok de instalación no cuenta como importación; tampoco se acepta una fecha futura.
+probar(d=>{d.registro[0].tipo='sistema';},1,['La Sheet no importó lo de hoy']);
+probar(d=>{d.registro[0].fecha=fecha('28','08:00');},1,['La Sheet no importó lo de hoy']);
+probar(d=>{d.tangoParte.ok=7;d.tangoParte.fallas=['A cheques propios 2026-09-28.xlsx: timeout'];
+  const f=d.entradas.find(f=>f.nombre.startsWith('A cheques propios'));
+  f.nombre='A cheques propios 2026-09-25.xlsx';f.fecha=fecha('25','05:46');
+},1,['☐ Tango A: cheques propios: timeout · último archivo: 25/09 05:46','☑ Tango AA: las 4 fotos llegaron']);
+contexto.FUENTES_AUTOMATICAS.push('macro');
+probar(d=>{d.bancosPartes={macro:{fecha:fecha('28','05:49'),ok:true}};},0,['☑ Macro: 05:49 · movimientos hasta 25/09']);
+contexto.FUENTES_AUTOMATICAS.pop();
+console.log(`OK total: ${casos} casos de checklist.`);
