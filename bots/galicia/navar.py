@@ -353,55 +353,105 @@ class BotGaliciaNavar(BotGalicia):
             pass
 
     @staticmethod
-    def _rescatar_descarga(carpeta, anteriores, temporal, espera=30, estabilidad=2):
-        # El 28/09 falló intermitentemente save_as aunque el navegador había
-        # dejado el Excel completo. Sólo rescatamos un archivo nuevo e inequívoco.
+    def _es_guid_tmp(nombre):
+        return re.fullmatch(
+            r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp",
+            nombre, re.I) is not None
+
+    @staticmethod
+    def _limpiar_descargas_usuario(carpeta, limite):
+        # Descargas es compartida con la persona: no alcanza el nombre para borrar.
+        # Sólo limpiamos el formato observado de Galicia y con más de una semana.
+        import zipfile
+        from openpyxl import load_workbook
+
+        for archivo in carpeta.iterdir():
+            try:
+                if (not BotGaliciaNavar._es_guid_tmp(archivo.name)
+                        or not archivo.is_file() or archivo.stat().st_mtime >= limite
+                        or not zipfile.is_zipfile(archivo)):
+                    continue
+                with archivo.open("rb") as entrada:
+                    libro = load_workbook(entrada, read_only=True, data_only=True)
+                    try:
+                        es_galicia = ("Movimientos" in libro.sheetnames
+                                      and libro["Movimientos"]["A1"].value == "Fecha")
+                    finally:
+                        libro.close()
+                if es_galicia:
+                    archivo.unlink()
+            except Exception as e:
+                log("   Aviso: no limpié %s: %s" % (archivo, e))
+
+    @staticmethod
+    def _rescatar_descarga(carpeta, anteriores, temporal, espera=30, estabilidad=2,
+                          usuario=None, anteriores_usuario=None, clic=None):
+        # El 28/09 vimos que al cerrarse la página Chromium puede dejar el Excel
+        # en Descargas del usuario, fuera de downloads_path. No repetimos el login.
         import zipfile
 
+        carpetas = [(carpeta, anteriores, False)]
+        if usuario is not None:
+            carpetas.append((usuario, anteriores_usuario or set(), True))
         limite = time.monotonic() + espera
-        observado = None
-        estable_desde = None
-        detalle = "0 archivos nuevos"
+        observado = estable_desde = None
         while True:
             ahora = time.monotonic()
+            nuevos, detalles = [], []
+            lectura_fallida = False
+            for ruta, previos, estricta in carpetas:
+                try:
+                    candidatos = []
+                    for p in ruta.iterdir():
+                        if p.name in previos or not p.is_file():
+                            continue
+                        if estricta:
+                            if (not BotGaliciaNavar._es_guid_tmp(p.name)
+                                    or clic is None or p.stat().st_mtime <= clic):
+                                continue
+                        elif p.name.startswith("galicia_por_validar_"):
+                            continue
+                        candidatos.append(p)
+                    candidatos.sort(key=lambda p: p.name)
+                    nuevos.extend((p, estricta) for p in candidatos)
+                    detalles.append("%s: %d archivos nuevos (%s)" % (
+                        ruta, len(candidatos), ", ".join(p.name for p in candidatos)))
+                except OSError as e:
+                    lectura_fallida = True
+                    detalles.append("%s: no pude leer: %s" % (ruta, e))
+            if len(nuevos) > 1:
+                raise RuntimeError("Rescate: encontré %d archivos nuevos; no elijo uno. %s" %
+                                   (len(nuevos), "; ".join(detalles)))
             try:
-                nuevos = sorted(
-                    (p for p in carpeta.iterdir()
-                     if p.name not in anteriores
-                     and not p.name.startswith("galicia_por_validar_")
-                     and p.is_file()), key=lambda p: p.name)
-                if len(nuevos) > 1:
-                    raise RuntimeError(
-                        "Rescate en %s: encontré %d archivos nuevos (%s); no elijo uno." %
-                        (carpeta, len(nuevos), ", ".join(p.name for p in nuevos)))
-                if nuevos:
-                    candidato = nuevos[0]
+                if len(nuevos) == 1 and not lectura_fallida:
+                    candidato, es_usuario = nuevos[0]
                     tamano = candidato.stat().st_size
-                    identidad = (candidato.name, tamano)
+                    identidad = (str(candidato), tamano)
                     if identidad != observado:
-                        observado = identidad
-                        estable_desde = ahora
-                    detalle = "%s, %d bytes; todavía no se estabilizó" % identidad
+                        observado, estable_desde = identidad, ahora
+                    detalles.append("%s, %d bytes; todavía no se estabilizó" % identidad)
                     if ahora - estable_desde >= estabilidad:
                         if zipfile.is_zipfile(candidato):
                             shutil.copyfile(candidato, temporal)
+                            if es_usuario:
+                                try:
+                                    candidato.unlink()
+                                except OSError as e:
+                                    log("   Aviso: rescaté pero no pude borrar %s: %s" %
+                                        (candidato, e))
                             log("   La página se cerró al guardar; tomé el archivo que dejó "
                                 "el navegador (%s, %d bytes)" % identidad)
                             return
-                        detalle = "%s, %d bytes; no es zip válido" % identidad
+                        detalles[-1] = "%s, %d bytes; no es zip válido" % identidad
                 else:
                     observado = estable_desde = None
-                    detalle = "0 archivos nuevos"
             except OSError as e:
                 observado = estable_desde = None
-                detalle = "no pude leer o copiar el archivo: %s" % e
+                detalles.append("no pude leer o copiar el archivo: %s" % e)
             restante = limite - time.monotonic()
             if restante <= 0:
-                raise RuntimeError(
-                    "Rescate agotado: busqué un único archivo nuevo en %s, "
-                    "excluyendo los anteriores y galicia_por_validar_*; encontré %s." %
-                    (carpeta, detalle))
-            # La página puede estar cerrada: esta espera no usa Playwright.
+                raise RuntimeError("Rescate agotado: busqué un único archivo nuevo; %s." %
+                                   "; ".join(detalles))
             time.sleep(min(0.2, restante))
 
     def descargar_csv(self, page, carpeta_destino, nombre_empresa, timeout, ctx):
@@ -423,6 +473,12 @@ class BotGaliciaNavar(BotGalicia):
                     log("   Aviso: no pude borrar temporal viejo %s: %s" %
                         (antiguo.name, e))
 
+        usuario = Path.home() / "Downloads"
+        if usuario.is_dir() and usuario.resolve() != carpeta_temporales.resolve():
+            self._limpiar_descargas_usuario(usuario, limite_antiguos)
+        else:
+            usuario = None
+
         boton = self._buscar_boton_descarga(page, timeout)
         boton.click(timeout=timeout)
         captura(page, "menu_descarga")
@@ -430,7 +486,10 @@ class BotGaliciaNavar(BotGalicia):
 
         self._registrar_eventos_descarga(page)
         anteriores = {p.name for p in carpeta_temporales.iterdir() if p.is_file()}
+        anteriores_usuario = ({p.name for p in usuario.iterdir() if p.is_file()}
+                              if usuario is not None else set())
         with page.expect_download(timeout=timeout) as info:
+            clic = time.time()
             excel.click(timeout=timeout)
         descarga = info.value
         nombre_origen = self._validar_nombre_descarga(descarga.suggested_filename)
@@ -451,7 +510,9 @@ class BotGaliciaNavar(BotGalicia):
                 motivo = "no se pudo consultar: %s" % consulta_error
             log("   Falló guardar descarga de Galicia: %s; Playwright: %s" %
                 (e, motivo or "sin detalle"))
-            self._rescatar_descarga(carpeta_temporales, anteriores, temporal)
+            self._rescatar_descarga(
+                carpeta_temporales, anteriores, temporal, usuario=usuario,
+                anteriores_usuario=anteriores_usuario, clic=clic)
         self.validar_excel(temporal)
 
         # El archivo publicado lleva la fecha de la descarga. Una nueva corrida

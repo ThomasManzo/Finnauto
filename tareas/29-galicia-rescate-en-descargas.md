@@ -1,5 +1,5 @@
 # Tarea 29 — Galicia NAVAR: el rescate tiene que mirar la carpeta Descargas de Windows
-Estado: pendiente
+Estado: lista para revisión
 Rama: tarea/galicia-rescate-descargas
 
 ## Objetivo
@@ -85,5 +85,21 @@ No tocar `nucleo/`.
    que termine con `La página se cerró al guardar; tomé el archivo…` y `OK: 1`, y después dos más con OK.
 
 ## Qué hice
+
+- El rescate toma la foto previa de la carpeta del bot y de Downloads del usuario, si existe.
+  En Downloads exige GUID.tmp (también mayúsculas), nombre ausente en la foto y modificación
+  posterior al clic. Cuenta los candidatos entre ambas carpetas antes de elegir.
+- Mantiene los dos segundos de estabilidad, zip válido y validación del Excel antes de publicar.
+  Tras copiar desde Downloads borra el origen; si Windows no deja, avisa y continúa.
+- La limpieza de Downloads sólo borra GUID.tmp de más de siete días cuyo libro tenga la hoja
+  Movimientos y Fecha en A1. Otros archivos, libros y temporales recientes quedan intactos.
+- El error por espera agotada detalla cada carpeta y sus candidatos. Actualicé únicamente la
+  fila autorizada de la guía; no modifiqué nucleo ni el registro de eventos.
+- Pruebas con carpetas y Excel inventados: rescate y borrado desde Downloads, archivos previos,
+  nombre común, fecha anterior, candidatos en ambas carpetas, limpieza selectiva y borrado
+  impedido. Path.home está parcheado en todas las pruebas para no tocar Descargas reales.
+- Verificado: 40 pruebas OK, py_compile de ambos archivos y git diff --check limpio.
+  Sin dependencias nuevas. Falta la corrida real en frío con rescate y OK: 1, seguida de otras
+  dos con OK; no se probó Windows, banco ni Drive desde este entorno.
 
 ## Revisión
