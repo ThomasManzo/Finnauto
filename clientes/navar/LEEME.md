@@ -106,6 +106,28 @@ lo que cerró. Primer peso cobrado de finauto.
 **Hecho 29/09:** el mail diario ya es una checklist (tareas 32 y 33, instaladas y probadas con datos
 reales).
 
+**Principales 20 + último pago (29/09, pedido de NAVAR para el plan de regularización de Tango):**
+- **Solapa "Principales 20"** en la Sheet (armada a mano, fórmulas): los 20 clientes que más deben y
+  los 20 proveedores a los que más se les debe, **A y AA por separado** (4 bloques: A arriba, AA abajo;
+  clientes a la izquierda, proveedores a la derecha). Por cada uno: saldo, vencido, a vencer,
+  vencimiento impago más viejo y **último pago registrado**. Una fórmula `LET/MAP` por bloque sobre
+  Cuentas a Cobrar (B cliente, C empresa, F vto, J saldo) y Cuentas a Pagar (B, C, G vto, K saldo): si
+  se insertan columnas en esas listas, la solapa se rompe. **No insertar filas en la solapa**: el
+  29/09 alguien insertó una arriba del bloque AA y desalineó las fórmulas (corregido).
+- **Último pago**: tareas 34 y 36. La bajada de Tango trae ahora **9 fotos** (se sumó la tesorería de
+  A: consulta **19** de Live, "Finauto A tesorería", últimos 400 días, carpeta `Tesoreria A`; **no**
+  entra al Cash, que para A sale de los extractos). `lector/ultimos_pagos.py` arma la lista
+  **"Ultimos Pagos"** (una fila por empresa + tipo + razón social; ~1150 filas; la solapa tiene 1999:
+  el importador no agrega filas). En la API, `Cód. relacionado` trae `C`/`P` y el código real va
+  adelante de la descripción (`900001 - ...`): de eso se ocupó la 36. Validado 29/09: 80 de 80 contra
+  la lista y la lista contra el Excel crudo. "Sin pagos en el último año" (A) / "sin pagos registrados"
+  (AA) = ningún recibo/OP en la ventana, **según Tango**.
+- El mail diario cuenta 9 bajadas (`TANGO_BAJADAS` en `aviso_diario.gs`, tiene que coincidir con
+  `TOTAL_BAJADAS_DIARIAS` de `tango_live.py`). Apps Script actualizado el 29/09 (importador y aviso,
+  hash igual a `main`) y copia en `NAVAR - Datos/Scripts/`.
+- **PDF para mandar por mail**: `herramientas/principales20_pdf.py` (lee el export de la Sheet, 3
+  páginas). El del 28/09 no tiene la columna de último pago.
+
 **Pendiente, en orden:** método fijo por banco
 (checklist, diagnóstico único en el repo y ayudas comunes) antes de Macro, **esperando OK de Thomas** ·
 Macro (desbloqueo + claves nuevas) · BBVA (usuario propio) · `_SALDOS_` de Galicia a la Sheet · probar
