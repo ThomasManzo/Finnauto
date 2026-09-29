@@ -1,5 +1,5 @@
 # Tarea 34 — Último cobro de cada cliente y último pago a cada proveedor
-Estado: pendiente
+Estado: aprobada
 Rama: tarea/ultimos-pagos
 
 ## Objetivo
@@ -147,4 +147,159 @@ Sheet con fórmulas sobre las listas, como el resto de las pantallas.
 
 ## Qué hice
 
+- Rama creada desde `main` `5e3c9a7`, con la tarea 35 ya integrada.
+- Tango baja nueve archivos: tesorería de A usa consulta 19 y
+  `dias_atras.movimientos_tesoreria_A = 400`, con carpeta exclusiva `Tesoreria A/`.
+  AA conserva consulta 17, fechas vacías y la tolerancia a `Tesorería AA/`.
+  El parte y `--si-falta` usan nueve: 9/9 saltea, 8/9 y los partes viejos 8/8 reintentan.
+- Nuevo `lector/ultimos_pagos.py`: exige ambos archivos y valida sus encabezados antes
+  de escribir. Agrupa por empresa/tipo/razón social, conserva espacios internos y códigos
+  con ceros, desempata por número de comprobante y resume descartes y fechas por archivo.
+  No suma importes: sólo usa su signo para descartar negativos. También descarta importes
+  no legibles, fechas no válidas y comprobantes vacíos, dejando el motivo en el resumen.
+  Las salidas se generan junto al archivo de A; el Excel se reemplaza de una vez.
+- Vigilante: `ultimos_pagos` toma el último `.xlsx` por modificación de cada carpeta,
+  sin subcarpetas ni temporales `.parte.xlsx`. Si falta una empresa no corre. Usa
+  `mover_salidas` y sus controles existentes. Para esta fuente la firma incluye también
+  modificación: una corrección del mismo tamaño debe volver a leerse. La fuente de caja
+  `tesoreria_aa` no cambió.
+- Importador: nueva entrada, menú y orden automático; reemplaza sólo la marca
+  `Tango tesorería`, conserva otras filas, fecha como fecha, códigos/comprobantes como texto.
+- Con autorización expresa en este chat, ajusté **sólo el conteo de importadores** de la
+  prueba existente `lector/pruebas/probar_importador_filtros.cjs`: usa el largo de
+  `ORDEN_AUTO` en lugar del número fijo anterior. No cambié su prueba del aviso.
+
+### Validación local (sin red, credenciales ni datos reales)
+
+- `python -m py_compile ingestas/tango_live.py lector/ultimos_pagos.py clientes/navar/herramientas/vigilante.py`: OK.
+- `python -m unittest ingestas.test_tango_live lector.pruebas.test_ultimos_pagos lector.pruebas.test_cheques_en_cartera lector.pruebas.test_extractos_tolerantes`:
+  **42 pruebas OK**. Las 19 de Tango incluyen fechas de A/AA, carpetas separadas y partes
+  9/9, 8/9 y 8/8. Las 7 nuevas del lector/vigilante cubren los casos de la consigna y
+  ejecutan lectores reales sobre Excel inventados, publicando en una carpeta temporal.
+  Un nuevo A dispara sólo `ultimos_pagos`; un nuevo AA dispara éste y `tesoreria_aa`.
+  Repetir sin cambios no corre; cambiar la modificación del mismo archivo sí.
+- `--simular --hoy 2026-09-29 --destino /private/tmp/tango34-simulacion`: nueve bajadas,
+  A desde 25/08/2025, AA sin fechas. No consulta Tango ni escribe archivos.
+- `node lector/pruebas/probar_importador_ultimos_pagos.cjs`: OK (marca, manuales, otros
+  orígenes, texto, fecha a medianoche de Buenos Aires, menú y repetición sin duplicados).
+- `node lector/pruebas/probar_importador_zona_horaria.cjs`: OK.
+- `probar_importador_filtros.cjs`: pasan las comprobaciones del importador, incluido el
+  nuevo conteo. Su última prueba del **aviso** falla buscando la frase `NO CUADRÓ`;
+  comprobado el mismo fallo en `main` sin estos cambios. El aviso ahora dice
+  `Falló la importación de ... VERIFICACION_NO_CUADRA`. Es una expectativa previa
+  desactualizada, fuera del ajuste autorizado del conteo; queda para el responsable del aviso.
+- El vigilante emite advertencias previas `ResourceWarning` por sus `open(ESTADO)` sin
+  contexto; no afectan estas pruebas y no se modificaron. Sin dependencias nuevas.
+
+### Antes de instalar / límites
+
+- **Pendiente importante fuera del alcance:** `aviso_diario.gs` compara literalmente
+  `parte.ok === 8 && parte.total === 8`. Con 9/9, el mail puede decir "parte incompleto
+  (9 de 9)" y tampoco enumera tesorería de A. **Hay que adaptar el aviso antes de desplegar
+  este cambio**. No se tocó porque la consigna lo prohíbe expresamente. El instalador y
+  algunos documentos anteriores también conservan textos de "ocho"; no afectan el reloj,
+  pero conviene actualizarlos junto al despliegue (fuera de los archivos permitidos).
+- Crear en la Sheet **Ultimos Pagos**, encabezados en **fila 1**, columnas A:G:
+  `Empresa | Tipo | Codigo | Razon Social | Fecha Ultimo Pago | Comprobante | Origen`.
+  Sin fórmulas. Dar formato fecha a E, texto a C/F y suficientes filas para todos los
+  relacionados más los manuales (el importador no amplía la cantidad de filas).
+  No dejar vistas de filtro guardadas; mantiene el requisito de Sheets API habilitada.
+- Tras integrar: actualizar notebook y pegar el importador revisado en Apps Script;
+  probar la consulta 19, la bajada 9/9, la publicación de las dos empresas, el registro
+  de importación y que A no entre en la caja de AA. Nada de eso se probó contra servicios
+  reales aquí. No hubo merge, push, cambios en Drive ni en la Sheet.
+- La ventana de A limita la historia: no aparecer en esta lista significa "sin pago
+  reconocido en el archivo leído", no "nunca pagó". El ranking Principales 20 queda para
+  la Sheet como indica la consigna. No se tocó `lector/tesoreria_aa.py`.
+
+
+### Correcciones de la revisión del 29/09/2026
+
+- Resueltos los dos puntos de Revisión. `validar_tesoreria` admite varias clases
+  por tipo: REC acepta Cobros u Otros movimientos de bancos y carteras; OPF acepta
+  Pagos u Otros movimientos de bancos y carteras. Los demás pares mantienen su control.
+  Las clases desconocidas siguen con el mismo tratamiento, sin tocar `TRADUCCIONES`.
+- Prueba nueva con datos inventados: A exporta los dos pares admitidos y el lector de
+  últimos pagos los descarta por tipo/clase fuera de alcance. REC como Pagos sigue
+  fallando sin escribir archivo, tanto para A como para AA.
+- Aviso diario adaptado dentro del alcance ampliado: `TANGO_BAJADAS = 9`, con comentario
+  de sincronización con Python; A enumera cinco fotos, incluida tesorería, y AA cuatro.
+  El mapa lee `Tesoreria A` como `tesoreria_a`, distinto de caja AA. Ese tipo sólo se
+  agrega a la búsqueda de fotos de Tango: no se agrega a fuentes de bancos automáticos
+  ni modifica controles de caja. Texto del instalador actualizado a nueve fotos.
+- El bloqueo del aviso 8/8 documentado arriba queda **resuelto por esta corrección**.
+  Para instalar hay que pegar también el `aviso_diario.gs` actualizado junto al
+  importador y actualizar la notebook; siguen pendientes las pruebas reales de Live,
+  Windows y Sheet. No se enviaron mails ni se modificaron servicios reales.
+- Validación: compilación de `ingestas/tango_live.py` OK; **27 pruebas Python OK** con
+  `python -m unittest ingestas.test_tango_live lector.pruebas.test_ultimos_pagos`.
+  `node lector/pruebas/probar_aviso_bajadas.cjs` OK: 9/9 tilda ambas empresas y nombra
+  tesorería A; 8/9 con falla de tesorería A desmarca sólo A y muestra su último archivo;
+  8/8 antiguo no confirma completitud. También se prueba la lectura del mapa de Drive
+  con dobles y la cantidad dinámica de fotos por empresa. `git diff --check` OK.
+- La prueba antigua `probar_importador_filtros.cjs` sigue fallando únicamente en su
+  expectativa final `NO CUADRÓ`, ya documentada; se volvió a comprobar y no se modificó,
+  tal como pidió Revisión. Continúan las advertencias previas del vigilante sobre
+  archivos de estado sin cerrar. Sin dependencias nuevas, merge ni push.
+
 ## Revisión
+
+**29/09/2026 (Claude): vuelve a `en curso`.** El lector, el vigilante, el importador y las pruebas
+están bien (carpetas separadas, las dos empresas obligatorias, marca `Tango tesorería`, fecha como
+fecha). Faltan dos cosas **antes de mergear**; sin ellas, instalar esto rompe la mañana.
+
+### 1. La bajada de A fallaría todos los días (`validar_tesoreria`)
+
+Comprobado con el export real de A (16/09), mirando solo los últimos 400 días:
+**27 renglones** traen un Tipo con otra Clase que la que espera `validar_tesoreria`:
+
+| Tipo | Clase que trae A | Renglones en la ventana |
+|---|---|---|
+| `OPF` | Otros movimientos de bancos y carteras | 23 |
+| `REC` | Otros movimientos de bancos y carteras | 4 |
+
+Hoy eso lanza "Tipo/Clase incompatibles" y **no escribe el archivo de A**: el parte quedaría
+`8 de 9` todos los días y `--si-falta` repetiría la bajada completa seis veces cada mañana. En AA
+esos pares no aparecen, por eso nunca saltó.
+
+Qué hacer: que `esperado` admita **varias clases por tipo**: `REC` → Cobros **u** Otros movimientos
+de bancos y carteras; `OPF` → Pagos **u** Otros movimientos de bancos y carteras. El resto igual (un
+REC que venga como "Pagos" tiene que seguir frenando). Pruebas: A con esos dos pares escribe el
+archivo; un REC como "Pagos" sigue fallando. `lector/ultimos_pagos.py` ya los deja afuera ("tipo o
+clase fuera de alcance"), que es lo correcto: no son cobros de un cliente ni pagos a un proveedor.
+
+Para tener en cuenta (no cambiar): en la ventana también hay clases "Depósitos" (324) y "Otros
+movimientos" (15) cuyo código no está en `TRADUCCIONES`; `preparar_filas` ya las saca del archivo y
+quedan visibles en el conteo. Está bien así.
+
+### 2. Adaptar el mail diario a 9 bajadas (se suma `aviso_diario.gs` a los archivos permitidos)
+
+Lo que marcaste en "Antes de instalar" es correcto y va en esta misma tarea, porque se instala
+junto. **Archivos permitidos que se agregan**: `clientes/navar/herramientas/aviso_diario.gs` (solo la
+parte de Tango de `_armarAviso_` y el `mapa` de carpetas de `_leerDatosAviso_`),
+`lector/pruebas/probar_aviso_bajadas.cjs` y `clientes/navar/herramientas/instalar_tango.ps1` (solo
+textos que digan "ocho").
+
+- El "todo llegó" no puede comparar con 8 fijo: una constante al principio (`TANGO_BAJADAS = 9`,
+  comentada: "tiene que coincidir con `TOTAL_BAJADAS_DIARIAS` de `ingestas/tango_live.py`") y
+  `parte.ok === parte.total && parte.total === TANGO_BAJADAS`.
+- `fotos.A` suma `"movimientos tesoreria"` (se muestra como "tesorería", igual que en AA).
+- El `mapa` de carpetas suma `"Tesoreria A"` para que el aviso encuentre el archivo de A cuando
+  hay que decir qué foto falta. Revisá que el tipo que le pongas no cambie otros controles del aviso
+  (en qué listas se usa `f.tipo`); el archivo de A **no** es caja de AA.
+- "las 4 fotos llegaron" → la cantidad real de esa empresa (`fotos[empresa].length`: 5 en A, 4 en AA).
+- Pruebas en `probar_aviso_bajadas.cjs`: parte de hoy `9 de 9` → las dos casillas tildadas y A
+  nombra la tesorería; `8 de 9` con falla `A movimientos tesoreria ...` → A sin tildar, diciendo que
+  falta la tesorería; un `8 de 8` de hoy (código viejo) → no se muestra como completo.
+- La prueba vieja de `probar_importador_filtros.cjs` que busca "NO CUADRÓ" queda como está (no es de
+  esta tarea); anotala en "Qué hice" si sigue fallando.
+
+Cuando esté, `Estado: lista para revisión` otra vez, con lo que hiciste agregado al final de "Qué hice".
+
+**29/09/2026 (Claude), segunda pasada: aprobada.** Las dos correcciones están: `validar_tesoreria`
+admite REC/OPF con "Otros movimientos de bancos y carteras" (los 27 renglones reales de A ya no
+frenan el archivo) y un REC como "Pagos" sigue frenando; el aviso usa `TANGO_BAJADAS = 9`, lista la
+tesorería en Tango A y el tipo `tesoreria_a` solo se usa para buscar la foto (no entra en caja ni en
+bancos). 27 pruebas de Python OK en la Mac; las `.cjs` no se pudieron correr acá (no hay Node): se
+leyó la prueba y se toma el OK de Codex. Falta la prueba real: notebook (9 de 9, archivo en
+`Tesoreria A`), Sheet (lista "Ultimos Pagos", importador y aviso pegados en Apps Script).

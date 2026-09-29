@@ -130,7 +130,8 @@ contexto.Logger = {log() {}};
 contexto.PropertiesService = {getDocumentProperties: () => ({getProperty: () => null, setProperty: (...p) => firmas.push(p)})};
 assert.throws(() => contexto._importarManual_('tango'), /VERIFICACION_NO_CUADRA/);
 contexto.importarLoNuevo();
-assert.equal(registros.length, 6);
+// Una importación manual más todas las fuentes automáticas configuradas.
+assert.equal(registros.length, 1 + contexto.ORDEN_AUTO.length);
 assert.ok(registros.every(r => r[2] === 'ERROR' && r[3].includes('VERIFICACION_NO_CUADRA')));
 assert.equal(firmas.length, 0);
 console.log('OK: lista vacía, cola mal borrada, Registro manual/automático y firma sin avance.');

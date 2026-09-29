@@ -25,6 +25,8 @@ Cada bot / persona deja su archivo en su carpeta y nada más; el vigilante sabe 
                              → lector/deuda_impositiva.py
     Tesorería AA/            Tango: movimientos de tesorería de AA (la operación en efectivo), el más nuevo
                              → lector/tesoreria_aa.py → Movimientos (Origen "Tango AA")
+    Tesoreria A/ y Tesoreria AA/  ambos exports (sin subcarpetas), último cobro/pago por relacionado
+                             → lector/ultimos_pagos.py → Ultimos Pagos (no es caja AA)
     _para la Sheet/          lo que generan los lectores (para_pegar_*.xlsx y resumen_*.md).
                              De acá los levanta el disparador de la Sheet. Nadie toca esta carpeta.
 
@@ -334,6 +336,15 @@ def fuentes(hoy):
     F.append({"nombre": "tesoreria_aa", "archivos": tes,
               "cmd": lambda: [PYTHON, os.path.join(BASE_REPO, "lector", "tesoreria_aa.py"), "--archivo", tes_nuevo] + H,
               "salidas": lambda: os.path.dirname(tes_nuevo)})
+    # A nunca entra en tesoreria_aa. Para la lista conjunta deben estar las dos empresas.
+    tes_a = [x for x in archivos_de(os.path.join(DRIVE, "Tesoreria A"), recursivo=False)
+             if x[0].lower().endswith(".xlsx") and not x[0].lower().endswith(".parte.xlsx")]
+    tes_aa = [x for x in tes if x[0].lower().endswith(".xlsx") and not x[0].lower().endswith(".parte.xlsx")]
+    ultimos = [max(tes_a, key=lambda x: x[1]), max(tes_aa, key=lambda x: x[1])] if tes_a and tes_aa else []
+    F.append({"nombre": "ultimos_pagos", "archivos": ultimos, "mirar_fecha": True,
+              "cmd": lambda: [PYTHON, os.path.join(BASE_REPO, "lector", "ultimos_pagos.py"),
+                              "--a", ultimos[0][0], "--aa", ultimos[1][0]] + H,
+              "salidas": lambda: os.path.dirname(ultimos[0][0])})
     imp = archivos_de(os.path.join(DRIVE, "Impuestos"), recursivo=False)
     imp_nuevo = max(imp, key=lambda x: x[1])[0] if imp else None
     F.append({"nombre": "impuestos", "archivos": imp,
@@ -364,6 +375,9 @@ def main():
         if not f["archivos"]:
             continue
         fa = firma(f["archivos"])
+        if f.get("mirar_fecha"):
+            # Una nueva fecha de pago puede ocupar los mismos bytes que la anterior.
+            fa += "|" + "|".join(str(os.stat(r).st_mtime_ns) for r, _ in f["archivos"])
         if fa == estado.get(n) and a.forzar != n:
             continue
         mas_nuevo = max(m for _, m in f["archivos"])

@@ -16,6 +16,8 @@
 var DESTINATARIOS = "finanzasnavar@gmail.com,charlesapettit@gmail.com,apriscillaharrison@gmail.com,maria.vazquez1613@gmail.com";
 var AVISO_ZONA = "America/Argentina/Buenos_Aires";
 var AVISO_DIA = 24 * 60 * 60 * 1000;
+// Tiene que coincidir con TOTAL_BAJADAS_DIARIAS de ingestas/tango_live.py.
+var TANGO_BAJADAS = 9;
 // Estas fuentes ya llegan solas. Al automatizar otro banco, se lo agrega acá para
 // que el aviso deje de pedir una carga manual y pase a revisar la notebook.
 var FUENTES_AUTOMATICAS = ["tango", "tesoreria_aa", "galicia"];
@@ -172,7 +174,7 @@ function _leerDatosAviso_(ahora) {
     var carpetas = DriveApp.getFoldersByName(CARPETA_RAIZ);
     if (!carpetas.hasNext()) throw new Error("No encontré " + CARPETA_RAIZ);
     raiz = carpetas.next();
-    var mapa = {"Bancos": "bancos", "Cuentas a cobrar": "tango", "Cuentas a pagar": "tango",
+    var mapa = {"Tesoreria A": "tesoreria_a", "Bancos": "bancos", "Cuentas a cobrar": "tango", "Cuentas a pagar": "tango",
       "Cheques": "tango", "Deuda bancaria": "deuda", "Impuestos": "impuestos",
       "Tesorería AA": "tesoreria_aa", "Tesoreria AA": "tesoreria_aa"};
     var sub = raiz.getFolders();
@@ -315,7 +317,7 @@ function _armarAviso_(ahora, datos) {
       .sort(function (a, b) { return b.fecha - a.fecha; })[0];
   }
   var entradas = datos.entradas || [], parte = datos.tangoParte;
-  var fotos = {A: ["cobranzas", "pagos", "cheques terceros", "cheques propios"],
+  var fotos = {A: ["cobranzas", "pagos", "cheques terceros", "cheques propios", "movimientos tesoreria"],
     AA: ["cobranzas", "pagos", "cheques terceros", "movimientos tesoreria"]};
   var fallas = parte && parte.fallas || [];
   ["A", "AA"].forEach(function (empresa) {
@@ -324,7 +326,7 @@ function _armarAviso_(ahora, datos) {
         fecha(parte && parte.fecha) + " · revisar la notebook");
       return;
     }
-    if (parte.ok === 8 && parte.total === 8 && !fallas.length) {
+    if (parte.ok === parte.total && parte.total === TANGO_BAJADAS && !fallas.length) {
       poner(true, "Tango " + empresa + ": " + fotos[empresa].join(", ").replace("movimientos tesoreria", "tesorería") +
         " (" + _fechaAviso_(parte.fecha, "HH:mm") + ")");
       return;
@@ -333,7 +335,7 @@ function _armarAviso_(ahora, datos) {
     fotos[empresa].forEach(function (foto) {
       var prefijo = (empresa + " " + foto + " ").toLowerCase();
       var archivo = ultimo(entradas.filter(function (f) {
-        return ["tango", "tesoreria_aa"].indexOf(f.tipo) >= 0 && f.nombre.toLowerCase().indexOf(prefijo) === 0;
+        return ["tango", "tesoreria_a", "tesoreria_aa"].indexOf(f.tipo) >= 0 && f.nombre.toLowerCase().indexOf(prefijo) === 0;
       }));
       var falla = fallas.filter(function (f) { return f.toLowerCase().indexOf(prefijo) === 0; })[0];
       if (falla || errores.Drive || !archivo || _fechaNombreAviso_(archivo.nombre) !== hoy) {
@@ -346,7 +348,7 @@ function _armarAviso_(ahora, datos) {
     if (!faltan.length && (!fallas.length || fallas.some(function (f) { return !/^(A|AA)\s/i.test(f); })))
       faltan.push("parte incompleto (" + parte.ok + " de " + parte.total + "); revisar la notebook");
     poner(!faltan.length, "Tango " + empresa + ": " + (faltan.length ? faltan.join("; ") :
-      "las 4 fotos llegaron (" + _fechaAviso_(parte.fecha, "HH:mm") + ")"));
+      "las " + fotos[empresa].length + " fotos llegaron (" + _fechaAviso_(parte.fecha, "HH:mm") + ")"));
   });
   var bancos = {}, arqueo = "";
   (datos.saldos || []).forEach(function (r) {
