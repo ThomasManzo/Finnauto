@@ -1,5 +1,5 @@
 # Tarea 39 — El mail dice "llegó pero no se pudo leer" en vez de "no se actualiza"
-Estado: en curso (la escribe Claude: Codex sin cupo desde la 37)
+Estado: aprobada (mergeada e instalada en Apps Script el 01/10/2026)
 Rama: tarea/aviso-ilegibles
 
 ## Objetivo
@@ -42,4 +42,21 @@ siguen sin leerse. `aviso_diario.gs` no lo mira (la tarea 32 sacó el detalle t�
 
 ## Qué hice
 
+- `_ilegiblesAviso_`: lee los renglones `- no pude leer <banco>/<archivo>: <motivo>` del resumen del
+  lector y saca el nombre técnico del error.
+- `_leerDatosAviso_`: nueva lectura "Ilegibles" del `resumen_bancos_*.md` más nuevo de
+  `_para la Sheet` (si falla, va a ⚠️ como las demás).
+- `_armarAviso_`: banco manual atrasado con un ilegible → la línea ❌ dice qué archivo llegó y por qué no
+  se leyó, en vez de "subir a mano"; banco al día o automático con un ilegible → ⚠️ REVISAR; ilegible de
+  un banco que no está en Saldos Bancarios → ⚠️ REVISAR.
+- Pruebas: lectura del renglón y los cuatro casos, más dos archivos del mismo banco. Todo el archivo de
+  pruebas OK con el Node de la app de ChatGPT.
+- Instalado en Apps Script (el editor tenía exactamente la versión de `main`, incluido el cambio de las
+  nueve bajadas del otro chat) y probado con datos reales del 01/10 en "Ver el aviso de hoy (sin
+  mandar)": `☐ Corrientes: llegó «Res_130559 NAVAR SA - 15 AL 30 SEPTIEMBRE 2026.pdf» pero no se pudo
+  leer (no se reconocieron movimientos ni saldos; …) · avisar a finauto · último extracto leído: 16/09`.
+
 ## Revisión
+
+**Claude, 01/10/2026.** Escrita y revisada por Claude (Codex sin cupo). No toca horarios ni
+destinatarios. Aprobada.
