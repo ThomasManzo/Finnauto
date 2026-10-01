@@ -89,6 +89,12 @@ lo que cerró. Primer peso cobrado de finauto.
   el mail). Confirmar siempre en Ejecuciones qué corrió.
 - Los `.gs` al día siguen en `NAVAR - Datos/Scripts/` (`*.gs.txt`).
 
+**01/10/2026 — extractos que llegan y no se leen.** Banco de Corrientes mandó el resumen en otro formato
+("RESUMEN A PEDIDO") y el lector lo salteó en silencio; el mail decía "subir a mano". Arreglado: el
+lector lee los dos formatos (tarea 38) y el mail ahora dice **"llegó «archivo» pero no se pudo leer
+(motivo) · avisar a finauto"** para cualquier banco (tarea 39). Si aparece esa línea, el archivo está
+en Drive: hay que enseñarle al lector el formato, no volver a subirlo.
+
 **Bancos:**
 - **Galicia**: automático y cerrado (ver abajo, 28/09).
 - **Macro**: **bloqueado** (28/09) y **con claves expuestas**. En un diagnóstico, las claves se
