@@ -131,6 +131,10 @@ function onOpen() {
     .addItem("Instalar aviso diario 07:30", "instalarAvisoDiario")
     .addItem("Quitar aviso diario", "quitarAvisoDiario")
     .addSeparator()
+    .addItem("Ver el resumen semanal (sin mandar)", "resumenSemanalPrueba")    // resumen_semanal.gs
+    .addItem("Guardar foto semanal ahora", "guardarFotoSemanal")
+    .addItem("Instalar resumen semanal (lunes 08:00)", "instalarResumenSemanal")
+    .addSeparator()
     .addItem("Armar solapa Cash (Cash, Semanal, Mensual)", "armarCash")
     .addItem("Armar solapa Plan (pisa las decisiones cargadas)", "armarPlan")
     .addItem("Arreglar los desplegables (Origen, Banco, Categoria)", "arreglarValidaciones")   // crear_cash.gs

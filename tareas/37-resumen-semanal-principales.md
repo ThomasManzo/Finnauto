@@ -1,5 +1,5 @@
 # Tarea 37 — Resumen semanal de principales clientes y proveedores (foto + mail de los lunes)
-Estado: pendiente
+Estado: aprobada
 Rama: tarea/resumen-semanal
 
 ## Objetivo
@@ -109,4 +109,48 @@ Decisiones tomadas con Thomas (29/09/2026):
 
 ## Qué hice
 
+**La escribió Claude, no Codex** (29/09/2026: Codex sin margen, pedido de Thomas).
+
+- `clientes/navar/herramientas/resumen_semanal.gs` (nuevo). Capa fina de Google (`resumenSemanal`,
+  `resumenSemanalPrueba`, `guardarFotoSemanal`, `instalarResumenSemanal`, `quitarResumenSemanal`) que
+  llama a funciones con la Sheet y el "ahora" como parámetros (`_mandarResumenSemanal_`,
+  `_verResumenSemanal_`, `_guardarFotoDeHoySemanal_`), y funciones puras para el cálculo
+  (`_calcularFotoSemanal_`) y el texto (`_armarResumenSemanal_`). Columnas por encabezado (sin tildes
+  ni mayúsculas, en cualquier orden); nombres con sufijo `Semanal` para no chocar con los otros `.gs`
+  del proyecto. Usa `DESTINATARIOS` del aviso y `_registrar_` del importador (deja ok/ERROR en Registro).
+- Foto: agrega a "Principales 20 · historial" (la crea con encabezado si no existe); si ya hay filas
+  del mismo día las borra (de abajo hacia arriba) y reescribe; agranda la hoja si hace falta. La foto
+  anterior es la más reciente con fecha menor a hoy.
+- Mail: por bloque, total de los 20 y vencido con diferencia; los 3 que más bajaron y subieron su
+  vencido (umbral $1 para no listar redondeos); entraron/salieron o "Los mismos 20"; sección "sin
+  pagos registrados"; pie. Diferencias de menos de $50 mil se muestran como "sin cambios". PDF: export
+  de la solapa por `gid`, apaisado, con el token del script; si falla, sale sin adjunto y lo dice.
+- Disparador: lunes `atHour(8).nearMinute(15)` → entre 08:00 y 08:30 de Buenos Aires.
+- `importar_cashflow.gs`: solo los tres ítems del menú, en un bloque propio.
+- `lector/pruebas/probar_resumen_semanal.cjs` (nuevo): 9 grupos de casos con una Sheet falsa en
+  memoria (todo lo que pide Comprobaciones, más: tope de 20 con empates, nota de crédito que resta y
+  no cuenta como "más viejo", vencimiento el mismo día = no vencido, fechas como texto, vista previa
+  que no manda ni guarda, el menú apunta a funciones que existen).
+
+Cómo se probó:
+- Node: el de la app de ChatGPT (`/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node`,
+  v24), porque la Mac no tiene Node instalado. `probar_resumen_semanal.cjs`: todo OK.
+  `probar_aviso_bajadas`, `probar_importador_ultimos_pagos`, `probar_importador_zona_horaria`,
+  `probar_volcado_fechas`: OK. `probar_importador_filtros`: falla solo en la vieja expectativa
+  "NO CUADRÓ" del aviso, igual que en `main` (ya anotado en la tarea 34); no es de esta tarea.
+- **Con datos reales** (export de la Sheet con la bajada del 28/09): `_calcularFotoSemanal_` da los
+  mismos totales que la solapa y que la validación contra Tango de ese día: clientes A $341,0 M /
+  vencido $163,2 M; AA $88,3 M / $72,2 M; proveedores A $580,3 M / $491,4 M; AA $167,5 M / $149,5 M.
+- Sin probar acá: la exportación real a PDF, el envío real y el disparador real.
+
+Para instalar: pegar `resumen_semanal.gs` como archivo nuevo del proyecto y el `importar_cashflow.gs`
+nuevo; recargar la Sheet; "Ver el resumen semanal (sin mandar)"; "Guardar foto semanal ahora" (foto
+inicial); "Instalar resumen semanal". La primera vez que se corra algo del menú, Google va a pedir
+permiso nuevo para "conectarse a un servicio externo" (lo usa la exportación a PDF): hay que
+aceptarlo, porque el disparador del lunes no puede pedirlo.
+
 ## Revisión
+
+**30/09/2026 (Claude): aprobada con OK de Thomas.** La escribió Claude (no hubo segundo par de ojos
+de Codex): se compensó con las pruebas de arriba y la corrida sobre datos reales. Falta la prueba
+real en la Sheet (vista previa, permiso nuevo, foto inicial, disparador).
