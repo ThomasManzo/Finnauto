@@ -1,5 +1,5 @@
 # Tarea 38 — Corrientes: leer el formato "RESUMEN A PEDIDO"
-Estado: en curso (la escribe Claude: Codex sin cupo desde la 37)
+Estado: lista para mergear (la escribió y revisó Claude; falta el OK de Thomas)
 Rama: tarea/corrientes-a-pedido
 
 ## Objetivo
@@ -68,5 +68,22 @@ Total ret. Imp. Ley 25.413 s/débitos: 15/09/26 al 30/09/26 30.18del
    cambia cualquier archivo (Galicia cambia todos los días), así que Corrientes entra solo.
 
 ## Qué hice
+
+- `leer_pdf_corrientes`: si el formato de siempre no encuentra movimientos y el texto tiene
+  `SALDO INICIAL`, llama a `_corrientes_a_pedido`. El formato viejo no cambia.
+- `_corrientes_a_pedido`: lee solo entre `SALDO INICIAL` y `SALDO FINAL`; cada línea es fecha +
+  importe + concepto + saldo, y lo que queda antes de la fecha se suma al concepto. El signo sale del
+  salto de saldo. Si el salto no coincide con el importe, o el último saldo no es el `SALDO FINAL`,
+  da error y el archivo no se lee. La cuenta sale de `130559/1` si no está al principio. Deja una
+  nota "cadena de saldos OK" como Macro.
+- `lector/pruebas/test_corrientes_a_pedido.py`: 4 casos con texto inventado (formato nuevo con
+  débitos, crédito y concepto partido; cadena que no cierra; saldo final distinto; formato viejo).
+  Con las pruebas existentes de lectores: 30 OK.
+- **Con el PDF real en la Mac** (`Res_130559 … 15 AL 30 SEPTIEMBRE 2026.pdf`): cuenta 130559, 8
+  movimientos del 15/09 al 30/09, todos débitos (suman 26.619,50, igual al total de DEBITOS del
+  resumen), cadena de saldos OK hasta el saldo final −45.324.830,66. Los dos PDF viejos de Corrientes
+  se siguen leyendo igual (137 y 1 movimientos).
+- No cubierto: un resumen "A PEDIDO" **sin** movimientos en el período (solo saldo inicial = final)
+  sigue sin dar saldo, como antes con el formato viejo.
 
 ## Revisión

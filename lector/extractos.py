@@ -381,7 +381,59 @@ def leer_pdf_corrientes(ruta):
             r'^(\d\d/\d\d/\d\d)\s+(.*?)\s+(\S+)\s+(Db|Cr)\s+(' + NUM_US + r')\s+(' + NUM_US + r')(\S*)\s*$', txt, re.M):
         v = _us(imp) * (1 if dh == "Cr" else -1)
         movs.append(_mov(_fecha_ddmmyy(fe), con, v, _us(sal), cuenta, "pdf", ref=ref if ref != "0" else None))
-    return {"cuenta": cuenta, "movimientos": movs, "archivo": os.path.basename(ruta)}
+    nota = ""
+    # Si el formato de siempre no encontró nada, puede ser el "RESUMEN A PEDIDO" (desde 30/09/2026).
+    if not movs and "SALDO INICIAL" in txt:
+        cuenta, movs, nota = _corrientes_a_pedido(txt, cuenta)
+    salida = {"cuenta": cuenta, "movimientos": movs, "archivo": os.path.basename(ruta)}
+    if nota:
+        salida["nota"] = nota
+    return salida
+
+
+def _corrientes_a_pedido(txt, cuenta):
+    """Formato "RESUMEN A PEDIDO" de Banco de Corrientes (lo genera GeneXus).
+
+    A diferencia del resumen de siempre, la línea NO dice si es débito o crédito, y al sacar el texto
+    del PDF el importe queda pegado al concepto:
+        15/09/26 9.60Imp. ley 25413 s/debitos -45,298,220.76
+    y a veces un pedazo del concepto queda ANTES de la fecha ("DENOMINACION CTA29/09/26 ...").
+    El signo se saca de la cadena de saldos: saldo de la línea menos saldo anterior. Si el salto no
+    coincide con el importe, o el último saldo no es el SALDO FINAL, el archivo NO se lee: es preferible
+    pedir el extracto de nuevo antes que cargar un movimiento con el signo inventado.
+    """
+    if cuenta == "?":
+        m = re.search(r'(\d{6})/\d\b', txt)
+        cuenta = m.group(1) if m else "?"
+    ini = re.search(r'SALDO INICIAL\s+(' + NUM_US + ')', txt)
+    fin = re.search(r'SALDO FINAL\s+(' + NUM_US + ')', txt)
+    if not ini or not fin:
+        raise ValueError("Corrientes (resumen a pedido): falta el SALDO INICIAL o el SALDO FINAL")
+    # Solo el bloque de movimientos: después hay totales de impuestos con fechas que no son movimientos.
+    bloque = txt[ini.end():fin.start()]
+    linea_mov = re.compile(r'^(.*?)(\d\d/\d\d/\d\d) (' + NUM_US + r')(.*?)\s+(' + NUM_US + r')\s*$')
+    saldo = inicial = _us(ini.group(1))
+    movs = []
+    for linea in bloque.split("\n"):
+        m = linea_mov.match(linea.strip())
+        if not m:
+            continue
+        antes, fe, imp, con, sal = m.groups()
+        importe, nuevo = _us(imp), _us(sal)
+        salto = round(nuevo - saldo, 2)
+        if abs(abs(salto) - importe) >= 0.01:
+            raise ValueError("Corrientes (resumen a pedido): la cadena de saldos no cierra el %s (%s): "
+                             "importe %s, salto de saldo %s" % (fe, con.strip(), _m(importe), _m(salto)))
+        concepto = " ".join(p for p in (con.strip(), antes.strip()) if p)
+        movs.append(_mov(_fecha_ddmmyy(fe), concepto, salto, nuevo, cuenta, "pdf"))
+        saldo = nuevo
+    final = _us(fin.group(1))
+    if abs(saldo - final) >= 0.01:
+        raise ValueError("Corrientes (resumen a pedido): el último saldo leído (%s) no es el SALDO FINAL (%s)"
+                         % (_m(saldo), _m(final)))
+    nota = "resumen a pedido · cadena de saldos OK: inicial %s, movimientos %s, final %s" % (
+        _m(inicial), _m(sum(x["importe"] for x in movs)), _m(final))
+    return cuenta, movs, nota
 
 
 # ================================================================== NACIÓN (escaneo → OCR)
