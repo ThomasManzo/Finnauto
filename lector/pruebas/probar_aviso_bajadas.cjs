@@ -182,3 +182,16 @@ probar(d=>{d.ilegibles=[{banco:'itau',archivo:'Nuevo.pdf',motivo:'formato descon
 probar(d=>{d.saldos[1].fecha=fecha('22');d.ilegibles=[raro,{banco:'macro',archivo:'Otro.pdf',motivo:'vacío'}];},1,
   ['llegó «Raro.pdf» pero no se pudo leer (no se reconocieron movimientos ni saldos) y 1 archivo(s) más']);
 console.log('OK: extractos que llegaron y no se pudieron leer.');
+
+// Tarea 42: un banco manual sin movimientos el último día hábil está al día si el extracto se subió.
+const subidoMacro=(dia,nombre='Movimientos Macro inventado.xls')=>({nombre,ruta:'Bancos/macro/'+nombre,tipo:'bancos',fecha:fecha(dia,'23:59')});
+probar(d=>{d.saldos[1].fecha=fecha('24');d.entradas.push(subidoMacro('26'));},0,
+  ['☑ Macro: al día, extracto subido el 26/09 (último movimiento 24/09)']);
+probar(d=>{d.saldos[1].fecha=fecha('24');d.entradas.push(subidoMacro('23'));},1,
+  ['☐ Macro: último extracto del 24/09 (hace 4 días) · subir a mano']);
+probar(d=>{d.saldos[1].fecha=fecha('22');d.entradas.push(subidoMacro('24'));},1,
+  ['☐ Macro: último extracto subido el 24/09 (hace 4 días) · subir a mano']);
+probar(d=>{d.saldos[1].fecha=fecha('22');d.entradas.push(subidoMacro('26','Raro.pdf'));
+  d.ilegibles=[{banco:'macro',archivo:'Raro.pdf',motivo:'formato desconocido'}];},1,
+  ['☐ Macro: llegó «Raro.pdf» pero no se pudo leer (formato desconocido)']);
+console.log('OK: extractos subidos sin movimientos del último día hábil.');
