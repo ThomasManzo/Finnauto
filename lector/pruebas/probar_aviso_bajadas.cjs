@@ -162,3 +162,23 @@ probar(d=>{d.entradas=d.entradas.filter(f=>f.tipo!=='tesoreria_a').concat(leidos
   d.tangoParte.ok=8;d.tangoParte.fallas=['A movimientos tesoreria 2026-09-28.xlsx: timeout'];},1,
   ['☐ Tango A: tesorería: timeout · último archivo: 28/09 05:46','☑ Tango AA:']);
 console.log('OK: nueve bajadas, partes viejos incompletos y tesorería A separada de caja AA.');
+
+// Tarea 39: un extracto que llegó y no se pudo leer se dice con su nombre, no como "subir a mano".
+assert.deepEqual(JSON.parse(JSON.stringify(contexto._ilegiblesAviso_(
+  '# Extractos\nArchivos leídos: 38; salteados: 1.\n' +
+  '- no pude leer corrientes/Res_130559 inventado.pdf: ValueError: no se reconocieron movimientos ni saldos\n' +
+  '- `Macro 26-06.pdf` · cuenta inventada'))),
+  [{banco:'corrientes',archivo:'Res_130559 inventado.pdf',motivo:'no se reconocieron movimientos ni saldos'}]);
+const raro={banco:'macro',archivo:'Raro.pdf',motivo:'no se reconocieron movimientos ni saldos'};
+probar(d=>{d.saldos[1].fecha=fecha('22');d.ilegibles=[raro];},1,
+  ['☐ Macro: llegó «Raro.pdf» pero no se pudo leer (no se reconocieron movimientos ni saldos) · avisar a finauto · último extracto leído: 22/09'],
+  ['subir a mano','⚠️']);
+probar(d=>{d.ilegibles=[raro];},0,
+  ['☑ Macro: al día','⚠️ REVISAR','- Macro: llegó «Raro.pdf» pero no se pudo leer']);
+probar(d=>{d.ilegibles=[{banco:'galicia',archivo:'Otro.xlsx',motivo:'encabezado desconocido'}];},0,
+  ['☑ Galicia: 05:48','- Galicia: llegó «Otro.xlsx» pero no se pudo leer (encabezado desconocido)']);
+probar(d=>{d.ilegibles=[{banco:'itau',archivo:'Nuevo.pdf',motivo:'formato desconocido'}];},0,
+  ['- Bancos/itau: llegó «Nuevo.pdf» pero no se pudo leer (formato desconocido)']);
+probar(d=>{d.saldos[1].fecha=fecha('22');d.ilegibles=[raro,{banco:'macro',archivo:'Otro.pdf',motivo:'vacío'}];},1,
+  ['llegó «Raro.pdf» pero no se pudo leer (no se reconocieron movimientos ni saldos) y 1 archivo(s) más']);
+console.log('OK: extractos que llegaron y no se pudieron leer.');
