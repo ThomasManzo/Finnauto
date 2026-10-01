@@ -53,7 +53,7 @@ let casos=0;
 function probar(cambio, n, presentes=[], ausentes=[]) {
   const datos=foto(); cambio(datos);
   const aviso=contexto._armarAviso_(ahora,datos);
-  assert.equal(aviso.asunto, `NAVAR · 28/09 · ${n?'faltan '+n+' cosas':'todo al día'}`);
+  assert.equal(aviso.asunto, `NAVAR · 28/09 · ${n===1?'falta 1 cosa':n?'faltan '+n+' cosas':'todo al día'}`);
   presentes.forEach(t=>assert.ok(aviso.cuerpo.includes(t), t+'\n'+aviso.cuerpo));
   ausentes.forEach(t=>assert.ok(!aviso.cuerpo.includes(t),t+'\n'+aviso.cuerpo));
   const lineas=aviso.cuerpo.split('\n').filter(l=>/^[☑☐]/.test(l));
