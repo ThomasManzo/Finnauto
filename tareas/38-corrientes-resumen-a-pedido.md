@@ -1,5 +1,5 @@
 # Tarea 38 — Corrientes: leer el formato "RESUMEN A PEDIDO"
-Estado: lista para mergear (la escribió y revisó Claude; falta el OK de Thomas)
+Estado: aprobada (mergeada el 01/10/2026, con OK de Thomas)
 Rama: tarea/corrientes-a-pedido
 
 ## Objetivo
