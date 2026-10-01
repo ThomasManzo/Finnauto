@@ -125,6 +125,15 @@ reales).
 - El mail diario cuenta 9 bajadas (`TANGO_BAJADAS` en `aviso_diario.gs`, tiene que coincidir con
   `TOTAL_BAJADAS_DIARIAS` de `tango_live.py`). Apps Script actualizado el 29/09 (importador y aviso,
   hash igual a `main`) y copia en `NAVAR - Datos/Scripts/`.
+- **Resumen semanal por mail** (tarea 37, instalado 01/10/2026): `resumen_semanal.gs` guarda cada
+  lunes una foto de los 80 en la lista **"Principales 20 · historial"** y manda a `DESTINATARIOS` un
+  mail que compara con la foto anterior (totales y vencido con diferencia, los que más bajaron/subieron,
+  entraron/salieron, sin pagos) con la solapa en PDF. Disparador: lunes 08:00–08:30. Calcula desde las
+  listas por encabezado (no lee la solapa). Foto inicial: 01/10 (con los datos de la bajada del 30/09),
+  así el lunes 05/10 ya compara. Necesitó un permiso nuevo de Google ("conectarse a un servicio
+  externo", para el PDF), aceptado por Thomas el 01/10. Menú: "Ver el resumen semanal (sin mandar)",
+  "Guardar foto semanal ahora", "Instalar resumen semanal". **Primer envío real: lunes 05/10, mirar
+  que haya llegado y el PDF adjunto.**
 - **PDF para mandar por mail**: `herramientas/principales20_pdf.py` (lee el export de la Sheet, 3
   páginas). El del 28/09 no tiene la columna de último pago.
 
