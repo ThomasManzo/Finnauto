@@ -57,8 +57,8 @@ function probar(cambio, n, presentes=[], ausentes=[]) {
   presentes.forEach(t=>assert.ok(aviso.cuerpo.includes(t), t+'\n'+aviso.cuerpo));
   ausentes.forEach(t=>assert.ok(!aviso.cuerpo.includes(t),t+'\n'+aviso.cuerpo));
   const lineas=aviso.cuerpo.split('\n').filter(l=>/^[☑☐]/.test(l));
-  assert.equal(lineas.length,6); // una por fuente, sin repetir ninguna
-  for (const fuente of ['Tango A:','Tango AA:','Galicia:','Macro:','Arqueo caja AA:','La Sheet'])
+  assert.equal(lineas.length,5); // una por fuente, sin repetir ninguna (el arqueo no va: tarea 41)
+  for (const fuente of ['Tango A:','Tango AA:','Galicia:','Macro:','La Sheet'])
     assert.equal(lineas.filter(l=>l.includes(fuente)).length,1);
   assert.equal(lineas.filter(l=>l.startsWith('☐')).length,n);
   casos++;return aviso;
@@ -71,7 +71,7 @@ probar(d=>{d.galiciaParte.ok=false;d.galiciaParte.detalle='se cerró el navegado
 probar(d=>{d.galiciaParte=null;},1,['el bot no corrió hoy']);
 probar(d=>{d.galiciaParte.ok=false;d.entradas.push({nombre:'Movimientos GALICIA 2026-09-28_062000.xlsx',ruta:'Bancos/galicia/viejo.xlsx',tipo:'bancos',fecha:fecha('28','06:20')});},1,['Último extracto: 28/09 06:20']);
 probar(d=>{d.saldos[1].fecha=fecha('24');},1,['☐ Macro: último extracto del 24/09 (hace 4 días) · subir a mano']);
-probar(d=>{d.saldos[2].fecha=fecha('21');},1,['☐ Arqueo caja AA: último arqueo del 21/09 (hace 7 días) · cargar a mano']);
+probar(d=>{d.saldos[2].fecha=fecha('21');},0,[],['Arqueo','arqueo']);
 probar(d=>{d.registro[0].fecha=fecha('27','06:33');},1,['La Sheet no importó lo de hoy · última importación: 27/09 06:33']);
 probar(d=>{d.registro[0].fecha=fecha('28','05:47');},1,['La Sheet no importó lo de hoy']);
 probar(d=>{d.registro.push({tipo:'tesoreria_aa',estado:'ERROR',fecha:fecha('26','08:32'),detalle:'rate limit'}, {tipo:'tesoreria_aa',estado:'ok',fecha:fecha('26','09:33'),detalle:''});},0,[],['rate limit','⚠️']);

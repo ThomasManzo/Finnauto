@@ -435,7 +435,8 @@ function _armarAviso_(ahora, datos) {
   ilegibles.forEach(function (x) {
     if (!ilegiblesVistos[x.banco + "/" + x.archivo]) alertas.push("Bancos/" + x.banco + ": " + textoIlegible([x]));
   });
-  manual("Arqueo caja AA", arqueo, true);
+  // El arqueo de caja AA no va al mail (pedido de Thomas, 01/10/2026): se consigue por fuera y el
+  // conteo es semanal. La caja AA del cash sigue calculándose con el último arqueo cargado.
   var registros = (datos.registro || []).filter(function (r) { return valida(r.fecha); });
   function esOk(r) { return /^ok$/i.test(_textoAviso_(r.estado)) && !/VERIFICACION_NO_CUADRA/.test(r.detalle || ""); }
   var oks = registros.filter(function (r) { return esOk(r) && r.tipo !== "sistema"; });
