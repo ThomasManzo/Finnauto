@@ -1,5 +1,5 @@
 # Tarea 37 — Resumen semanal de principales clientes y proveedores (foto + mail de los lunes)
-Estado: lista para revisión
+Estado: aprobada
 Rama: tarea/resumen-semanal
 
 ## Objetivo
@@ -150,3 +150,7 @@ permiso nuevo para "conectarse a un servicio externo" (lo usa la exportación a 
 aceptarlo, porque el disparador del lunes no puede pedirlo.
 
 ## Revisión
+
+**30/09/2026 (Claude): aprobada con OK de Thomas.** La escribió Claude (no hubo segundo par de ojos
+de Codex): se compensó con las pruebas de arriba y la corrida sobre datos reales. Falta la prueba
+real en la Sheet (vista previa, permiso nuevo, foto inicial, disparador).
