@@ -398,19 +398,36 @@ function _armarAviso_(ahora, datos) {
       (lista.length > 1 ? " y " + (lista.length - 1) + " archivo(s) más" : "") + " · avisar a finauto";
   }
   function manual(nombre, d, caja, clave) {
-    var ok = !errores.Extracto && d && d >= cierre;
-    var edad = d ? Math.round((Date.parse(hoy) - Date.parse(d)) / AVISO_DIA) : null;
     var raros = clave ? ilegiblesDe(clave) : [];
+    // Un banco sin movimientos el último día hábil no está atrasado si el extracto se subió igual
+    // (BBVA, 01/10/2026). Se toma el archivo más nuevo de Bancos/<banco>/ por su fecha en Drive,
+    // salvo los que el lector no pudo leer: esos no cuentan como extracto.
+    var subido = "";
+    if (clave && !caja && !errores.Drive) {
+      var noLeidos = raros.map(function (x) { return x.archivo; });
+      var archivo = ultimo(entradas.filter(function (f) {
+        var ruta = String(f.ruta || "").replace(/\\/g, "/").toLowerCase();
+        return ruta.indexOf("bancos/" + clave + "/") === 0 && noLeidos.indexOf(f.nombre) < 0;
+      }));
+      if (archivo) subido = _diaAviso_(archivo.fecha);
+    }
+    var ok = !errores.Extracto && ((d && d >= cierre) || (subido && subido >= cierre));
+    var masNuevo = subido > (d || "") ? subido : d;
+    var edad = masNuevo ? Math.round((Date.parse(hoy) - Date.parse(masNuevo)) / AVISO_DIA) : null;
     // Al día pero con un archivo raro: la casilla sigue en ✅ y el archivo va a REVISAR.
     if (ok && raros.length) alertas.push(nombre + ": " + textoIlegible(raros));
     if (!ok && raros.length) {
       poner(false, nombre + ": " + textoIlegible(raros) + " · último extracto leído: " + dia(d));
       return;
     }
-    poner(ok, nombre + ": " + (ok ? "al día, " + (caja ? "arqueo" : "extracto") + " hasta " + dia(d) :
-      (errores.Extracto ? "no se pudo verificar" : d ? "último " + (caja ? "arqueo" : "extracto") + " del " + dia(d) +
+    var alDia = d && d >= cierre ? "al día, " + (caja ? "arqueo" : "extracto") + " hasta " + dia(d) :
+      "al día, extracto subido el " + dia(subido) + " (último movimiento " + dia(d) + ")";
+    poner(ok, nombre + ": " + (ok ? alDia :
+      (errores.Extracto ? "no se pudo verificar" : masNuevo ? "último " + (caja ? "arqueo" : "extracto") +
+        (subido && subido === masNuevo && subido !== d ? " subido el " : " del ") + dia(masNuevo) +
         " (hace " + edad + " días)" : "sin fecha disponible") + (caja ? " · cargar a mano" : " · subir a mano")));
   }
+
   var partes = datos.bancosPartes || {};
   if (datos.galiciaParte) partes = Object.assign({}, partes, {galicia: datos.galiciaParte});
   Object.keys(bancos).sort().forEach(function (clave) {
