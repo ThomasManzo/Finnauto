@@ -1,5 +1,5 @@
 # Tarea 42 — Un banco manual está al día si se subió el extracto, aunque ese día no haya movimientos
-Estado: en curso (la escribe Claude: Codex sin cupo desde la 37)
+Estado: aprobada (mergeada el 01/10/2026; en Apps Script falta el retoque del asunto en singular)
 Rama: tarea/aviso-subido
 
 ## Objetivo
@@ -24,4 +24,19 @@ archivo del 30/09, último movimiento el 29/09). Thomas: "si no hay movimiento e
 
 ## Qué hice
 
+- `manual()`: además de la fecha del último movimiento, mira el archivo más nuevo de `Bancos/<banco>/`
+  (fecha de Drive), sin contar los que el lector no pudo leer. Si es del último día hábil o posterior,
+  el banco está al día: `al día, extracto subido el dd/mm (último movimiento dd/mm)`. En ❌ la
+  antigüedad sale de la más nueva de las dos fechas.
+- Asunto en singular: `falta 1 cosa`.
+- Pruebas: subido después del cierre (✅), subido antes (❌ por movimiento), subido más nuevo que el
+  movimiento pero viejo (❌ "subido el"), y un ilegible que no cuenta como subido. Todo OK.
+- Instalado en Apps Script y probado con datos reales: `☑ BBVA: al día, extracto subido el 30/09
+  (último movimiento 29/09)`; solo falta Nación. **El retoque del asunto en singular no se pudo guardar
+  en Apps Script** (el editor no registró el reemplazo en varios intentos): Apps Script tiene la versión
+  del commit b22dce8 y el repo la cb4de4c. Se iguala al próximo pegado, o pegando a mano
+  `Scripts/aviso_diario.gs.txt`.
+
 ## Revisión
+
+**Claude, 01/10/2026.** Aprobada.
