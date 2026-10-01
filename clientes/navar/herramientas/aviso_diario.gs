@@ -482,6 +482,6 @@ function _armarAviso_(ahora, datos) {
   if (faltantes.length) cuerpo.push("❌ FALTA\n" + faltantes.join("\n"));
   if (alertas.length) cuerpo.push("⚠️ REVISAR\n" + alertas.map(function (a) { return "- " + a; }).join("\n"));
   return {asunto: "NAVAR · " + _fechaAviso_(ahora, "dd/MM") + " · " +
-    (faltantes.length ? "faltan " + faltantes.length + " cosas" : "todo al día"),
+    (faltantes.length === 1 ? "falta 1 cosa" : faltantes.length ? "faltan " + faltantes.length + " cosas" : "todo al día"),
     cuerpo: cuerpo.join("\n\n"), alertas: alertas, faltantes: faltantes};
 }
