@@ -68,6 +68,15 @@ function _textoAviso_(texto, limite) {
   return limite && limpio.length > limite ? limpio.slice(0, limite - 3) + "..." : limpio;
 }
 
+// Saca del resumen del lector de bancos los archivos que no pudo leer. El renglón es
+// "- no pude leer corrientes/<archivo>: ValueError: <motivo>"; el nombre técnico del error no va al mail.
+function _ilegiblesAviso_(texto) {
+  return String(texto || "").split(/\r?\n/).map(function (linea) {
+    var m = linea.match(/^- no pude leer ([^\/\\]+)[\/\\](.+?): (?:[A-Za-z]+Error: )?(.*)$/);
+    return m ? {banco: m[1].toLowerCase(), archivo: m[2], motivo: m[3].trim()} : null;
+  }).filter(Boolean);
+}
+
 // Interpreta el parte mínimo que deja la bajada de Tango en Drive.
 function _parteTangoAviso_(texto) {
   var lineas = String(texto || "").trim().split(/\r?\n/);
@@ -163,7 +172,7 @@ function _archivosAviso_(carpeta, ruta, tipo, recursivo) {
 // Lee cada parte por separado: si una falla, las demás igual llegan al mail.
 function _leerDatosAviso_(ahora) {
   ahora = ahora || new Date();
-  var datos = {entradas: [], publicados: [], retenidos: [], registro: [], log: [],
+  var datos = {entradas: [], publicados: [], retenidos: [], registro: [], log: [], ilegibles: [],
     ultimaPasada: null, tangoParte: null, galiciaParte: null, extracto: null, saldos: [], errores: {}};
   var raiz, salida;
   // Guarda el problema junto a la sección que no se pudo leer.
@@ -191,6 +200,19 @@ function _leerDatosAviso_(ahora) {
     salida = carpetas.next();
     datos.publicados = _archivosAviso_(salida, "_para la Sheet", "", false)
       .filter(function (f) { return /^para_pegar_.*\.xlsx$/i.test(f.nombre); });
+  });
+  // Extractos que llegaron pero el lector no pudo leer (formato nuevo, PDF escaneado, archivo vacío).
+  // El lector los anota en su resumen; como relee toda la carpeta de bancos cada vez, el resumen más
+  // nuevo lista todos los que siguen sin leerse. Sin esto, el mail decía "subir a mano" de algo que
+  // ya se había subido (Corrientes, 01/10/2026).
+  leer("Ilegibles", function () {
+    if (!salida) throw new Error("No pude abrir _para la Sheet");
+    var mejor = null, archivos = salida.getFiles();
+    while (archivos.hasNext()) {
+      var f = archivos.next(), m = f.getName().match(/^resumen_bancos_(\d{4}-\d{2}-\d{2})\.md$/);
+      if (m && (!mejor || m[1] > mejor.dia)) mejor = {dia: m[1], archivo: f};
+    }
+    datos.ilegibles = mejor ? _ilegiblesAviso_(mejor.archivo.getBlob().getDataAsString("UTF-8")) : [];
   });
   leer("Latido", function () {
     if (!salida) throw new Error("No pude abrir _para la Sheet");
@@ -363,9 +385,28 @@ function _armarAviso_(ahora, datos) {
     if (!bancos[clave]) bancos[clave] = {nombre: banco, dia: ""};
     if (_esExtractoAviso_(r.origen) && d > bancos[clave].dia) bancos[clave].dia = d;
   });
-  function manual(nombre, d, caja) {
+  // Extractos que llegaron y no se pudieron leer, por banco (ver _ilegiblesAviso_).
+  var ilegibles = datos.ilegibles || [], ilegiblesVistos = {};
+  function ilegiblesDe(clave) {
+    var lista = ilegibles.filter(function (x) { return x.banco === clave; });
+    lista.forEach(function (x) { ilegiblesVistos[x.banco + "/" + x.archivo] = true; });
+    return lista;
+  }
+  function textoIlegible(lista) {
+    return "llegó «" + _textoAviso_(lista[0].archivo, 80) + "» pero no se pudo leer (" +
+      _textoAviso_(lista[0].motivo, 90) + ")" +
+      (lista.length > 1 ? " y " + (lista.length - 1) + " archivo(s) más" : "") + " · avisar a finauto";
+  }
+  function manual(nombre, d, caja, clave) {
     var ok = !errores.Extracto && d && d >= cierre;
     var edad = d ? Math.round((Date.parse(hoy) - Date.parse(d)) / AVISO_DIA) : null;
+    var raros = clave ? ilegiblesDe(clave) : [];
+    // Al día pero con un archivo raro: la casilla sigue en ✅ y el archivo va a REVISAR.
+    if (ok && raros.length) alertas.push(nombre + ": " + textoIlegible(raros));
+    if (!ok && raros.length) {
+      poner(false, nombre + ": " + textoIlegible(raros) + " · último extracto leído: " + dia(d));
+      return;
+    }
     poner(ok, nombre + ": " + (ok ? "al día, " + (caja ? "arqueo" : "extracto") + " hasta " + dia(d) :
       (errores.Extracto ? "no se pudo verificar" : d ? "último " + (caja ? "arqueo" : "extracto") + " del " + dia(d) +
         " (hace " + edad + " días)" : "sin fecha disponible") + (caja ? " · cargar a mano" : " · subir a mano")));
@@ -374,7 +415,9 @@ function _armarAviso_(ahora, datos) {
   if (datos.galiciaParte) partes = Object.assign({}, partes, {galicia: datos.galiciaParte});
   Object.keys(bancos).sort().forEach(function (clave) {
     var banco = bancos[clave];
-    if (FUENTES_AUTOMATICAS.indexOf(clave) < 0) { manual(_nombreBancoAviso_(banco.nombre), banco.dia, false); return; }
+    if (FUENTES_AUTOMATICAS.indexOf(clave) < 0) { manual(_nombreBancoAviso_(banco.nombre), banco.dia, false, clave); return; }
+    var raros = ilegiblesDe(clave);
+    if (raros.length) alertas.push(_nombreBancoAviso_(banco.nombre) + ": " + textoIlegible(raros));
     var p = partes[clave];
     var archivo = ultimo(entradas.filter(function (f) {
       var ruta = String(f.ruta || "").replace(/\\/g, "/").toLowerCase();
@@ -388,6 +431,10 @@ function _armarAviso_(ahora, datos) {
       " · Último extracto: " + (errores.Drive ? "no se pudo verificar" : fecha(archivo && archivo.fecha))));
   });
   if (!Object.keys(bancos).length) alertas.push("No se pudieron identificar bancos en Saldos Bancarios.");
+  // Un ilegible de un banco que todavía no está en Saldos Bancarios (banco nuevo, carpeta mal nombrada).
+  ilegibles.forEach(function (x) {
+    if (!ilegiblesVistos[x.banco + "/" + x.archivo]) alertas.push("Bancos/" + x.banco + ": " + textoIlegible([x]));
+  });
   manual("Arqueo caja AA", arqueo, true);
   var registros = (datos.registro || []).filter(function (r) { return valida(r.fecha); });
   function esOk(r) { return /^ok$/i.test(_textoAviso_(r.estado)) && !/VERIFICACION_NO_CUADRA/.test(r.detalle || ""); }
