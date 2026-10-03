@@ -117,3 +117,10 @@ Comprobaciones:
   al guardar (lo de Galicia del 28/09); se agrega si pasa.
 
 ## Revisión
+
+**Claude, 03/10/2026 — primera prueba en la notebook.** El login entró (en la notebook `fill` no
+encendió Ingresar y funcionó la carga tecla por tecla), pero a los 90 s no apareció el CUIT y se cortó.
+Thomas vio que el inicio del banco tardaba mucho en abrir. Corrección: se espera hasta 4 minutos; el
+inicio se reconoce por el CUIT, por "NAVAR SA" o por "Cuentas en pesos" (el CUIT del inicio vive en un
+selector y puede no leerse como texto); mientras espera, cada 30 s anota la URL, si el formulario de
+login sigue a la vista y deja una captura. Pruebas: 59 OK.

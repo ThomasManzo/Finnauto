@@ -54,6 +54,29 @@ class Pantalla(unittest.TestCase):
         # Un texto más largo que contenga la cuenta no es el selector.
         self.assertFalse(patron_cuenta("489-000765/9").search("TRANSFERENCIA CCP489 000765 9"))
 
+    def test_el_inicio_se_reconoce_por_nombre_o_cuit(self):
+        self.assertTrue(navar.PATRON_NAVAR.search("NAVAR SA (30-55852502-5)"))
+        self.assertTrue(navar.PATRON_NAVAR.search("NAVAR S.A."))
+        self.assertTrue(navar.PATRON_CUIT.search("30-55852502-5"))
+        self.assertFalse(navar.PATRON_NAVAR.search("NAVARRO SALUD"))
+
+    def test_si_el_inicio_no_llega_avisa_y_corta(self):
+        class PaginaLenta:
+            url = "https://netcash.bbva.com.ar/algo"
+            frames = []
+            def wait_for_timeout(self, ms):
+                pass
+        bot = BotBbvaNavar(_configuracion())
+        relojes = iter(range(0, 1000, 10))
+        with patch.object(BotBbvaNavar, "_en_inicio", return_value=False), \
+                patch.object(navar, "_hay_visible", return_value=False), \
+                patch.object(navar.time, "monotonic", side_effect=lambda: next(relojes)), \
+                patch.object(navar, "log") as log, patch.object(navar, "captura") as captura:
+            with self.assertRaisesRegex(RuntimeError, "no apareció en 60 s"):
+                bot._esperar_inicio(PaginaLenta(), 60000)
+        self.assertTrue(captura.called)
+        self.assertIn("esperando el inicio", log.call_args_list[0][0][0])
+
     def test_nombre_del_archivo_publicado(self):
         self.assertEqual(nombre_publicado("Movimientos BBVA", "489-000806/5", HOY),
                          "Movimientos BBVA 489-000806-5 2026-10-03.xls")
