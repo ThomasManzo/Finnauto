@@ -41,6 +41,9 @@ URL_LOGIN = "https://netcash.bbva.com.ar/local_pibee/SolicitarCredenciales.html"
 CUIT_NAVAR = "30558525025"
 # El CUIT aparece con guiones en pantalla ("30-55852502-5").
 PATRON_CUIT = re.compile(r"30-?55852502-?5")
+PATRON_NAVAR = re.compile(r"\bNAVAR\s+S\.?\s*A\b", re.I)
+# Cuánto se espera el inicio después de Ingresar.
+ESPERA_INICIO_MS = 240000
 # Los campos del login por su id (el usuario también se tipea oculto, como la clave).
 IDS_LOGIN = {"Código de empresa": "cod_emp", "Código de usuario": "cod_usu",
              "Clave de acceso": "eai_password"}
@@ -205,19 +208,56 @@ class BotBbvaNavar(BotBanco):
         try:
             ingresar.click(timeout=timeout)
             captura(page, "login_enviado")
-            # El inicio de BBVA tarda: se espera el CUIT de NAVAR con más margen.
-            _esperar_visible(page, lambda m: m.get_by_text(PATRON_CUIT),
-                             "el CUIT de NAVAR después del login", max(timeout, 90000))
+            # El inicio de BBVA tarda mucho (el 03/10 pasó los 90 s): se espera hasta 4 minutos.
+            self._esperar_inicio(page, max(timeout, ESPERA_INICIO_MS))
         except Exception:
             captura(page, "ERROR_login_no_confirmado")
             raise
         captura(page, "post_login")
         log("Login confirmado.")
 
+    @staticmethod
+    def _en_inicio(page):
+        """Algo que solo aparece adentro: el CUIT, el nombre de NAVAR o "Cuentas en pesos".
+
+        Se aceptan las tres porque el CUIT del inicio vive en un selector y puede no leerse
+        como texto. Igual, el Excel se controla por su CUIT antes de publicarlo.
+        """
+        return any(_hay_visible(page, f) for f in (
+            lambda m: m.get_by_text(PATRON_CUIT),
+            lambda m: m.get_by_text(PATRON_NAVAR),
+            lambda m: m.get_by_text("Cuentas en pesos", exact=True),
+        ))
+
+    def _esperar_inicio(self, page, espera_ms):
+        """Espera el inicio y, mientras tanto, cada 30 s deja una captura y anota dónde está.
+
+        Así, si no llega, queda a la vista si seguía cargando o si volvió al login (el loop
+        que tenía el usuario anterior).
+        """
+        arranque = time.monotonic()
+        proximo_aviso = 30
+        while not self._en_inicio(page):
+            pasados = time.monotonic() - arranque
+            if pasados * 1000 >= espera_ms:
+                raise RuntimeError("el inicio de BBVA no apareció en %d s" % (espera_ms // 1000))
+            if pasados >= proximo_aviso:
+                try:
+                    url = page.url
+                except Exception:
+                    url = "(sin URL)"
+                en_login = _hay_visible(page, lambda m: m.locator("input#cod_emp"))
+                log("   %d s esperando el inicio · %s%s" % (
+                    proximo_aviso, url, " · el formulario de login sigue a la vista" if en_login else ""))
+                captura(page, "esperando_inicio_%ds" % proximo_aviso)
+                proximo_aviso += 30
+            page.wait_for_timeout(500)
+        log("   El inicio apareció a los %d s." % (time.monotonic() - arranque))
+
     # --------------------------------------------------------------- empresa
     def capturar_empresa_activa(self, page):
-        # Una sola empresa: alcanza con ver su CUIT en pantalla.
-        return "NAVAR SA" if _hay_visible(page, lambda m: m.get_by_text(PATRON_CUIT)) else None
+        # Una sola empresa: alcanza con ver su CUIT o su nombre en pantalla.
+        return "NAVAR SA" if self._en_inicio(page) else None
 
     def descubrir_empresas(self, page, timeout, excluir, solo=None):
         return []
