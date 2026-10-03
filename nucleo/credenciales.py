@@ -45,14 +45,19 @@ def _keyring():
         sys.exit(1)
 
 
-def guardar(base_repo, cliente, banco, usuario, clave):
+def guardar(base_repo, cliente, banco, usuario, clave, extra=None):
     """Guarda usuario+clave en el llavero del sistema y devuelve donde quedaron.
 
     base_repo se mantiene en la firma por compatibilidad con las llamadas
     existentes; con el llavero ya no se escribe nada dentro del repo.
+
+    extra: datos de más que pide algún banco para entrar (BBVA pide además el
+    "código de empresa"). Van en el mismo secreto que usuario y clave.
     """
     kr = _keyring()
-    datos = json.dumps({"usuario": usuario, "clave": clave})
+    secreto = dict(extra or {})
+    secreto.update({"usuario": usuario, "clave": clave})
+    datos = json.dumps(secreto)
     try:
         kr.set_password(_servicio(cliente, banco), _CUENTA, datos)
     except Exception as e:
@@ -90,6 +95,27 @@ def cargar(base_repo, cliente, banco):
         log("Regenerala con: python setup_credenciales.py --cliente %s --banco %s"
             % (cliente, banco))
         sys.exit(1)
+
+
+def dato_extra(cliente, banco, campo):
+    """Lee un dato de más guardado junto con usuario y clave (ej: codigo_empresa).
+
+    Si no está, corta con el mismo mensaje que cuando faltan las credenciales:
+    hay que volver a correr setup_credenciales.py, que ahora lo pide.
+    """
+    kr = _keyring()
+    servicio = _servicio(cliente, banco)
+    try:
+        datos = json.loads(kr.get_password(servicio, _CUENTA) or "{}")
+    except Exception as e:
+        log("ERROR leyendo '%s' del llavero del sistema: %s" % (campo, e))
+        sys.exit(1)
+    valor = str(datos.get(campo) or "").strip()
+    if not valor:
+        log("ERROR: falta '%s' en las credenciales de cliente=%s banco=%s." % (campo, cliente, banco))
+        log("Corre de nuevo: python setup_credenciales.py --cliente %s --banco %s" % (cliente, banco))
+        sys.exit(1)
+    return valor
 
 
 def borrar(cliente, banco):
