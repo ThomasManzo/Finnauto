@@ -1,5 +1,5 @@
 # Tarea 43 — BBVA para NAVAR: bajar las dos cuentas corrientes
-Estado: en curso
+Estado: lista para revisión
 Rama: tarea/bbva-navar
 
 ## Objetivo
@@ -20,7 +20,7 @@ de vuelta al inicio) y describió el recorrido mirando la pantalla:
 2. Inicio: selector "Empresa / C.U.I.T." con **NAVAR SA 30-55852502-5**; abajo "Cuentas en pesos ·
    2 cuentas corrientes" con un **+** que despliega `#0489-000765/9` y `#0489-000806/5`.
 3. Clic en la primera cuenta → pantalla "Saldos y movimientos" con `489-000765/9 (CC $)`, el saldo
-   arriba a la derecha (`$ -228.224,17`) y los botones **Descargar** y **Filtrar**.
+   arriba a la derecha y los botones **Descargar** y **Filtrar**.
 4. **Descargar** baja directo el Excel (`Movimientos.xls`, formato viejo de Excel, siempre ese
    formato), con los **últimos 60 días**.
 5. Clic en el número de cuenta (`489-000765/9 (CC $) ▾`) → lista con buscador → `489-000806/5 (CC $)`
@@ -28,7 +28,7 @@ de vuelta al inicio) y describió el recorrido mirando la pantalla:
 
 Lo que ya existe:
 - `lector/extractos.py → leer_planilla_bbva` lee ese Excel (probado con el archivo real del 03/10:
-  cuenta `489-000765/9`, CUIT, 101 movimientos, saldo diario por "Saldo Disponible"). Saca la cuenta
+  cuenta, CUIT, movimientos y saldo diario por "Saldo Disponible"). Saca la cuenta
   del **encabezado** del Excel, no del nombre del archivo, y junta varios archivos del mismo banco sin
   duplicar movimientos.
 - `bots/galicia/navar.py` es el modelo: un solo intento de login, esperar un único elemento visible,
@@ -80,5 +80,40 @@ Decisiones:
 3. En la Mac: el lector lee los dos archivos publicados y los saldos coinciden con la pantalla.
 
 ## Qué hice
+
+Lo escribió Claude (Thomas lo pidió así el 03/10; Codex sigue sin cupo).
+
+- `bots/bbva/navar.py` — `BotBbvaNavar`, con el recorrido de Thomas:
+  - Login: busca los tres campos por su `id` (`cod_emp`, `cod_usu`, `eai_password`) y, si cambian, por
+    etiqueta. Si "Ingresar" no se enciende con los tres datos, prueba tecla por tecla; si sigue
+    apagado, corta **sin apretar**. Después de Ingresar espera el CUIT de NAVAR (hasta 90 s).
+  - Inicio: si la primera cuenta no está a la vista, aprieta el + de "Cuentas en pesos" (el botón de
+    esa tarjeta a la izquierda del título; si no lo reconoce, aprieta el título). Abre la cuenta y
+    confirma "Saldos y movimientos" + número de cuenta + botón Descargar.
+  - Descarga cada cuenta, valida el Excel (cuenta del encabezado, CUIT, fechas entre hoy−65 y hoy+4) y
+    publica `Movimientos BBVA <cuenta con guion> AAAA-MM-DD.xls` con temporal + `os.replace`.
+  - Cambio de cuenta: clic en el número (`489-000765/9 (CC $)`), elige la otra en la lista, espera
+    que la pantalla muestre la nueva y 1,5 s más.
+  - Si una cuenta falla, la otra igual se publica y la corrida termina en error con el detalle.
+  - Busca también dentro de iframes (el login trae uno).
+- `nucleo/credenciales.py`: `guardar(..., extra)` y `dato_extra(...)`; `cargar` no cambia.
+- `setup_credenciales.py`: con `--banco bbva` pide primero el código de empresa.
+- `orquestador/correr.py`: `VARIANTES_NAVAR = ("galicia", "bbva")`; la carpeta de Drive se resuelve
+  igual para las dos; el código de empresa se lee del llavero antes de abrir el navegador.
+- `perfil.json` (bloque bbva): cuentas, prefijo, carpeta `Bancos/bbva`, visible, `incluir_hoy: false`
+  (como Galicia: la segunda corrida del día ve que ya está al día y no vuelve a entrar).
+- `instalar_bbva.ps1`: 05:54 y 05:58, log en `privado\bbva.log`.
+
+Comprobaciones:
+- `python -m unittest bots.bbva.test_navar bots.galicia.test_navar`: 57 OK. Lector: 30 OK.
+- Pruebas nuevas con datos inventados: patrones de cuenta, nombre publicado, validación (cuenta
+  distinta, otra empresa, fecha futura, vieja, sin movimientos), reemplazo del archivo del día, dos
+  cuentas (cambia una vez; si falla una se publica la otra y avisa), sin código de empresa no abre el
+  banco, llavero con el dato extra.
+- Desde la Mac abrí la página de login real **sin credenciales**: encuentra los tres campos y el botón,
+  que arranca apagado; con datos inventados se enciende con `fill` (no se apretó Ingresar).
+- No probado: todo lo de después del login (desplegar cuentas, cambio de cuenta, Descargar). Se
+  afina en la prueba en la notebook mirando las capturas. Tampoco hay rescate si la página se cierra
+  al guardar (lo de Galicia del 28/09); se agrega si pasa.
 
 ## Revisión

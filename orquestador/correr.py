@@ -39,10 +39,15 @@ REGISTRO_BANCOS = {
     "santander": BotSantander,
 }
 
+# Bancos con un recorrido propio para NAVAR (se importan recién cuando se usan).
+# BBVA solo existe en su variante NAVAR, por eso no está en el registro general.
+VARIANTES_NAVAR = ("galicia", "bbva")
+
 
 def correr_banco(cliente, banco, modo_forzado=None):
     banco = banco.lower()
-    if banco not in REGISTRO_BANCOS:
+    variante_navar = cliente == "navar" and banco in VARIANTES_NAVAR
+    if banco not in REGISTRO_BANCOS and not variante_navar:
         raise SystemExit("Banco desconocido: '%s'. Disponibles: %s"
                          % (banco, ", ".join(REGISTRO_BANCOS)))
 
@@ -50,14 +55,20 @@ def correr_banco(cliente, banco, modo_forzado=None):
     cfg_banco = _config.config_banco(perfil, banco)
     ctx = _contexto.construir(BASE_REPO, cliente, banco, perfil, cfg_banco, modo_forzado)
 
-    bot = REGISTRO_BANCOS[banco]()
+    if variante_navar:
+        if banco == "galicia":
+            from bots.galicia.navar import BotGaliciaNavar
+            bot = BotGaliciaNavar(cfg_banco)
+        else:
+            from bots.bbva.navar import BotBbvaNavar
+            bot = BotBbvaNavar(cfg_banco)
+    else:
+        bot = REGISTRO_BANCOS[banco]()
     ctx.banco_nombre = bot.nombre  # nombre lindo para _ESTADO_/_SALDOS_
 
-    if cliente == "navar" and banco == "galicia":
-        from bots.galicia.navar import BotGaliciaNavar
-        bot = BotGaliciaNavar(cfg_banco)
+    if variante_navar:
         fijada = cfg_banco.get("carpeta_drive_destino", "").strip()
-        relativa = cfg_banco.get("carpeta_drive_relativa", "Bancos/galicia").strip()
+        relativa = cfg_banco.get("carpeta_drive_relativa", "Bancos/" + banco).strip()
         if fijada:
             ctx.carpeta_drive = os.path.normpath(fijada)
             buscada = "carpeta_drive_destino=%s" % fijada
@@ -69,17 +80,21 @@ def correr_banco(cliente, banco, modo_forzado=None):
             buscada = "NAVAR - Datos + %s (detección automática de Drive)" % relativa
         # También en prueba: no abrir el banco si no sabemos dónde publicar.
         if not os.path.isabs(ctx.carpeta_drive) or not os.path.isdir(ctx.carpeta_drive):
-            raise SystemExit("No encontré la carpeta de Galicia antes de abrir el banco. Busqué: %s. "
-                             "Revisar que Drive esté montado o fijar carpeta_drive_destino." % buscada)
+            raise SystemExit("No encontré la carpeta de %s antes de abrir el banco. Busqué: %s. "
+                             "Revisar que Drive esté montado o fijar carpeta_drive_destino."
+                             % (bot.nombre, buscada))
 
     usuario, clave = _cred.cargar(BASE_REPO, cliente, banco)
+    if variante_navar and banco == "bbva":
+        # BBVA pide un tercer dato para entrar; vive en el llavero junto con usuario y clave.
+        bot.codigo_empresa = _cred.dato_extra(cliente, banco, "codigo_empresa")
 
     log("=== finauto :: cliente=%s banco=%s modo=%s ===" % (
         ctx.cliente_nombre, bot.nombre, "visible" if ctx.modo_visible else "invisible"))
     resultado = _loop.correr(bot, ctx, usuario, clave)
-    if cliente == "navar" and banco == "galicia":
+    if variante_navar:
         if resultado["fallaron"] or not (resultado["ok"] or resultado["sin_novedades"]):
-            raise RuntimeError("Galicia NAVAR no terminó bien; revisar log y capturas.")
+            raise RuntimeError("%s NAVAR no terminó bien; revisar log y capturas." % bot.nombre)
     return resultado
 
 
@@ -185,7 +200,7 @@ def main():
     # maquina hacen fallar los dos.
     ap.add_argument("--cliente", help="carpeta del cliente (ej: maga). "
                                       "Sin esto, corren TODOS los clientes")
-    ap.add_argument("--banco", help="banco a correr (galicia/comafi/santander)")
+    ap.add_argument("--banco", help="banco a correr (galicia/bbva/comafi/santander)")
     ap.add_argument("--todos", action="store_true", help="correr todos los bancos activos del perfil")
     ap.add_argument("--modo", choices=["prueba", "produccion"], help="visible / invisible")
     args = ap.parse_args()
