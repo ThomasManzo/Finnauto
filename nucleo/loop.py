@@ -50,7 +50,10 @@ def correr(bot, ctx, usuario, clave):
     resultado = {"ok": [], "fallaron": [], "sin_novedades": []}
     saldos_lista = []
 
-    with abrir_navegador(ctx.perfil_dir, ctx.descargas_dir, headless=not ctx.modo_visible) as page:
+    if ctx.navegador:
+        log("Navegador: %s (el instalado en la máquina)" % ctx.navegador)
+    with abrir_navegador(ctx.perfil_dir, ctx.descargas_dir, headless=not ctx.modo_visible,
+                         canal=ctx.navegador or None) as page:
         # 1) LOGIN
         try:
             bot.hacer_login(page, usuario, clave, timeout)

@@ -124,3 +124,10 @@ Thomas vio que el inicio del banco tardaba mucho en abrir. Corrección: se esper
 inicio se reconoce por el CUIT, por "NAVAR SA" o por "Cuentas en pesos" (el CUIT del inicio vive en un
 selector y puede no leerse como texto); mientras espera, cada 30 s anota la URL, si el formulario de
 login sigue a la vista y deja una captura. Pruebas: 59 OK.
+
+**Claude, 03/10/2026 — opción de otro navegador.** Thomas vio que el inicio tarda mucho y pidió probar
+con otro navegador. El bot usa el Chromium que trae Playwright; ahora `correr.py --navegador msedge`
+(o `chrome`) entra con el navegador instalado en la máquina, con su propio perfil
+(`perfil_navegador_msedge`). También se puede fijar con `"navegador"` en el bloque del banco del
+perfil. Sin la opción, todo sigue igual (Galicia no cambia). Probado en la Mac: abre el login de BBVA
+con el Chrome instalado. Pruebas: 59 OK.
