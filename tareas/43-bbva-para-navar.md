@@ -1,5 +1,5 @@
 # Tarea 43 — BBVA para NAVAR: bajar las dos cuentas corrientes
-Estado: lista para revisión
+Estado: en pausa (BBVA frena el login automatizado; ver la última Revisión)
 Rama: tarea/bbva-navar
 
 ## Objetivo
@@ -131,3 +131,13 @@ con otro navegador. El bot usa el Chromium que trae Playwright; ahora `correr.py
 (`perfil_navegador_msedge`). También se puede fijar con `"navegador"` en el bloque del banco del
 perfil. Sin la opción, todo sigue igual (Galicia no cambia). Probado en la Mac: abre el login de BBVA
 con el Chrome instalado. Pruebas: 59 OK.
+
+**Claude, 03/10/2026 — BBVA frena al bot en el login.** Con Edge pasó lo mismo: después de Ingresar
+la página queda en blanco con "verificando credenciales" y nunca entra (240 s, la dirección sigue
+siendo la del login). Thomas a mano entra en segundos. Revisando los scripts del login: BBVA usa
+**Akamai Bot Manager** (scripts `bmak`, cookies `_abck` y `bm_sz`), un sistema del banco que reconoce
+navegadores manejados por un programa y los deja colgados. No se intenta engañarlo: es seguridad
+del banco, un usuario marcado como robot se puede bloquear, y sería una pelea que se rompe sola.
+El código queda (sirve si el banco habilita el acceso) pero **no se instala el horario**. BBVA sigue
+como banco manual. Camino propuesto: pedirle al banco un canal oficial (envío diario de movimientos
+por mail o archivo de cash management) y leerlo con el vigilante.
