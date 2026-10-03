@@ -65,11 +65,21 @@
     "bbva": {
       "activo": false,
       "empresas_excluir": [],
-      "solo_estas_empresas": [],
-      "solo_empresa_activa": false,
-      "nombre_archivo": "empresa",
-      "prefijo_archivo": "BBVA",
-      "_nota": "Es el 'Frances'. Sin ficha todavia."
+      "solo_estas_empresas": [
+        "NAVAR SA"
+      ],
+      "solo_empresa_activa": true,
+      "nombre_archivo": "excel_navar",
+      "prefijo_archivo": "Movimientos BBVA",
+      "modo_visible": true,
+      "_nota": "Es el 'Frances'. Dos cuentas corrientes: la principal y la de recaudacion. El bot baja las dos en la misma corrida (ultimos 60 dias) y publica un Excel por cuenta en NAVAR - Datos/Bancos/bbva. Para entrar pide codigo de empresa, usuario y clave: los tres viven en el llavero (setup_credenciales.py --banco bbva). activo=false hasta que la prueba a mano salga bien.",
+      "cuentas": [
+        "489-000765/9",
+        "489-000806/5"
+      ],
+      "carpeta_drive_destino": "",
+      "carpeta_drive_relativa": "Bancos/bbva",
+      "incluir_hoy": false
     }
   },
   "fuentes_de_datos": {
