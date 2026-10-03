@@ -39,6 +39,7 @@ class Contexto:
     solo_activa: bool = False
     nombre_archivo: str = "cuit"      # 'cuit' = deja el nombre original; 'empresa' = renombra
     prefijo_archivo: str = ""
+    navegador: str = ""               # "" = Chromium de Playwright; "msedge" / "chrome" = el instalado
 
     def crear_carpetas(self):
         for c in (self.capturas_dir, self.perfil_dir, self.descargas_dir):
@@ -81,4 +82,5 @@ def construir(base_repo, cliente, banco, perfil, cfg_banco, modo_forzado=None):
         solo_activa=bool(cfg_banco.get("solo_empresa_activa", False)),
         nombre_archivo=cfg_banco.get("nombre_archivo", "cuit"),
         prefijo_archivo=cfg_banco.get("prefijo_archivo", "") or "",
+        navegador=(cfg_banco.get("navegador", "") or "").strip().lower(),
     )
