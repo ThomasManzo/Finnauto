@@ -44,7 +44,7 @@ REGISTRO_BANCOS = {
 VARIANTES_NAVAR = ("galicia", "bbva")
 
 
-def correr_banco(cliente, banco, modo_forzado=None):
+def correr_banco(cliente, banco, modo_forzado=None, navegador=None):
     banco = banco.lower()
     variante_navar = cliente == "navar" and banco in VARIANTES_NAVAR
     if banco not in REGISTRO_BANCOS and not variante_navar:
@@ -54,6 +54,12 @@ def correr_banco(cliente, banco, modo_forzado=None):
     perfil = _config.cargar_perfil(BASE_REPO, cliente)
     cfg_banco = _config.config_banco(perfil, banco)
     ctx = _contexto.construir(BASE_REPO, cliente, banco, perfil, cfg_banco, modo_forzado)
+    if navegador:
+        ctx.navegador = "" if navegador == "chromium" else navegador
+    if ctx.navegador:
+        # Cada navegador guarda su propio perfil (cookies, "dispositivo reconocido"):
+        # el de Chromium no le sirve a Edge y mezclarlos puede romper los dos.
+        ctx.perfil_dir = ctx.perfil_dir + "_" + ctx.navegador
 
     if variante_navar:
         if banco == "galicia":
@@ -203,6 +209,8 @@ def main():
     ap.add_argument("--banco", help="banco a correr (galicia/bbva/comafi/santander)")
     ap.add_argument("--todos", action="store_true", help="correr todos los bancos activos del perfil")
     ap.add_argument("--modo", choices=["prueba", "produccion"], help="visible / invisible")
+    ap.add_argument("--navegador", choices=["chromium", "msedge", "chrome"],
+                    help="con qué navegador entrar (por defecto, el del perfil o Chromium)")
     args = ap.parse_args()
 
     if not args.cliente:
@@ -214,7 +222,7 @@ def main():
 
     if not args.banco:
         raise SystemExit("Falta --banco (o usá --todos).")
-    correr_banco(args.cliente, args.banco, args.modo)
+    correr_banco(args.cliente, args.banco, args.modo, args.navegador)
 
 
 if __name__ == "__main__":
