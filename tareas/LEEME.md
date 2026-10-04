@@ -16,10 +16,11 @@ las tareas aisladas lo escribe Codex. Los dos se hablan **por archivos en este r
 
 ## Reglas para el ejecutor
 
-- Leer `AGENTS.md` → `CLAUDE.md` antes de arrancar. Si la tarea es de NAVAR, también `clientes/navar/LEEME.md`.
+- Leer `AGENTS.md` → `CLAUDE.md` antes de arrancar. Si la tarea es de NAVAR, el `clientes/navar/LEEME.md` NO está en git (tiene datos reales): lo que haga falta saber, la consigna lo explica con ejemplos inventados.
 - **Solo tocar lo que la consigna dice.** Si hace falta tocar otra cosa, se anota en "Qué hice" y se pregunta; no se hace.
 - Comentarios en criollo explicando qué hace y por qué (Thomas no programa).
 - Sin nombres propios de gente de NAVAR en nada que vea el cliente (Instrucciones, PDF, mails).
+- **El repo es público: nada de datos reales en ningún archivo** (código, comentarios, pruebas, "Qué hice"): ni montos, ni nombres de personas, ni mails, ni clientes/proveedores reales. Ejemplos inventados.
 - **No usar `clientes/*/privado/`** ni datos reales: los worktrees no los tienen y no deben tenerlos.
   Si una prueba necesita datos, se arma un ejemplo chico e inventado dentro de la tarea.
 - No instalar dependencias nuevas sin anotarlo en "Qué hice".

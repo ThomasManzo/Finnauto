@@ -13,7 +13,11 @@
  * Registro: {fecha, tipo, estado, detalle}. Log: {fecha, texto}.
  * Con esa foto el armado es puro; con solo ahora, primero lee Google.
  */
-var DESTINATARIOS = "cuenta-empresa@ejemplo.com,persona1@ejemplo.com,persona2@ejemplo.com,persona3@ejemplo.com";
+// Los mails de NAVAR NO van en el código (el repo es público): se cargan una vez en Apps Script →
+// Configuración del proyecto → Propiedades de la secuencia de comandos → DESTINATARIOS (separados por
+// coma). Para sumar o sacar a alguien se edita esa propiedad; no hace falta tocar el código.
+var DESTINATARIOS = (typeof PropertiesService !== "undefined" &&
+  PropertiesService.getScriptProperties().getProperty("DESTINATARIOS")) || "";
 var AVISO_ZONA = "America/Argentina/Buenos_Aires";
 var AVISO_DIA = 24 * 60 * 60 * 1000;
 // Tiene que coincidir con TOTAL_BAJADAS_DIARIAS de ingestas/tango_live.py.
@@ -24,6 +28,7 @@ var FUENTES_AUTOMATICAS = ["tango", "tesoreria_aa", "galicia"];
 
 // Manda exactamente el texto que también permite revisar el botón de prueba.
 function avisoDiario() {
+  if (!DESTINATARIOS) throw new Error("Falta la propiedad DESTINATARIOS en Configuración del proyecto; no se mandó el aviso.");
   var aviso = _armarAviso_(new Date());
   MailApp.sendEmail(DESTINATARIOS, aviso.asunto, aviso.cuerpo);
 }

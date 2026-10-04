@@ -55,3 +55,12 @@ Claude outputs/
 
 # Permisos personales de Claude Code (no se suben)
 .claude/settings.local.json
+
+# ---- Datos reales: NO van a GitHub (el repo es público). Viven solo en esta Mac. ----
+# Documentos con montos, nombres y situación del cliente o del negocio. Los chats de Claude los leen
+# del disco; los worktrees de Codex no los tienen (a propósito).
+clientes/navar/LEEME.md
+clientes/navar/documentos/
+docs/
+*.pdf
+Marca principal/
