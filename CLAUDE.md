@@ -38,6 +38,13 @@ ahora vive **una sola vez** en `nucleo/`. Se portó SIN cambiar la lógica.
 4. Afinar selectores en modo prueba mirando capturas (mismo proceso que Galicia).
 
 ## OJO / convenciones
+- **EL REPO ES PÚBLICO (GitHub). Nada de datos reales en archivos versionados**: ni montos, ni nombres
+  de personas, ni mails, ni nombres de clientes/proveedores de un cliente, ni situación de deuda. Eso va
+  en `clientes/<c>/privado/` o en los documentos que no se versionan (`clientes/navar/LEEME.md`,
+  `clientes/navar/documentos/`, `docs/`: están en `.gitignore`, viven solo en esta Mac). En código,
+  comentarios, pruebas y consignas de `tareas/`: ejemplos inventados. Los mails del aviso van en las
+  Propiedades del script de Apps Script. (Incidente 04/10/2026: había datos reales en el repo; se
+  limpió y se reescribió el historial.)
 - **Nombre del archivo descargado**: Galicia deja el nombre ORIGINAL (trae el CUIT que usa el
   clasificador); Comafi RENOMBRA con el nombre de la empresa. Eso lo maneja `descargar_csv` de
   cada banco + `nombre_archivo` en el perfil.

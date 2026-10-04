@@ -1,0 +1,186 @@
+# Tarea 32 — El mail diario como checklist simple
+Estado: aprobada (mergeada e instalada en Apps Script el 29/09/2026)
+Rama: tarea/aviso-checklist
+
+> **Renumerada el 29/09/2026** (antes era "30-aviso-checklist-y-madrugada": chocaba con la tarea 30
+> de horarios, escrita en paralelo en otro chat). **La parte de horarios ya está hecha e instalada**
+> por las tareas 30 y 31: bajadas a las 05:45 (Galicia también a las 05:48, de seguro), importación
+> diaria de la Sheet entre 06:15 y 06:45 además de la de cada hora, y **el mail a las 07:30** (07:15–07:45),
+> que es lo último que pidió Thomas. `DESTINATARIOS` ya tiene cuatro casillas. Esta tarea queda
+> **solo con la checklist**; no tocar horarios, instaladores ni `DESTINATARIOS`.
+
+## Objetivo
+
+Dos cosas que pidió NAVAR (29/09/2026):
+
+1. **El mail diario tiene que ser una checklist**: qué llegó, qué falta y, de lo que falta, cuál es
+   lo último que hay. Hoy tiene demasiado ruido técnico: lo que procesó el vigilante, lo que importó
+   la Sheet línea por línea y errores viejos ya resueltos.
+2. ~~A las 07:00 el cash tiene que estar actualizado~~ → **hecho** en las tareas 30 y 31 (ver arriba).
+
+## Contexto
+
+Leer antes: `AGENTS.md`, `tareas/LEEME.md`, `CLAUDE.md`, `clientes/navar/LEEME.md` (secciones del
+25, 28 y 29/09), `tareas/27-aviso-con-bajadas-automaticas.md` (qué se hizo recién y por qué),
+`clientes/navar/herramientas/aviso_diario.gs` entero, `lector/pruebas/probar_aviso_bajadas.cjs`,
+`clientes/navar/herramientas/instalar_tango.ps1` e `instalar_galicia.ps1`.
+
+**Lo que ya existe (tarea 27) y se reutiliza:**
+- Parte de Tango: `_para la Sheet/tango_ultima_bajada.txt` (fecha UTC, `N de 8` y una línea por falla).
+- Parte de Galicia: `Bancos/galicia/_ESTADO_Galicia_DD-MM.txt` (OK o `>>> ATENCION` con motivo).
+- `FUENTES_AUTOMATICAS = ["tango", "tesoreria_aa", "galicia"]`.
+- Lectura de Saldos Bancarios (último extracto por banco), Registro (importaciones), entradas de Drive
+  (archivos por carpeta) y marca de vida del vigilante.
+
+**El horario nuevo** (los horarios del Programador de tareas de la notebook los cambia Thomas; esta
+tarea deja los scripts y la guía iguales a lo que corre):
+- 05:45: bot de Galicia y bajada de Tango, a la vez.
+- Vigilante cada 15 min: procesa entre las 05:53 y las 06:08.
+- La Sheet importa cada hora, hoy cerca del minuto :32, o sea hacia las 06:33.
+- La Sheet además importa todos los días entre 06:15 y 06:45 (tarea 31).
+- 07:30: el mail (entre 07:15 y 07:45). **Ya instalado.**
+
+## Archivos permitidos
+
+- `clientes/navar/herramientas/aviso_diario.gs`
+- `lector/pruebas/probar_aviso_bajadas.cjs`
+- `tareas/32-aviso-checklist.md`
+
+(Los instaladores y la guía ya no: sus horarios los resolvieron las tareas 30 y 31.)
+
+## Resultado esperado
+
+### 1. El mail: una checklist
+
+Así, con datos reales del 28/09 a las 9:00 (el formato manda; el texto exacto puede ajustarse):
+
+```
+Asunto: NAVAR · 28/09 · faltan 6 cosas
+
+✅ LLEGÓ HOY
+☑ Tango A: cobranzas, pagos, cheques terceros, cheques propios (05:46)
+☑ Tango AA: cobranzas, pagos, cheques terceros, tesorería (05:46)
+☑ La Sheet se actualizó (06:33)
+
+❌ FALTA
+☐ Galicia: el bot falló a las 05:45 (se cerró el navegador al guardar).
+   Último extracto: 28/09 00:27
+☐ Macro: último extracto del 25/09 (hace 3 días) · subir a mano
+☐ BBVA: último extracto del 24/09 (hace 4 días) · subir a mano
+☐ Nación: último extracto del 24/09 (hace 4 días) · subir a mano
+☐ Corrientes: último extracto del 16/09 (hace 12 días) · subir a mano
+☐ Arqueo caja AA: último del 21/09 (hace 7 días) · cargar a mano
+```
+
+Reglas:
+- **Una línea por fuente, siempre las mismas**, cada una en ✅ o en ❌ (nunca en las dos). Las
+  fuentes son:
+  - Tango A (4 fotos) y Tango AA (4 fotos, incluida tesorería);
+  - cada banco que aparezca en Saldos Bancarios (Galicia automático, el resto manual);
+  - el arqueo de caja AA;
+  - "La Sheet se actualizó".
+  Deuda bancaria e impuestos **no** van: se cargan cuando cambian, no todos los días.
+- **Tango:** ✅ con la hora del parte si es de hoy y `8 de 8`. Si faltó alguna foto, una línea ❌
+  por empresa con qué faltó, el motivo corto del parte y la fecha del último archivo de esa foto.
+  Sin parte de hoy: ❌ "la bajada de Tango no corrió hoy · última: dd/mm hh:mm · revisar la notebook".
+- **Galicia (y todo banco en `FUENTES_AUTOMATICAS`):** ✅ si el `_ESTADO_` de hoy dice OK: hora y
+  "movimientos hasta dd/mm" (la última fecha que tiene en Saldos Bancarios). ❌ si falló o no hay parte
+  de hoy: motivo corto + "Último extracto: dd/mm hh:mm", que es la fecha y hora (de modificación) del
+  último Excel publicado en `Bancos/galicia`. **Ojo con el nombre:** desde la tarea 27 el bot publica
+  `Movimientos Galicia AAAA-MM-DD.xlsx` (uno por día, se reemplaza); antes publicaba
+  `Movimientos GALICIA <fecha_hora>.xlsx`. Buscar `^Movimientos Galicia .*\.xlsx$` **sin distinguir
+  mayúsculas** y quedarse con el más nuevo por fecha de modificación.
+  Galicia corre **dos veces** (05:45 y 05:48) y la segunda **pisa** el `_ESTADO_` del día: se usa ese
+  archivo tal como está (si la primera falló y la segunda anduvo, es ✅). **No** se usa la fecha del último movimiento
+  para decidir si falta (ver la revisión de la tarea 27).
+- **Bancos manuales y arqueo:** ✅ si están al cierre hábil anterior ("Macro: al día, extracto hasta
+  dd/mm"); ❌ si no: "último extracto del dd/mm (hace N días) · subir a mano". Misma lógica que hoy
+  en `_faltantesAviso_`.
+- **La Sheet se actualizó:** ✅ si el Registro tiene un `ok` de hoy **posterior** a las bajadas
+  automáticas de hoy, con la hora. Si no: ❌ "la Sheet no importó lo de hoy · última importación:
+  dd/mm hh:mm".
+- **Asunto:** `NAVAR · dd/mm · todo al día` o `NAVAR · dd/mm · faltan N cosas` (N = líneas ❌).
+- **⚠️ REVISAR** (sección al final, **solo si hay algo**): la notebook no está procesando (marca de
+  vida de más de 60 min), una importación con ERROR **sin un `ok` posterior del mismo tipo**, un
+  archivo retenido por el vigilante, o que no se pudo leer algo (Drive, Registro, etc.). **Se sacan
+  del mail:** "Llegó a Drive", "El vigilante procesó", "La Sheet importó" (el detalle línea por
+  línea), "Último export de Tango", "Último extracto cargado" y cualquier error que ya tenga un `ok`
+  posterior. Hoy sale "Falló la importación de tesoreria_aa (rate limit)" del sábado a las 08:32,
+  aunque el reintento de las 09:33 dio ok: eso no tiene que salir más.
+- `avisoDiarioPrueba` sigue mostrando exactamente el mismo texto que se mandaría.
+
+### 2. Horarios
+
+**Ya hecho** (tareas 30 y 31, instalado el 29/09). No tocar.
+
+## Comprobaciones
+
+1. `probar_aviso_bajadas.cjs` actualizado con fotos inventadas. Casos:
+   - todo al día (asunto "todo al día", sin ❌ ni ⚠️);
+   - Tango 6 de 8 (❌ con qué faltó);
+   - sin parte de Tango hoy;
+   - Galicia ATENCIÓN (❌ con motivo y "Último extracto");
+   - Galicia OK con último movimiento de hace 4 días (✅, no ❌);
+   - "Último extracto" de Galicia con los dos nombres de archivo (viejo y nuevo) en la carpeta: toma el más nuevo;
+   - manual atrasado y manual al día;
+   - Sheet sin importar hoy;
+   - ERROR con `ok` posterior (no sale) y ERROR sin `ok` posterior (sale en ⚠️);
+   - un lunes.
+   En cada caso, afirmar el asunto y qué líneas aparecen.
+2. Si no hay `node`, dejarlo anotado. Claude lo corre con el JavaScript de macOS.
+3. `grep` de nombres propios de personas vacío en lo agregado. Commit en la rama.
+
+## Qué hice
+
+- Reemplacé el cuerpo por LLEGÓ HOY, FALTA y REVISAR (sólo si hay alertas). Hay una casilla
+  por Tango A, Tango AA, banco identificado, arqueo AA e importación de la Sheet. El asunto
+  cuenta exclusivamente las casillas faltantes. No incluye deuda ni impuestos en la checklist.
+- Tango usa el parte 8/8; si está incompleto identifica las fotos por empresa, el motivo y
+  el último archivo disponible. Distingue cheques propios de terceros y tesorería de AA.
+- Galicia usa el último estado del día, nunca la fecha del movimiento para decidir si llegó.
+  Ante falla muestra el Excel más reciente por modificación, aceptando ambos nombres históricos
+  y sólo dentro de la carpeta del banco. La lectura de partes admite los bancos declarados
+  automáticos con el formato compartido de _ESTADO_.
+- Manuales y arqueo usan el cierre hábil anterior. La Sheet exige un ok de hoy posterior a los
+  partes automáticos de hoy; no toma registros de sistema ni fechas futuras.
+- REVISAR muestra falta de señal de vida, lecturas fallidas, retenciones pendientes y errores
+  sin ok posterior del mismo tipo. Saqué el detalle técnico por archivo y los logs históricos
+  del cuerpo. Prueba y envío siguen usando la misma función de armado.
+- Verificado con Node del runtime local: 20 casos de checklist más parseo de partes, todos OK.
+  En cada caso se verifica asunto, líneas y una sola casilla por fuente. Incluye lunes, 6/8,
+  Galicia OK con movimiento antiguo, ambos nombres de Excel, error resuelto y pendiente.
+- git diff --check y búsqueda de nombres propios en lo agregado: limpios. Confirmé que
+  DESTINATARIOS y las funciones de horarios no cambiaron. Sólo tres archivos autorizados.
+- No envié correos ni accedí a datos reales. Pendiente: pegar el .gs y ejecutar avisoDiarioPrueba
+  (Ver el aviso de hoy, sin mandar) para revisar la checklist en Google antes de usarla.
+
+## Revisión
+
+**Claude, 29/09/2026.** Leí el diff completo. `DESTINATARIOS` y los horarios no cambiaron. Galicia usa
+el `_ESTADO_` del día (el de la segunda corrida pisa al de la primera) y busca el último Excel con los
+dos nombres, sin distinguir mayúsculas. Tango se arma con el parte 8/8 y cae a foto por foto si falta
+algo. La Sheet cuenta solo los `ok` de hoy posteriores a las bajadas, sin los `sistema`. Un ERROR
+con un `ok` posterior del mismo tipo ya no sale. No pude correr `probar_aviso_bajadas.cjs` (no hay Node
+en la Mac); los 20 casos los corrió Codex. **Prueba con datos reales** (29/09 02:05, pegado en Apps
+Script, "Ver el aviso de hoy (sin mandar)"):
+
+```
+NAVAR · 29/09 · faltan 7 cosas
+✅ LLEGÓ HOY
+☑ GALICIA: 00:54 · movimientos hasta 22/09
+☑ La Sheet se actualizó (01:32)
+❌ FALTA
+☐ Tango A / Tango AA: la bajada de Tango no corrió hoy · última: 28/09 07:30   (correcto a las 2 AM)
+☐ BBVA 24/09 (5 días) · CORRIENTES 16/09 (13) · MACRO 25/09 (4) · NACION 24/09 (5) · subir a mano
+☐ Arqueo caja AA: último arqueo del 21/09 (hace 8 días) · cargar a mano
+```
+
+Todo cierra con la Sheet. No aparece el viejo "Falló la importación de tesoreria_aa". Aprobada.
+
+Menores (→ tarea 33):
+- Los bancos salen en mayúsculas y sin tilde (`GALICIA`, `NACION`), como vienen en Saldos Bancarios.
+  Mostrarlos como "Galicia", "Macro", "BBVA", "Nación", "Corrientes".
+- Si el bot de un banco automático no corre, falta su `_ESTADO_` del día y el mail lo dice **dos
+  veces**: en ❌ ("el bot no corrió hoy") y en ⚠️ ("No se pudo leer GaliciaParte: Falta …"). El
+  archivo faltante de un parte no es un error de lectura: no tiene que ir a ⚠️.
+

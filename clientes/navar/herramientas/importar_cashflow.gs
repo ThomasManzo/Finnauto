@@ -88,6 +88,14 @@ var IMPORTS = {
         fechas: ["Fecha"], texto: ["Referencia", "Concepto / Detalle"], colMarca: "Origen", marcas: ["Tango AA"], conId: true },
     ]
   },
+  ultimos_pagos: {
+    prefijo: "para_pegar_ultimos_pagos_",
+    solapas: [
+      { xlsx: "Ultimos Pagos", sheet: "Ultimos Pagos", formulas: [],
+        fechas: ["Fecha Ultimo Pago"], texto: ["Codigo", "Comprobante"],
+        colMarca: "Origen", marcas: ["Tango tesorería"], conId: false },
+    ]
+  },
   impuestos: {
     prefijo: "para_pegar_impuestos_",
     solapas: [
@@ -113,14 +121,19 @@ function onOpen() {
     .addItem("Importar Deuda (deuda bancaria)", "importarDeuda")
     .addItem("Importar Impuestos (deuda impositiva)", "importarImpuestos")
     .addItem("Importar Tesorería AA (efectivo)", "importarTesoreriaAA")
+    .addItem("Importar Últimos pagos (Tango)", "importarUltimosPagos")
     .addSeparator()
     .addItem("Importar lo nuevo ahora (lo que haría el disparador)", "importarLoNuevo")
     .addItem("Instalar actualización automática (cada hora)", "instalarDisparador")
     .addItem("Quitar actualización automática", "quitarDisparador")
     .addSeparator()
     .addItem("Ver el aviso de hoy (sin mandar)", "avisoDiarioPrueba")          // aviso_diario.gs
-    .addItem("Instalar aviso diario 09:00", "instalarAvisoDiario")
+    .addItem("Instalar aviso diario 07:30", "instalarAvisoDiario")
     .addItem("Quitar aviso diario", "quitarAvisoDiario")
+    .addSeparator()
+    .addItem("Ver el resumen semanal (sin mandar)", "resumenSemanalPrueba")    // resumen_semanal.gs
+    .addItem("Guardar foto semanal ahora", "guardarFotoSemanal")
+    .addItem("Instalar resumen semanal (lunes 08:00)", "instalarResumenSemanal")
     .addSeparator()
     .addItem("Armar solapa Cash (Cash, Semanal, Mensual)", "armarCash")
     .addItem("Armar solapa Plan (pisa las decisiones cargadas)", "armarPlan")
@@ -132,7 +145,7 @@ function onOpen() {
 // ---- actualización automática ------------------------------------------------------
 // Orden: deuda e impuestos antes que bancos y Tango, porque las pantallas leen todo junto
 // y da igual; pero si un import falla, los demás siguen (cada uno con su try).
-var ORDEN_AUTO = ["deuda", "impuestos", "bancos", "tesoreria_aa", "tango"];
+var ORDEN_AUTO = ["deuda", "impuestos", "bancos", "tesoreria_aa", "tango", "ultimos_pagos"];
 
 function importarLoNuevo() {
   var props = PropertiesService.getDocumentProperties();
@@ -159,8 +172,12 @@ function importarLoNuevo() {
 function instalarDisparador() {
   quitarDisparador();
   ScriptApp.newTrigger("importarLoNuevo").timeBased().everyHours(1).create();
-  _registrar_("sistema", "", "ok", "disparador instalado: importarLoNuevo cada hora");
-  try { SpreadsheetApp.getActiveSpreadsheet().toast("Listo: la Sheet se actualiza sola cada hora con lo nuevo de Drive.", "finauto", 10); } catch (e) {}
+  // Buscamos importar después del vigilante de las 05:53/06:08 y antes de las 07:00.
+  // nearMinute tiene ±15 minutos: puede correr entre 06:15 y 06:45, después
+  // de ambas pasadas; verificar en Registro que los datos se hayan importado.
+  ScriptApp.newTrigger("importarLoNuevo").timeBased().atHour(6).nearMinute(30).everyDays(1).create();
+  _registrar_("sistema", "", "ok", "disparadores instalados: importarLoNuevo cada hora y diariamente entre 06:15 y 06:45");
+  try { SpreadsheetApp.getActiveSpreadsheet().toast("Listo: la Sheet importa lo nuevo cada hora y diariamente entre 06:15 y 06:45.", "finauto", 10); } catch (e) {}
 }
 
 function quitarDisparador() {
@@ -190,6 +207,7 @@ function importarBancos()    { _importarManual_("bancos"); }
 function importarDeuda()     { _importarManual_("deuda"); }
 function importarImpuestos() { _importarManual_("impuestos"); }
 function importarTesoreriaAA() { _importarManual_("tesoreria_aa"); }
+function importarUltimosPagos() { _importarManual_("ultimos_pagos"); }
 
 
 // Los botones y el reloj dejan la misma evidencia; un fallo nunca se disfraza de ok.

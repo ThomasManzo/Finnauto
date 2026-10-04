@@ -1,5 +1,5 @@
 # Tarea 27 — El aviso de las 9:00 tiene que saber que Tango y Galicia bajan solos
-Estado: pendiente
+Estado: aprobada (mergeada 28/09; la corrección la escribió Claude porque Codex estaba sin cupo)
 Rama: tarea/aviso-bajadas
 
 ## Objetivo
@@ -100,4 +100,61 @@ Cómo es el circuito desde el 25-28/09 (en la notebook de NAVAR):
 
 ## Qué hice
 
+- `ingestas/tango_live.py` ahora deja `_para la Sheet/tango_ultima_bajada.txt` después de cada
+  corrida normal: hora UTC, cantidad sobre 8 y una línea corta por consulta fallida. Se publica de
+  forma atómica, no incluye el token y una falla al escribirlo queda en el log sin romper la bajada.
+- `aviso_diario.gs` lee por separado el parte de Tango y el estado diario de Galicia. El encabezado
+  informa hora y resultado de cada automatización, y genera la alerta correspondiente si falló, si
+  el parte es viejo o si no apareció el de hoy.
+- Declaré `FUENTES_AUTOMATICAS` con Tango, tesorería AA y Galicia. Sus faltantes ahora indican que no
+  llegó la bajada automática y que hay que revisar la notebook; las fuentes manuales conservan su
+  texto. Saqué la alerta vieja de pedir un export de Tango por antigüedad.
+- Agregué pruebas Python para el parte 8 de 8, las fallas sin token y el error de escritura. Agregué
+  una prueba Node con datos inventados para Tango 8/8 y 6/8, parte de ayer, Galicia OK/ATENCIÓN/sin
+  estado y el cierre de un lunes.
+- Verifiqué compilación y 15 pruebas Python, la prueba nueva del aviso y la prueba anterior del
+  importador: todo pasa. También confirmé que no agregué nombres propios de personas.
+- Prueba pendiente en Google: pegar `clientes/navar/herramientas/aviso_diario.gs` en Apps Script y
+  ejecutar **«Ver el aviso de hoy (sin mandar)»** antes de dejarlo enviando correos.
+
 ## Revisión
+
+**Claude, 28/09/2026.** Leí el diff completo. Casi todo bien; **una corrección antes de mergear.**
+
+Bien:
+- El parte de Tango: se escribe siempre, de forma atómica, con temporal que empieza con `.` (el
+  vigilante lo ignora) y sin token. Si Drive falla no rompe la bajada, y si el token falla antes no
+  hay parte, así que el mail lo marca "sin parte de hoy". Correcto.
+- La lectura de los dos partes va en `leer(...)` separados; `FUENTES_AUTOMATICAS` es explícita; los
+  textos de las fuentes manuales no cambian. Sacar la alerta de "más de 3 días" está bien.
+- Los horarios cierran: Tango, Galicia y el aviso corren todos los días, así que no hay falsas
+  alarmas de fin de semana.
+
+**A corregir — falsa alarma diaria de Galicia.** En `_faltantesAviso_`, para Galicia se exige
+`requerida = hoy` sobre la **última fecha de Saldos Bancarios**. Pero esa fecha es la del **último
+movimiento**, no la de la bajada: el lector arma el saldo del día a partir de los movimientos. Caso
+real: al 25/09 el último movimiento de Galicia era del 22/09, porque no hubo movimientos. Con este
+código, el mail diría casi todos los días "Extracto de GALICIA: no llegó la bajada automática de
+hoy", aunque el bot haya corrido bien.
+
+Corrección: para los bancos que están en `FUENTES_AUTOMATICAS`, **no** controlar la fecha del
+extracto en `_faltantesAviso_`. La señal de frescura es el parte del bot (`_ESTADO_` de hoy), que ya
+genera su propia alerta. Agregar un caso a `probar_aviso_bajadas.cjs`: Galicia con estado OK de hoy
+y último saldo de hace 4 días → **ninguna** línea de faltante para Galicia.
+
+Menor, sin cambio obligatorio: `GaliciaParte` arma el nombre del archivo con `new Date()` en lugar
+de `ahora`. En el mail real da igual; en una prueba con fecha inventada podría buscar otro día. Si se
+toca, usar la fecha del aviso.
+
+**Corrección aplicada por Claude (28/09).** Codex estaba sin cupo semanal y Thomas pidió que la
+escribiera Claude.
+- `_faltantesAviso_`: los bancos que están en `FUENTES_AUTOMATICAS` (se compara con el nombre del
+  banco en minúscula) ya no se controlan por la fecha del extracto; la frescura la da el parte del
+  bot. Comentado en el código.
+- `probar_aviso_bajadas.cjs`: el caso del lunes ahora espera que **no** aparezca "Extracto de
+  Galicia", y se suma el caso real del 25/09 (último movimiento de hace 4 días + bot OK hoy → sin
+  faltante ni alerta de Galicia).
+- En esta Mac no hay `node`: la prueba se corrió con el JavaScript de macOS (JavaScriptCore), con
+  una adaptación mínima de `require`/`vm`. **Pasa con el código nuevo y falla con el anterior**,
+  justo en el caso de Galicia. `python -m unittest ingestas.test_tango_live`: OK.
+- Queda igual: `GaliciaParte` arma el nombre con `new Date()`. En el mail real da lo mismo.

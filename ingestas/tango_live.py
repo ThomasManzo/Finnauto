@@ -54,9 +54,11 @@ DESTINO = {
     "cheques_propios": ("Cheques", "%s cheques propios %s.xlsx"),
     "movimientos_tesoreria": ("Tesoreria AA", "%s movimientos tesoreria %s.xlsx"),
 }
-SOLO_EMPRESA = {"movimientos_tesoreria": "AA"}
 PAGINA = 5000
 TIMEOUT_PAGINA = 300
+# El circuito diario tiene cinco fotos de A y cuatro de AA. Si una configuración
+# queda incompleta, el parte debe mostrar que faltó algo en vez de decir 5 de 5.
+TOTAL_BAJADAS_DIARIAS = 9
 
 # Qué encabezado manual corresponde a cada campo comprobado de la API. El orden
 # es el orden útil del export manual; todo campo no listado se agrega después sin
@@ -158,16 +160,19 @@ def token(cliente):
     return tok
 
 
-def rango_fechas(cfg, hoy, consulta):
-    """Live trae todo sin fechas; propios usa una ventana configurable de seguridad."""
-    if consulta != "cheques_propios":
+def rango_fechas(cfg, hoy, consulta, empresa="AA"):
+    """Propios y tesorería de A tienen ventana; AA conserva toda su historia."""
+    clave = consulta
+    if consulta == "movimientos_tesoreria" and empresa == "A":
+        clave = "movimientos_tesoreria_A"
+    elif consulta != "cheques_propios":
         return "", ""
     try:
-        dias = int(cfg.get("dias_atras", {}).get("cheques_propios"))
+        dias = int(cfg.get("dias_atras", {}).get(clave))
     except (TypeError, ValueError):
-        raise RuntimeError("falta dias_atras.cheques_propios válido en perfil.json")
+        raise RuntimeError("falta dias_atras.%s válido en perfil.json" % clave)
     if dias <= 0:
-        raise RuntimeError("dias_atras.cheques_propios debe ser mayor que cero")
+        raise RuntimeError("dias_atras.%s debe ser mayor que cero" % clave)
     return (hoy - datetime.timedelta(days=dias)).strftime("%d/%m/%Y"), ""
 
 
@@ -338,27 +343,30 @@ def conteo_codigos(consulta, empresa, filas):
     return "%s %s: %s" % (consulta.replace("_", " "), empresa, " · ".join(partes) or "sin filas")
 
 
-def validar_tesoreria(filas):
+def validar_tesoreria(filas, empresa="AA"):
     """La relación Tipo/Clase detecta si Live cambió la traducción ya confirmada."""
+    # En A algunos recibos y órdenes son movimientos entre bancos/carteras:
+    # se pueden exportar, pero el lector de últimos pagos no los toma como pagos.
     esperado = {
-        "REC": "Cobros",
-        "O/P": "Pagos",
-        "OPF": "Pagos",
-        "FPR": "Pagos",
-        "EXT": "Otros movimientos de bancos y carteras",
-        "RCT": "Rechazo de cheques de terceros",
+        "REC": ("Cobros", "Otros movimientos de bancos y carteras"),
+        "O/P": ("Pagos",),
+        "OPF": ("Pagos", "Otros movimientos de bancos y carteras"),
+        "FPR": ("Pagos",),
+        "EXT": ("Otros movimientos de bancos y carteras",),
+        "RCT": ("Rechazo de cheques de terceros",),
     }
     pares = Counter((str(f.get("Tipo") or "").strip().upper(), str(f.get("Clase") or "").strip())
                     for f in filas)
     texto = " · ".join("%s→%s %s" % (t or "vacío", c or "vacío", n)
                        for (t, c), n in sorted(pares.items())) or "sin filas"
-    malos = [(t, c, esperado[t]) for (t, c) in pares if t in esperado and c != esperado[t]]
+    malos = [(t, c, " o ".join(esperado[t])) for (t, c) in pares
+             if t in esperado and c not in esperado[t]]
     if malos:
         detalle = "; ".join("%s vino como '%s' y debía ser '%s'" % x for x in malos)
         raise RuntimeError(
             "Tesorería tiene Tipo/Clase incompatibles (%s). Conteo: %s. No se escribe el archivo"
             % (detalle, texto))
-    return "tesorería AA pares Tipo/Clase: " + texto
+    return "tesorería %s pares Tipo/Clase: " % empresa + texto
 
 
 def preparar_filas(consulta, empresa, filas):
@@ -367,7 +375,7 @@ def preparar_filas(consulta, empresa, filas):
     traducidas, columnas = traducir_filas(consulta, filas)
     linea_pares = None
     if consulta == "movimientos_tesoreria":
-        linea_pares = validar_tesoreria(traducidas)
+        linea_pares = validar_tesoreria(traducidas, empresa)
         # El lector viejo toma cualquier clase desconocida como "Otros". Como no
         # podemos tocarlo en esta tarea, la dejamos visible en el conteo pero no
         # la publicamos: sería adivinar una categoría de caja.
@@ -418,9 +426,11 @@ def bajar_y_escribir(cfg, tok, empresa, consulta, proceso, ruta, desde, hasta):
     return len(originales), len(filas)
 
 
-def carpeta_consulta(raiz, consulta):
+def carpeta_consulta(raiz, consulta, empresa="AA"):
     if consulta != "movimientos_tesoreria":
         return os.path.join(raiz, DESTINO[consulta][0])
+    if empresa == "A":
+        return os.path.join(raiz, "Tesoreria A")
     sin_tilde = os.path.join(raiz, "Tesoreria AA")
     con_tilde = os.path.join(raiz, "Tesorería AA")
     if os.path.isdir(sin_tilde):
@@ -430,13 +440,68 @@ def carpeta_consulta(raiz, consulta):
     return sin_tilde
 
 
+def _resumir_error_parte(error, tok):
+    """Deja sólo un motivo corto; nunca copia el token ni filas descargadas."""
+    texto = " ".join(str(error or "sin detalle").split())
+    if tok:
+        texto = texto.replace(str(tok), "[token oculto]")
+    return texto[:150]
+
+
+def _escribir_parte_tango(raiz, ok, total, fallas, tok="", ahora=None):
+    """Publica de una vez el resultado que leerá el aviso de las 09:00."""
+    carpeta = os.path.join(raiz, "_para la Sheet")
+    os.makedirs(carpeta, exist_ok=True)
+    destino = os.path.join(carpeta, "tango_ultima_bajada.txt")
+    temporal = os.path.join(carpeta, ".tango_ultima_bajada.%d.tmp" % os.getpid())
+    marca = ahora or datetime.datetime.now(datetime.timezone.utc)
+    if marca.tzinfo is None:
+        marca = marca.replace(tzinfo=datetime.timezone.utc)
+    marca = marca.astimezone(datetime.timezone.utc).replace(microsecond=0)
+    lineas = [marca.isoformat(), "%d de %d" % (ok, total)]
+    for nombre, error in fallas:
+        lineas.append("%s: %s" % (nombre, _resumir_error_parte(error, tok)))
+    try:
+        with open(temporal, "w", encoding="utf-8", newline="\n") as f:
+            f.write("\n".join(lineas) + "\n")
+        os.replace(temporal, destino)
+    finally:
+        if os.path.exists(temporal):
+            os.unlink(temporal)
+
+
+def _bajada_completa_hoy(raiz, hoy):
+    """Sólo evitamos la bajada cuando el parte confirma todas las fotos del día."""
+    ruta = os.path.join(raiz, "_para la Sheet", "tango_ultima_bajada.txt")
+    try:
+        with open(ruta, encoding="utf-8") as f:
+            lineas = f.read().splitlines()
+        marca = datetime.datetime.fromisoformat(lineas[0])
+        if marca.tzinfo is None:
+            raise ValueError("fecha sin zona horaria")
+        ok, total = (int(n) for n in lineas[1].split(" de "))
+        if not 0 <= ok <= total or total <= 0:
+            raise ValueError("conteo inválido")
+        # La fecha UTC puede ser de mañana cuando acá todavía es hoy.
+        local = marca.astimezone()
+    except FileNotFoundError:
+        return False
+    except (OSError, UnicodeError, ValueError, IndexError, OverflowError):
+        log("AVISO: parte de Tango ilegible; vuelvo a intentar la bajada completa")
+        return False
+    if (local.date() == hoy and ok == total == TOTAL_BAJADAS_DIARIAS
+            and not any(linea.strip() for linea in lineas[2:])):
+        log("ya bajó hoy completo a las %s; no hago nada" % local.strftime("%H:%M"))
+        return True
+    return False
+
+
 def pendientes(cfg):
-    """Las ocho fotos válidas: cuatro de A y cuatro de AA."""
+    """Las nueve fotos válidas: cinco de A y cuatro de AA."""
     return [(empresa, consulta, proceso)
             for empresa, empresa_id in cfg.get("empresas", {}).items() if empresa_id
             for consulta, proceso in cfg.get("consultas", {}).items() if proceso
-            if not (empresa == "AA" and consulta == "cheques_propios")
-            if consulta not in SOLO_EMPRESA or SOLO_EMPRESA[consulta] == empresa]
+            if not (empresa == "AA" and consulta == "cheques_propios")]
 
 
 def _mostrar_prueba(cfg, tok, consulta, empresa, proceso, desde, hasta):
@@ -469,6 +534,8 @@ def main(argv=None):
                     help="consulta: trae 5 filas y muestra sólo estructura y conteos")
     ap.add_argument("--empresa", default="A")
     ap.add_argument("--simular", action="store_true")
+    ap.add_argument("--si-falta", action="store_true",
+                    help="baja sólo si el parte no confirma todas las fotos de hoy")
     a = ap.parse_args(argv)
     cfg = perfil(a.cliente)
     hoy = datetime.date.fromisoformat(a.hoy)
@@ -479,7 +546,7 @@ def main(argv=None):
         proceso = cfg.get("consultas", {}).get(a.probar)
         if not proceso:
             raise SystemExit("la consulta %s no tiene número de proceso en perfil.json" % a.probar)
-        desde, hasta = rango_fechas(cfg, hoy, a.probar)
+        desde, hasta = rango_fechas(cfg, hoy, a.probar, a.empresa)
         _mostrar_prueba(cfg, token(a.cliente), a.probar, a.empresa, proceso, desde, hasta)
         return 0
 
@@ -497,10 +564,10 @@ def main(argv=None):
 
     if a.simular:
         for empresa, consulta, proceso in trabajos:
-            carpeta = carpeta_consulta(raiz, consulta)
+            carpeta = carpeta_consulta(raiz, consulta, empresa)
             nombre = DESTINO[consulta][1] % (empresa, a.hoy)
             try:
-                desde, hasta = rango_fechas(cfg, hoy, consulta)
+                desde, hasta = rango_fechas(cfg, hoy, consulta, empresa)
                 url = armar_url(cfg, empresa, consulta, proceso, desde, hasta, 0, PAGINA)
                 log("bajaría %s · GET %s" % (os.path.join(carpeta, nombre), url))
             except Exception as ex:
@@ -508,14 +575,18 @@ def main(argv=None):
                 return 1
         return 0
 
+    if a.si_falta and _bajada_completa_hoy(raiz, hoy):
+        return 0
+
     tok = token(a.cliente)
     ok = 0
+    fallas = []
     for empresa, consulta, proceso in trabajos:
-        carpeta = carpeta_consulta(raiz, consulta)
+        carpeta = carpeta_consulta(raiz, consulta, empresa)
         nombre = DESTINO[consulta][1] % (empresa, a.hoy)
         ruta = os.path.join(carpeta, nombre)
         try:
-            desde, hasta = rango_fechas(cfg, hoy, consulta)
+            desde, hasta = rango_fechas(cfg, hoy, consulta, empresa)
             recibidas, escritas = bajar_y_escribir(
                 cfg, tok, empresa, consulta, proceso, ruta, desde, hasta)
             detalle = "%d filas" % escritas
@@ -525,7 +596,15 @@ def main(argv=None):
             ok += 1
         except Exception as ex:
             log("%s: FALLÓ: %s" % (nombre, ex))
+            fallas.append((nombre, ex))
     log("listo: %d de %d" % (ok, len(trabajos)))
+    try:
+        _escribir_parte_tango(raiz, ok, TOTAL_BAJADAS_DIARIAS, fallas, tok)
+        log("parte para el aviso diario: _para la Sheet/tango_ultima_bajada.txt")
+    except Exception as ex:
+        # Drive puede demorarse o no estar montado: se avisa, pero no se convierte
+        # una bajada que terminó bien en una corrida fallida.
+        log("AVISO: no pude escribir el parte de Tango para el mail diario: %s" % ex)
     return 0 if ok == len(trabajos) else 1
 
 

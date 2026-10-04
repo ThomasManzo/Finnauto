@@ -27,9 +27,9 @@
       ],
       "solo_empresa_activa": true,
       "nombre_archivo": "excel_navar",
-      "prefijo_archivo": "Movimientos GALICIA",
+      "prefijo_archivo": "Movimientos Galicia",
       "modo_visible": true,
-      "_nota": "Una sola empresa activa: se confirma en pantalla y no se abre el selector. La carpeta se resuelve sola desde NAVAR - Datos/Bancos/galicia; carpeta_drive_destino queda como alternativa manual. Cada descarga trae los últimos 30 días del banco; el lector elimina la superposición y el estado evita bajar dos veces el mismo día. El navegador queda visible hasta probar el modo invisible; para ocultarlo alcanza con cambiar modo_visible a false.",
+      "_nota": "Una sola empresa activa: se confirma en pantalla y no se abre el selector. La carpeta se resuelve sola desde NAVAR - Datos/Bancos/galicia; carpeta_drive_destino queda como alternativa manual. Cada corrida vuelve a bajar los últimos 30 días del banco; el lector descarta movimientos repetidos y el estado solo marca hasta qué día se bajó. El navegador queda visible hasta probar el modo invisible; para ocultarlo alcanza con cambiar modo_visible a false.",
       "cuenta": "0005459-5 070-1",
       "carpeta_drive_destino": "",
       "carpeta_drive_relativa": "Bancos/galicia",
@@ -65,11 +65,21 @@
     "bbva": {
       "activo": false,
       "empresas_excluir": [],
-      "solo_estas_empresas": [],
-      "solo_empresa_activa": false,
-      "nombre_archivo": "empresa",
-      "prefijo_archivo": "BBVA",
-      "_nota": "Es el 'Frances'. Sin ficha todavia."
+      "solo_estas_empresas": [
+        "NAVAR SA"
+      ],
+      "solo_empresa_activa": true,
+      "nombre_archivo": "excel_navar",
+      "prefijo_archivo": "Movimientos BBVA",
+      "modo_visible": true,
+      "_nota": "Es el 'Frances'. Dos cuentas corrientes: la principal y la de recaudacion. El bot baja las dos en la misma corrida (ultimos 60 dias) y publica un Excel por cuenta en NAVAR - Datos/Bancos/bbva. Para entrar pide codigo de empresa, usuario y clave: los tres viven en el llavero (setup_credenciales.py --banco bbva). activo=false hasta que la prueba a mano salga bien.",
+      "cuentas": [
+        "489-000765/9",
+        "489-000806/5"
+      ],
+      "carpeta_drive_destino": "",
+      "carpeta_drive_relativa": "Bancos/bbva",
+      "incluir_hoy": false
     }
   },
   "fuentes_de_datos": {
@@ -94,7 +104,7 @@
   },
   "_ayuda_modos_de_prueba": "Para probar un bot: en el banco que quieras, poner 'solo_empresa_activa': true o 'solo_estas_empresas': ['Nombre Tal Cual']. Vacio + solo_empresa_activa false = PRODUCCION (todas).",
   "tango_live": {
-    "_ayuda": "Bajada automatica de Tango Live por API (ingestas/tango_live.py). La llamada usa /Api/GetApiLiveQueryData con parametros de query. Cada empresa y consulta exige su consultas_personalizadas: sin ese numero no se baja la vista por defecto porque le faltan columnas. El token NO va aca: queda en el llavero de Windows. Solo cheques propios filtra desde hoy menos dias_atras; las demas fotos mandan fechas vacias para traer todo.",
+    "_ayuda": "Bajada automatica de Tango Live por API (ingestas/tango_live.py). La llamada usa /Api/GetApiLiveQueryData con parametros de query. Cada empresa y consulta exige su consultas_personalizadas: sin ese numero no se baja la vista por defecto porque le faltan columnas. El token NO va aca: queda en el llavero de Windows. Son nueve bajadas diarias. Cheques propios y tesoreria A filtran desde hoy menos su dias_atras; las demas fotos, incluida tesoreria AA, mandan fechas vacias para traer todo.",
     "url": "http://servidor:17000",
     "empresas": {
       "A": 13,
@@ -112,7 +122,8 @@
         "cobranzas": 10,
         "pagos": 11,
         "cheques_terceros": 18,
-        "cheques_propios": 13
+        "cheques_propios": 13,
+        "movimientos_tesoreria": 19
       },
       "AA": {
         "cobranzas": 14,
@@ -122,10 +133,11 @@
       }
     },
     "dias_atras": {
-      "cheques_propios": 60
+      "cheques_propios": 60,
+      "movimientos_tesoreria_A": 400
     },
     "_origen": "Procesos, empresas y consultas personalizadas comprobados contra Live el 25/09/2026. NAVAR SA = 13 y NAVAR SA Otros = 56. La API funciona con parametros despues de '?'; la ruta dibujada por la pantalla devuelve HTML.",
-    "_movimientos_tesoreria": "11591 = movimientos de tesorería (un renglón por comprobante: cobros, pagos y otros, con Desc. relacionado). Solo para AA (empresa 56): es la operación en efectivo. Va a la carpeta 'Tesoreria AA' sin tilde y la procesa lector/tesoreria_aa.py.",
+    "_movimientos_tesoreria": "11591 = movimientos de tesorería (un renglón por comprobante: cobros, pagos y otros, con Desc. relacionado). A (empresa 13, consulta 19): últimos 400 días configurables, carpeta Tesoreria A. AA (empresa 56, consulta 17): historia completa, carpeta Tesoreria AA (tolera tilde), sigue como efectivo con lector/tesoreria_aa.py. Ambas alimentan lector/ultimos_pagos.py; nunca mezclar las carpetas.",
     "_cheques_terceros": "Las consultas 18 (A) y 16 (AA) filtran Estado = En Cartera en Live (25/09/2026): sin ese filtro A bajaba 75 mil cheques de historia para quedarse con ~44. La bajada igual vuelve a filtrar por código C."
   },
   "cruce": {

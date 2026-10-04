@@ -3,21 +3,32 @@
  * Primero correr avisoDiarioPrueba; instalar recién después de revisar el texto.
  * Agregar al menú finauto existente estas tres líneas (acá no hay otro onOpen):
  * .addItem("Ver el aviso de hoy (sin mandar)", "avisoDiarioPrueba")
- * .addItem("Instalar aviso diario 09:00", "instalarAvisoDiario")
+ * .addItem("Instalar aviso diario 07:30", "instalarAvisoDiario")
  * .addItem("Quitar aviso diario", "quitarAvisoDiario")
- * Google ejecuta cerca de las 09:00 (nearMinute tiene un margen de 15 minutos).
+ * Google ejecuta cerca de las 07:30: entre 07:15 y 07:45 (nearMinute tiene ±15 min).
  * Para probar sin Google, _armarAviso_(ahora, datos) acepta una foto inventada:
  * { entradas: [], publicados: [], retenidos: [], registro: [], log: [],
- *   ultimaPasada: Date o null, extracto: Date o null, saldos: [{banco, empresa, origen, fecha}], errores: {} }. Archivos: {nombre, ruta, tipo, fecha}.
+ *   ultimaPasada: Date o null, tangoParte: {...}, galiciaParte: {...}, extracto: Date o null,
+ *   saldos: [{banco, empresa, origen, fecha}], errores: {} }. Archivos: {nombre, ruta, tipo, fecha}.
  * Registro: {fecha, tipo, estado, detalle}. Log: {fecha, texto}.
  * Con esa foto el armado es puro; con solo ahora, primero lee Google.
  */
-var DESTINATARIOS = "cuenta-empresa@ejemplo.com";
+// Los mails de NAVAR NO van en el código (el repo es público): se cargan una vez en Apps Script →
+// Configuración del proyecto → Propiedades de la secuencia de comandos → DESTINATARIOS (separados por
+// coma). Para sumar o sacar a alguien se edita esa propiedad; no hace falta tocar el código.
+var DESTINATARIOS = (typeof PropertiesService !== "undefined" &&
+  PropertiesService.getScriptProperties().getProperty("DESTINATARIOS")) || "";
 var AVISO_ZONA = "America/Argentina/Buenos_Aires";
 var AVISO_DIA = 24 * 60 * 60 * 1000;
+// Tiene que coincidir con TOTAL_BAJADAS_DIARIAS de ingestas/tango_live.py.
+var TANGO_BAJADAS = 9;
+// Estas fuentes ya llegan solas. Al automatizar otro banco, se lo agrega acá para
+// que el aviso deje de pedir una carga manual y pase a revisar la notebook.
+var FUENTES_AUTOMATICAS = ["tango", "tesoreria_aa", "galicia"];
 
 // Manda exactamente el texto que también permite revisar el botón de prueba.
 function avisoDiario() {
+  if (!DESTINATARIOS) throw new Error("Falta la propiedad DESTINATARIOS en Configuración del proyecto; no se mandó el aviso.");
   var aviso = _armarAviso_(new Date());
   MailApp.sendEmail(DESTINATARIOS, aviso.asunto, aviso.cuerpo);
 }
@@ -33,9 +44,9 @@ function avisoDiarioPrueba() {
 // Deja un solo aviso diario para esta cuenta, con horario de Buenos Aires.
 function instalarAvisoDiario() {
   _borrarDisparadoresAviso_();
-  ScriptApp.newTrigger("avisoDiario").timeBased().atHour(9).nearMinute(0)
+  ScriptApp.newTrigger("avisoDiario").timeBased().atHour(7).nearMinute(30)
     .everyDays(1).inTimezone(AVISO_ZONA).create();
-  _registrar_("sistema", "", "ok", "aviso diario instalado: cerca de las 09:00 de Buenos Aires");
+  _registrar_("sistema", "", "ok", "aviso diario instalado: cerca de las 07:30 de Buenos Aires (07:15–07:45)");
 }
 
 // Quita solamente el aviso; la actualización horaria sigue funcionando.
@@ -62,6 +73,46 @@ function _textoAviso_(texto, limite) {
   return limite && limpio.length > limite ? limpio.slice(0, limite - 3) + "..." : limpio;
 }
 
+// Saca del resumen del lector de bancos los archivos que no pudo leer. El renglón es
+// "- no pude leer corrientes/<archivo>: ValueError: <motivo>"; el nombre técnico del error no va al mail.
+function _ilegiblesAviso_(texto) {
+  return String(texto || "").split(/\r?\n/).map(function (linea) {
+    var m = linea.match(/^- no pude leer ([^\/\\]+)[\/\\](.+?): (?:[A-Za-z]+Error: )?(.*)$/);
+    return m ? {banco: m[1].toLowerCase(), archivo: m[2], motivo: m[3].trim()} : null;
+  }).filter(Boolean);
+}
+
+// Interpreta el parte mínimo que deja la bajada de Tango en Drive.
+function _parteTangoAviso_(texto) {
+  var lineas = String(texto || "").trim().split(/\r?\n/);
+  if (lineas.length < 2) throw new Error("El parte de Tango está incompleto");
+  var fecha = new Date(lineas[0]), conteo = lineas[1].match(/^(\d+) de (\d+)$/);
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+00:00$/.test(lineas[0]) || isNaN(fecha))
+    throw new Error("El parte de Tango no tiene una fecha UTC válida");
+  if (!conteo || Number(conteo[1]) > Number(conteo[2]))
+    throw new Error("El parte de Tango no tiene un conteo válido");
+  return {fecha: fecha, ok: Number(conteo[1]), total: Number(conteo[2]),
+    fallas: lineas.slice(2).filter(Boolean).map(function (l) { return _textoAviso_(l, 220); })};
+}
+
+// El archivo de Galicia es para personas; acá tomamos sólo la hora y el bloque de atención.
+function _parteGaliciaAviso_(texto) {
+  var lineas = String(texto || "").split(/\r?\n/), cabecera = lineas[0] || "";
+  var marca = cabecera.match(/^Bot Galicia - (\d{2}\/\d{2}\/\d{4} \d{2}:\d{2})$/i);
+  if (!marca) throw new Error("El estado de Galicia no tiene fecha y hora válidas");
+  var fecha = Utilities.parseDate(marca[1], AVISO_ZONA, "dd/MM/yyyy HH:mm");
+  if (!(fecha instanceof Date) || isNaN(fecha))
+    throw new Error("El estado de Galicia no tiene fecha y hora válidas");
+  var indice = lineas.findIndex(function (l) { return />>>\s*ATENCI[OÓ]N/i.test(l); });
+  var detalles = [];
+  if (indice >= 0) {
+    for (var i = indice; i < lineas.length && !/^Bajadas OK/i.test(lineas[i]); i++) {
+      if (_textoAviso_(lineas[i])) detalles.push(_textoAviso_(lineas[i].replace(/^>>>\s*/, ""), 180));
+    }
+  }
+  return {fecha: fecha, ok: indice < 0, detalle: detalles.join(" · ")};
+}
+
 // Origen trae «Extracto BANCO». El formato viejo sin banco sigue siendo válido.
 function _esExtractoAviso_(origen) {
   return /^extracto/i.test(_textoAviso_(origen));
@@ -70,6 +121,14 @@ function _esExtractoAviso_(origen) {
 // El banco viene del extracto; sólo usamos Banco si el origen viejo no lo decía.
 function _bancoExtractoAviso_(fila) {
   return _textoAviso_(fila.origen).replace(/^extracto/i, "").trim() || _textoAviso_(fila.banco);
+}
+
+// Sólo cambia la presentación: las claves internas y las rutas siguen iguales.
+function _nombreBancoAviso_(nombre) {
+  var clave = _textoAviso_(nombre).toLowerCase();
+  var conocidos = {galicia: "Galicia", nacion: "Nación", corrientes: "Corrientes",
+    macro: "Macro", bbva: "BBVA"};
+  return conocidos[clave] || clave.charAt(0).toUpperCase() + clave.slice(1);
 }
 
 // Mantiene cada sección corta, pero dice cuántos renglones quedaron afuera.
@@ -116,8 +175,10 @@ function _archivosAviso_(carpeta, ruta, tipo, recursivo) {
 }
 
 // Lee cada parte por separado: si una falla, las demás igual llegan al mail.
-function _leerDatosAviso_() {
-  var datos = {entradas: [], publicados: [], retenidos: [], registro: [], log: [], ultimaPasada: null, extracto: null, saldos: [], errores: {}};
+function _leerDatosAviso_(ahora) {
+  ahora = ahora || new Date();
+  var datos = {entradas: [], publicados: [], retenidos: [], registro: [], log: [], ilegibles: [],
+    ultimaPasada: null, tangoParte: null, galiciaParte: null, extracto: null, saldos: [], errores: {}};
   var raiz, salida;
   // Guarda el problema junto a la sección que no se pudo leer.
   function leer(clave, trabajo) {
@@ -127,7 +188,7 @@ function _leerDatosAviso_() {
     var carpetas = DriveApp.getFoldersByName(CARPETA_RAIZ);
     if (!carpetas.hasNext()) throw new Error("No encontré " + CARPETA_RAIZ);
     raiz = carpetas.next();
-    var mapa = {"Bancos": "bancos", "Cuentas a cobrar": "tango", "Cuentas a pagar": "tango",
+    var mapa = {"Tesoreria A": "tesoreria_a", "Bancos": "bancos", "Cuentas a cobrar": "tango", "Cuentas a pagar": "tango",
       "Cheques": "tango", "Deuda bancaria": "deuda", "Impuestos": "impuestos",
       "Tesorería AA": "tesoreria_aa", "Tesoreria AA": "tesoreria_aa"};
     var sub = raiz.getFolders();
@@ -145,6 +206,19 @@ function _leerDatosAviso_() {
     datos.publicados = _archivosAviso_(salida, "_para la Sheet", "", false)
       .filter(function (f) { return /^para_pegar_.*\.xlsx$/i.test(f.nombre); });
   });
+  // Extractos que llegaron pero el lector no pudo leer (formato nuevo, PDF escaneado, archivo vacío).
+  // El lector los anota en su resumen; como relee toda la carpeta de bancos cada vez, el resumen más
+  // nuevo lista todos los que siguen sin leerse. Sin esto, el mail decía "subir a mano" de algo que
+  // ya se había subido (Corrientes, 01/10/2026).
+  leer("Ilegibles", function () {
+    if (!salida) throw new Error("No pude abrir _para la Sheet");
+    var mejor = null, archivos = salida.getFiles();
+    while (archivos.hasNext()) {
+      var f = archivos.next(), m = f.getName().match(/^resumen_bancos_(\d{4}-\d{2}-\d{2})\.md$/);
+      if (m && (!mejor || m[1] > mejor.dia)) mejor = {dia: m[1], archivo: f};
+    }
+    datos.ilegibles = mejor ? _ilegiblesAviso_(mejor.archivo.getBlob().getDataAsString("UTF-8")) : [];
+  });
   leer("Latido", function () {
     if (!salida) throw new Error("No pude abrir _para la Sheet");
     var archivos = salida.getFilesByName("vigilante_ultima_pasada.txt");
@@ -157,6 +231,45 @@ function _leerDatosAviso_() {
         isNaN(fecha) || fecha.toISOString().slice(0, 19) !== texto.slice(0, 19))
       throw new Error("La marca de vida no tiene una fecha UTC válida");
     datos.ultimaPasada = fecha;
+  });
+  leer("TangoParte", function () {
+    if (!salida) throw new Error("No pude abrir _para la Sheet");
+    var archivos = salida.getFilesByName("tango_ultima_bajada.txt");
+    if (!archivos.hasNext()) throw new Error("Falta tango_ultima_bajada.txt");
+    var archivo = archivos.next();
+    if (archivos.hasNext()) throw new Error("Hay más de un parte de Tango; revisar duplicados en Drive");
+    datos.tangoParte = _parteTangoAviso_(archivo.getBlob().getDataAsString("UTF-8"));
+  });
+  datos.bancosPartes = {};
+  FUENTES_AUTOMATICAS.filter(function (banco) {
+    return ["tango", "tesoreria_aa"].indexOf(banco) < 0;
+  }).forEach(function (banco) {
+    var etiqueta = banco.charAt(0).toUpperCase() + banco.slice(1);
+    leer(banco === "galicia" ? "GaliciaParte" : banco + "Parte", function () {
+      if (!raiz) throw new Error("No pude abrir la carpeta de datos");
+      var bancos = raiz.getFoldersByName("Bancos");
+      if (!bancos.hasNext()) throw new Error("Falta la carpeta Bancos");
+      var carpetaBancos = bancos.next();
+      if (bancos.hasNext()) throw new Error("Hay más de una carpeta Bancos");
+      var carpetas = carpetaBancos.getFoldersByName(banco);
+      if (!carpetas.hasNext()) throw new Error("Falta Bancos/" + banco);
+      var carpeta = carpetas.next();
+      if (carpetas.hasNext()) throw new Error("Hay más de una carpeta del banco");
+      var nombre = "_ESTADO_" + etiqueta + "_" + _fechaAviso_(ahora, "dd-MM") + ".txt";
+      var archivos = carpeta.getFilesByName(nombre);
+      // Sin parte hoy, la checklist ya pide revisar la notebook. No es una lectura fallida.
+      if (!archivos.hasNext()) return;
+      var archivo = archivos.next();
+      if (archivos.hasNext()) throw new Error("Hay más de un estado de hoy");
+      // Los bots comparten el formato de nucleo/salidas; verificamos el banco de la cabecera.
+      var texto = archivo.getBlob().getDataAsString("UTF-8");
+      var prefijo = "Bot " + etiqueta + " - ";
+      if (texto.slice(0, prefijo.length).toLowerCase() !== prefijo.toLowerCase())
+        throw new Error("El parte no corresponde al banco");
+      var parte = _parteGaliciaAviso_("Bot Galicia - " + texto.slice(prefijo.length));
+      datos.bancosPartes[banco] = parte;
+      if (banco === "galicia") datos.galiciaParte = parte;
+    });
   });
   leer("Retenidos", function () {
     if (!salida) throw new Error("No pude abrir _para la Sheet");
@@ -216,177 +329,164 @@ function _fechaNombreAviso_(nombre) {
   return !isNaN(fecha) && fecha.toISOString().slice(0, 10) === marca[1] ? marca[1] : "";
 }
 
-// Una línea por fuente: no deja que un banco o la empresa A tapen lo que falta de otro.
-function _faltantesAviso_(ahora, datos) {
-  var hoy = _diaAviso_(ahora), cierre = _habilAnteriorAviso_(hoy), lineas = [];
-  function mostrar(dia) { return dia.split("-").reverse().join("/"); }
-  function pedir(nombre, ultima, requerida) {
-    if (!ultima || ultima < requerida) lineas.push("- " + nombre + ": falta actualizar al " + mostrar(requerida) +
-      (ultima ? "; última fecha disponible: " + mostrar(ultima) + "." : "; sin fecha disponible (no se puede determinar desde cuándo falta)."));
-  }
-  if (datos.errores.Extracto || !datos.saldos || !datos.saldos.length) {
-    lineas.push("- Bancos y arqueo de caja AA: no se pudo verificar Saldos Bancarios; revisar la carga y el acceso.");
-  } else {
-    var bancos = {}, arqueo = "";
-    datos.saldos.forEach(function (r) {
-      var extracto = _esExtractoAviso_(r.origen);
-      var banco = extracto ? _bancoExtractoAviso_(r) : _textoAviso_(r.banco), empresa = _textoAviso_(r.empresa).toUpperCase();
-      var origen = _textoAviso_(r.origen).toLowerCase(), dia = _diaAviso_(r.fecha);
-      var caja = /^(\(varios\)|varios|caja)$/i.test(banco);
-      if (empresa === "AA" && caja && origen === "manual" && dia <= hoy && dia > arqueo) arqueo = dia;
-      if (!banco || caja) return;
-      var clave = banco.toLowerCase();
-      if (!bancos[clave]) bancos[clave] = {nombre: banco, fecha: ""};
-      if (extracto && dia <= hoy && dia > bancos[clave].fecha) bancos[clave].fecha = dia;
-    });
-    Object.keys(bancos).sort().forEach(function (clave) {
-      var banco = bancos[clave], ultima = banco.fecha;
-      if (ultima && ultima < cierre) {
-        // La edad son días corridos; para pedir actualización manda el cierre hábil.
-        var edad = Math.round((Date.parse(hoy) - Date.parse(ultima)) / AVISO_DIA);
-        lineas.push("- Extracto de " + banco.nombre + ": el último extracto es del " + mostrar(ultima) +
-          ", hace " + edad + (edad === 1 ? " día" : " días") + "; falta actualizar al " + mostrar(cierre) + ".");
-      } else if (!ultima) pedir("Extracto de " + banco.nombre, ultima, cierre);
-    });
-    if (!Object.keys(bancos).length) lineas.push("- Extractos de banco: no hay bancos identificables en Saldos Bancarios; revisar la lista.");
-    pedir("Arqueo de caja AA (carga manual)", arqueo, cierre);
-  }
-  if (datos.errores.Drive) {
-    lineas.push("- Exports de Tango y tesorería AA: no se pudo verificar Drive; revisar el acceso.");
-  } else {
-    var fotos = {}, tesoreria = "";
-    datos.entradas.forEach(function (f) {
-      if (!(f.fecha instanceof Date) || f.fecha > ahora) return;
-      var dia = _fechaNombreAviso_(f.nombre);
-      if (!dia || dia > hoy) return;
-      var nombre = f.nombre.toLowerCase().replace(/_/g, " ");
-      var marca = nombre.match(/^(aa|a)\s+(cobranzas?|pagos?|cheques?)\b/);
-      if (f.tipo === "tango" && marca) {
-        var lista = /^cobranza/.test(marca[2]) ? "cobranzas" : /^pago/.test(marca[2]) ? "pagos" : "cheques";
-        var clave = marca[1].toUpperCase() + " " + lista;
-        if (!fotos[clave] || dia > fotos[clave]) fotos[clave] = dia;
-      }
-      if (f.tipo === "tesoreria_aa" && /^aa\s/.test(nombre) && dia > tesoreria) tesoreria = dia;
-    });
-    ["A", "AA"].forEach(function (empresa) {
-      ["cobranzas", "pagos", "cheques"].forEach(function (lista) {
-        pedir("Tango " + empresa + " — " + lista, fotos[empresa + " " + lista], hoy);
-      });
-    });
-    pedir("Tesorería AA (subida manual)", tesoreria, hoy);
-  }
-  return lineas;
-}
-
-// Arma el mismo resultado para prueba y envío. Una foto opcional permite probar sin Google.
+// Una sola casilla por fuente: el parte dice si bajó y el saldo hasta dónde hay movimientos.
 function _armarAviso_(ahora, datos) {
-  datos = datos || _leerDatosAviso_();
-  var errores = datos.errores, alertas = [], encabezado = ["NAVAR cash · " + _fechaAviso_(ahora, "dd/MM/yyyy")];
-  // La señal de vida va antes de cualquier otra alerta; no certifica que los lectores salieron bien.
-  var pasada = datos.ultimaPasada, alertaVida = "";
-  if (errores.Latido || !(pasada instanceof Date) || isNaN(pasada)) {
-    alertaVida = "No se pudo verificar si la notebook está procesando: " +
-      (errores.Latido || "sin marca de vida") + ". Revisar el vigilante y la sincronización de Drive.";
-  } else if (pasada > ahora) {
-    alertaVida = "La marca de vida está en el futuro. Revisar el reloj de la notebook; no se puede confirmar la última pasada.";
-  } else {
-    var diaPasada = _diaAviso_(pasada), hoyVida = _diaAviso_(ahora);
-    var ayerVida = new Date(hoyVida + "T12:00:00Z");
-    ayerVida.setUTCDate(ayerVida.getUTCDate() - 1);
-    var cuando = diaPasada === hoyVida ? "de hoy" :
-      diaPasada === ayerVida.toISOString().slice(0, 10) ? "de ayer" : "del " + _fechaAviso_(pasada, "dd/MM/yyyy");
-    var ultima = "última pasada a las " + _fechaAviso_(pasada, "HH:mm") + " " + cuando;
-    if (ahora - pasada > 60 * 60 * 1000) {
-      alertaVida = "La notebook no está procesando: " + ultima +
-        ". Revisar que esté prendida y que la tarea programada corra. Revisar también la sincronización de Drive.";
-    } else encabezado.push("Vigilante: " + ultima + ". Es señal de vida, no de procesamiento correcto.");
+  datos = datos || _leerDatosAviso_(ahora);
+  var errores = datos.errores || {}, llego = [], faltantes = [], alertas = [];
+  var hoy = _diaAviso_(ahora), cierre = _habilAnteriorAviso_(hoy);
+  function valida(f) { return f instanceof Date && !isNaN(f) && f <= ahora; }
+  function deHoy(f) { return valida(f) && _diaAviso_(f) === hoy; }
+  function fecha(f) { return valida(f) ? _fechaAviso_(f, "dd/MM HH:mm") : "no disponible"; }
+  function dia(d) { return d ? d.slice(8, 10) + "/" + d.slice(5, 7) : "no disponible"; }
+  function poner(ok, texto) { (ok ? llego : faltantes).push((ok ? "☑ " : "☐ ") + texto); }
+  function ultimo(lista) {
+    return lista.filter(function (f) { return valida(f.fecha); })
+      .sort(function (a, b) { return b.fecha - a.fecha; })[0];
   }
-  if (alertaVida) alertas.push(alertaVida);
-  // Desde el cierre anterior (medianoche posterior), no desde las 9 de ayer.
-  // Un lunes arranca el sábado a las 00:00: el último día hábil cerrado fue el viernes.
-  // Bancos/arqueo deben cubrir ese cierre; los exports deben ser fotos de hoy.
-  var cierre = _habilAnteriorAviso_(_diaAviso_(ahora));
-  var desde = new Date(cierre + "T00:00:00-03:00").getTime() + AVISO_DIA;
-  var faltantes = _faltantesAviso_(ahora, datos);
-  // La ventana incluye el comienzo y excluye fechas del futuro.
-  function reciente(f) { return f.fecha.getTime() >= desde && f.fecha <= ahora; }
-  // Ordena una copia para no cambiar la foto usada en las pruebas.
-  function nuevos(lista) { return lista.slice().sort(function (a, b) { return b.fecha - a.fecha; }); }
-  // Hace visible una lectura fallida también dentro de su propia sección.
-  function problema(clave) { return "(no pude leer esto: " + errores[clave] + ")"; }
-  Object.keys(errores).forEach(function (clave) {
-    if (clave === "Latido") return; // Ya quedó primero, sin repetir el mismo problema.
-    alertas.push(clave + ": " + problema(clave) + ". Pedir a finauto que revise el acceso y vuelva a probar el aviso.");
+  var entradas = datos.entradas || [], parte = datos.tangoParte;
+  var fotos = {A: ["cobranzas", "pagos", "cheques terceros", "cheques propios", "movimientos tesoreria"],
+    AA: ["cobranzas", "pagos", "cheques terceros", "movimientos tesoreria"]};
+  var fallas = parte && parte.fallas || [];
+  ["A", "AA"].forEach(function (empresa) {
+    if (errores.TangoParte || !parte || !deHoy(parte.fecha)) {
+      poner(false, "Tango " + empresa + ": la bajada de Tango no corrió hoy · última: " +
+        fecha(parte && parte.fecha) + " · revisar la notebook");
+      return;
+    }
+    if (parte.ok === parte.total && parte.total === TANGO_BAJADAS && !fallas.length) {
+      poner(true, "Tango " + empresa + ": " + fotos[empresa].join(", ").replace("movimientos tesoreria", "tesorería") +
+        " (" + _fechaAviso_(parte.fecha, "HH:mm") + ")");
+      return;
+    }
+    var faltan = [];
+    fotos[empresa].forEach(function (foto) {
+      var prefijo = (empresa + " " + foto + " ").toLowerCase();
+      var archivo = ultimo(entradas.filter(function (f) {
+        return ["tango", "tesoreria_a", "tesoreria_aa"].indexOf(f.tipo) >= 0 && f.nombre.toLowerCase().indexOf(prefijo) === 0;
+      }));
+      var falla = fallas.filter(function (f) { return f.toLowerCase().indexOf(prefijo) === 0; })[0];
+      if (falla || errores.Drive || !archivo || _fechaNombreAviso_(archivo.nombre) !== hoy) {
+        faltan.push(foto.replace("movimientos tesoreria", "tesorería") + ": " +
+          (falla ? _textoAviso_(falla.replace(/^[^:]+:\s*/, ""), 100) : "no llegó la foto de hoy") +
+          " · último archivo: " + fecha(archivo && archivo.fecha));
+      }
+    });
+    // Si el conteo no cierra y el parte no identifica las fallas, no inventamos éxito.
+    if (!faltan.length && (!fallas.length || fallas.some(function (f) { return !/^(A|AA)\s/i.test(f); })))
+      faltan.push("parte incompleto (" + parte.ok + " de " + parte.total + "); revisar la notebook");
+    poner(!faltan.length, "Tango " + empresa + ": " + (faltan.length ? faltan.join("; ") :
+      "las " + fotos[empresa].length + " fotos llegaron (" + _fechaAviso_(parte.fecha, "HH:mm") + ")"));
   });
-  encabezado.push("Último extracto cargado: " + (errores.Extracto ? problema("Extracto") :
-    datos.extracto ? _fechaAviso_(datos.extracto, "dd/MM/yyyy") : "sin datos"));
-  var tango = nuevos(datos.publicados.filter(function (f) { return f.tipo === "tango" && f.fecha <= ahora; }))[0];
-  var fechaTango = null;
-  if (tango) {
-    var marca = tango.nombre.match(/^para_pegar_en_la_sheet_(\d{4}-\d{2}-\d{2})/);
-    if (marca) fechaTango = new Date(marca[1] + "T00:00:00-03:00");
-  }
-  encabezado.push("Último export de Tango: " + (errores.Procesados ? problema("Procesados") :
-    fechaTango && !isNaN(fechaTango) ? _fechaAviso_(fechaTango, "dd/MM/yyyy") : "sin fecha disponible"));
-  // La antigüedad se cuenta por días de calendario de Buenos Aires, no por la zona de la Sheet.
-  function dias(fecha) {
-    return Math.floor((Date.parse(_fechaAviso_(ahora, "yyyy-MM-dd")) - Date.parse(_fechaAviso_(fecha, "yyyy-MM-dd"))) / AVISO_DIA);
-  }
-  if (!errores.Extracto) {
-    if (!datos.extracto) alertas.push("No hay extractos cargados. Pedir un extracto de banco y revisar la importación.");
-    else if (dias(datos.extracto) > 7) alertas.push("Hace " + dias(datos.extracto) + " días que no llega un extracto de banco. Pedirlo.");
-  }
-  if (!errores.Procesados) {
-    if (!fechaTango || isNaN(fechaTango)) alertas.push("No hay un export de Tango con fecha reconocible. Revisar el export y su nombre.");
-    else if (dias(fechaTango) > 3) alertas.push("Hace " + dias(fechaTango) + " días que no llega un export de Tango. Pedir un export actualizado.");
-  }
-  // Mira también pendientes viejos: cumplir 24 horas no debe hacer desaparecer una traba.
-  if (!errores.Drive && !errores.Procesados) datos.entradas.forEach(function (f) {
-    if (ahora - f.fecha > 2 * 60 * 60 * 1000 && !datos.publicados.some(function (p) {
-      return p.tipo === f.tipo && p.fecha > f.fecha && p.fecha <= ahora;
-    })) alertas.push("El vigilante no procesó " + _textoAviso_(f.ruta) + ". Revisar que la notebook esté prendida y vigilante.log.");
+  var bancos = {}, arqueo = "";
+  (datos.saldos || []).forEach(function (r) {
+    var banco = _esExtractoAviso_(r.origen) ? _bancoExtractoAviso_(r) : _textoAviso_(r.banco);
+    var d = valida(r.fecha) ? _diaAviso_(r.fecha) : "";
+    if (/^(\(varios\)|varios|caja)$/i.test(banco)) {
+      if (_textoAviso_(r.empresa).toUpperCase() === "AA" && /^manual$/i.test(_textoAviso_(r.origen)) && d > arqueo) arqueo = d;
+      return;
+    }
+    if (!banco) return;
+    var clave = banco.toLowerCase();
+    if (!bancos[clave]) bancos[clave] = {nombre: banco, dia: ""};
+    if (_esExtractoAviso_(r.origen) && d > bancos[clave].dia) bancos[clave].dia = d;
   });
-  if (!errores.Procesados && !errores.Registro) datos.publicados.forEach(function (f) {
-    if (ahora - f.fecha > 2 * 60 * 60 * 1000 && !datos.registro.some(function (r) {
-      return r.tipo === f.tipo && _textoAviso_(r.estado).toLowerCase() === "ok" && r.fecha > f.fecha && r.fecha <= ahora;
-    })) alertas.push("La Sheet no importó " + _textoAviso_(f.nombre) + ". Abrir la Sheet → finauto → Importar lo nuevo ahora.");
+  // Extractos que llegaron y no se pudieron leer, por banco (ver _ilegiblesAviso_).
+  var ilegibles = datos.ilegibles || [], ilegiblesVistos = {};
+  function ilegiblesDe(clave) {
+    var lista = ilegibles.filter(function (x) { return x.banco === clave; });
+    lista.forEach(function (x) { ilegiblesVistos[x.banco + "/" + x.archivo] = true; });
+    return lista;
+  }
+  function textoIlegible(lista) {
+    return "llegó «" + _textoAviso_(lista[0].archivo, 80) + "» pero no se pudo leer (" +
+      _textoAviso_(lista[0].motivo, 90) + ")" +
+      (lista.length > 1 ? " y " + (lista.length - 1) + " archivo(s) más" : "") + " · avisar a finauto";
+  }
+  function manual(nombre, d, caja, clave) {
+    var raros = clave ? ilegiblesDe(clave) : [];
+    // Un banco sin movimientos el último día hábil no está atrasado si el extracto se subió igual
+    // (BBVA, 01/10/2026). Se toma el archivo más nuevo de Bancos/<banco>/ por su fecha en Drive,
+    // salvo los que el lector no pudo leer: esos no cuentan como extracto.
+    var subido = "";
+    if (clave && !caja && !errores.Drive) {
+      var noLeidos = raros.map(function (x) { return x.archivo; });
+      var archivo = ultimo(entradas.filter(function (f) {
+        var ruta = String(f.ruta || "").replace(/\\/g, "/").toLowerCase();
+        return ruta.indexOf("bancos/" + clave + "/") === 0 && noLeidos.indexOf(f.nombre) < 0;
+      }));
+      if (archivo) subido = _diaAviso_(archivo.fecha);
+    }
+    var ok = !errores.Extracto && ((d && d >= cierre) || (subido && subido >= cierre));
+    var masNuevo = subido > (d || "") ? subido : d;
+    var edad = masNuevo ? Math.round((Date.parse(hoy) - Date.parse(masNuevo)) / AVISO_DIA) : null;
+    // Al día pero con un archivo raro: la casilla sigue en ✅ y el archivo va a REVISAR.
+    if (ok && raros.length) alertas.push(nombre + ": " + textoIlegible(raros));
+    if (!ok && raros.length) {
+      poner(false, nombre + ": " + textoIlegible(raros) + " · último extracto leído: " + dia(d));
+      return;
+    }
+    var alDia = d && d >= cierre ? "al día, " + (caja ? "arqueo" : "extracto") + " hasta " + dia(d) :
+      "al día, extracto subido el " + dia(subido) + " (último movimiento " + dia(d) + ")";
+    poner(ok, nombre + ": " + (ok ? alDia :
+      (errores.Extracto ? "no se pudo verificar" : masNuevo ? "último " + (caja ? "arqueo" : "extracto") +
+        (subido && subido === masNuevo && subido !== d ? " subido el " : " del ") + dia(masNuevo) +
+        " (hace " + edad + " días)" : "sin fecha disponible") + (caja ? " · cargar a mano" : " · subir a mano")));
+  }
+
+  var partes = datos.bancosPartes || {};
+  if (datos.galiciaParte) partes = Object.assign({}, partes, {galicia: datos.galiciaParte});
+  Object.keys(bancos).sort().forEach(function (clave) {
+    var banco = bancos[clave];
+    if (FUENTES_AUTOMATICAS.indexOf(clave) < 0) { manual(_nombreBancoAviso_(banco.nombre), banco.dia, false, clave); return; }
+    var raros = ilegiblesDe(clave);
+    if (raros.length) alertas.push(_nombreBancoAviso_(banco.nombre) + ": " + textoIlegible(raros));
+    var p = partes[clave];
+    var archivo = ultimo(entradas.filter(function (f) {
+      var ruta = String(f.ruta || "").replace(/\\/g, "/").toLowerCase();
+      return ruta.indexOf("bancos/" + clave + "/") === 0 &&
+        f.nombre.toLowerCase().indexOf("movimientos " + clave + " ") === 0 && /\.xlsx$/i.test(f.nombre);
+    }));
+    var ok = p && deHoy(p.fecha) && p.ok && !errores[clave === "galicia" ? "GaliciaParte" : clave + "Parte"];
+    poner(ok, _nombreBancoAviso_(banco.nombre) + ": " + (ok ? _fechaAviso_(p.fecha, "HH:mm") + " · movimientos hasta " + dia(banco.dia) :
+      (p && deHoy(p.fecha) ? "el bot falló a las " + _fechaAviso_(p.fecha, "HH:mm") + " (" +
+        _textoAviso_(p.detalle || "sin motivo disponible", 140) + ")" : "el bot no corrió hoy · revisar la notebook") +
+      " · Último extracto: " + (errores.Drive ? "no se pudo verificar" : fecha(archivo && archivo.fecha))));
   });
-  var registros = nuevos(datos.registro.filter(reciente));
+  if (!Object.keys(bancos).length) alertas.push("No se pudieron identificar bancos en Saldos Bancarios.");
+  // Un ilegible de un banco que todavía no está en Saldos Bancarios (banco nuevo, carpeta mal nombrada).
+  ilegibles.forEach(function (x) {
+    if (!ilegiblesVistos[x.banco + "/" + x.archivo]) alertas.push("Bancos/" + x.banco + ": " + textoIlegible([x]));
+  });
+  // El arqueo de caja AA no va al mail (pedido de Thomas, 01/10/2026): se consigue por fuera y el
+  // conteo es semanal. La caja AA del cash sigue calculándose con el último arqueo cargado.
+  var registros = (datos.registro || []).filter(function (r) { return valida(r.fecha); });
+  function esOk(r) { return /^ok$/i.test(_textoAviso_(r.estado)) && !/VERIFICACION_NO_CUADRA/.test(r.detalle || ""); }
+  var oks = registros.filter(function (r) { return esOk(r) && r.tipo !== "sistema"; });
+  var ultima = ultimo(oks);
+  var bajadas = [parte].concat(Object.keys(partes).map(function (k) { return partes[k]; }))
+    .filter(function (p) { return p && deHoy(p.fecha); });
+  var importado = !errores.Registro && ultima && deHoy(ultima.fecha) && bajadas.every(function (p) { return ultima.fecha > p.fecha; });
+  poner(importado, importado ? "La Sheet se actualizó (" + _fechaAviso_(ultima.fecha, "HH:mm") + ")" :
+    "La Sheet no importó lo de hoy · última importación: " + fecha(ultima && ultima.fecha));
+  if (!valida(datos.ultimaPasada)) alertas.push("No se pudo verificar si la notebook está procesando.");
+  else if (ahora - datos.ultimaPasada > 60 * 60 * 1000)
+    alertas.push("La notebook no está procesando · última pasada: " + fecha(datos.ultimaPasada));
   registros.forEach(function (r) {
-    if (String(r.detalle).indexOf("VERIFICACION_NO_CUADRA") !== -1) alertas.push(
-      "La escritura de " + _textoAviso_(r.tipo) + " terminó pero NO CUADRÓ al releerla. No usar el cash hasta revisar Registro y reimportar con finauto.");
-    if (_textoAviso_(r.estado).toUpperCase() === "ERROR") alertas.push("Falló la importación de " + _textoAviso_(r.tipo) + ": " +
-      _textoAviso_(r.detalle, 120) + ". Revisar Registro y pedir a finauto que corrija el error antes de reintentar.");
+    if (!/^error$/i.test(_textoAviso_(r.estado)) && !/VERIFICACION_NO_CUADRA/.test(r.detalle || "")) return;
+    if (oks.some(function (ok) { return ok.tipo === r.tipo && ok.fecha > r.fecha; })) return;
+    var texto = "Falló la importación de " + r.tipo + ": " + _textoAviso_(r.detalle, 140);
+    if (alertas.indexOf(texto) < 0) alertas.push(texto);
   });
-  var retenidos = nuevos(datos.retenidos.filter(reciente));
-  retenidos.forEach(function (f) {
-    alertas.push("El vigilante retuvo " + _textoAviso_(f.nombre) + " (una lista se achicó más de la mitad). Revisar el export antes de publicarlo.");
+  (datos.retenidos || []).forEach(function (f) {
+    if (!valida(f.fecha)) return;
+    if (oks.some(function (r) { return f.tipo && r.tipo === f.tipo && r.fecha > f.fecha; })) return;
+    alertas.push("Archivo retenido: " + _textoAviso_(f.nombre, 120));
   });
-  var lineasLog = nuevos(datos.log.filter(reciente)).slice(0, 5).map(function (r) {
-    return _textoAviso_("- " + _fechaAviso_(r.fecha, "dd/MM HH:mm") + " " + r.texto, 160);
-  });
-  // Un fallo del lector también pide atención aunque todavía no hayan pasado dos horas.
-  if (lineasLog.length) alertas.push("El log del vigilante registra fallos o retenciones. Revisar las líneas de abajo y el export antes de reintentar.");
-  var entradas = nuevos(datos.entradas.filter(reciente)).map(function (f) {
-    return "- " + _textoAviso_(f.ruta) + " (" + _fechaAviso_(f.fecha, "HH:mm") + ")";
-  });
-  if (errores.Drive) entradas.unshift(problema("Drive"));
-  var procesados = nuevos(datos.publicados.filter(reciente)).map(function (f) {
-    return "- " + (f.tipo || "tipo desconocido") + ": " + _textoAviso_(f.nombre) + " (" + _fechaAviso_(f.fecha, "HH:mm") + ")";
-  });
-  retenidos.forEach(function (f) { procesados.push("- RETENIDO: " + _textoAviso_(f.nombre) + " (" + _fechaAviso_(f.fecha, "HH:mm") + ")"); });
-  ["Procesados", "Retenidos", "Log"].forEach(function (clave) { if (errores[clave]) procesados.unshift(problema(clave)); });
-  // Las fallas van primero dentro de la sección, para que el tope no esconda el log.
-  procesados = lineasLog.concat(procesados);
-  var importados = registros.map(function (r) {
-    return _textoAviso_("- " + _fechaAviso_(r.fecha, "HH:mm") + " " + r.tipo + " " + r.estado + " — " + r.detalle, 120);
-  });
-  if (errores.Registro) importados.unshift(problema("Registro"));
-  return {
-    asunto: "NAVAR cash · " + _fechaAviso_(ahora, "dd/MM") + " · " + ((alertas.length + faltantes.length) ? "ATENCIÓN (" + (alertas.length + faltantes.length) + ")" : "al día"),
-    cuerpo: (alertaVida ? ["Estado del vigilante\n" + alertaVida] : []).concat(["Qué falta subir hoy\n" + (faltantes.length ? faltantes.join("\n") : "Está todo subido al día de hoy."), encabezado.join("\n"), alertas.length ? _seccionAviso_("Alertas", alertas.map(function (a) { return "- " + a; })) :
-      "Sin alertas del circuito.", _seccionAviso_("Llegó a Drive (desde el cierre anterior)", entradas),
-      _seccionAviso_("El vigilante procesó", procesados), _seccionAviso_("La Sheet importó", importados)]).join("\n\n"),
-    alertas: alertas, faltantes: faltantes
-  };
+  Object.keys(errores).forEach(function (k) { alertas.push("No se pudo leer " + k + ": " + _textoAviso_(errores[k], 120)); });
+  var cuerpo = ["✅ LLEGÓ HOY\n" + (llego.join("\n") || "—")];
+  if (faltantes.length) cuerpo.push("❌ FALTA\n" + faltantes.join("\n"));
+  if (alertas.length) cuerpo.push("⚠️ REVISAR\n" + alertas.map(function (a) { return "- " + a; }).join("\n"));
+  return {asunto: "NAVAR · " + _fechaAviso_(ahora, "dd/MM") + " · " +
+    (faltantes.length === 1 ? "falta 1 cosa" : faltantes.length ? "faltan " + faltantes.length + " cosas" : "todo al día"),
+    cuerpo: cuerpo.join("\n\n"), alertas: alertas, faltantes: faltantes};
 }

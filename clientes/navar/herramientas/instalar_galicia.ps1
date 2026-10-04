@@ -1,5 +1,5 @@
 # Instala la bajada de Galicia en la notebook de NAVAR: corre todos los días
-# a las 07:00 y agrega su salida a privado\galicia.log. Las claves se leen
+# a las 05:45 y 05:48 y agrega su salida a privado\galicia.log. Las claves se leen
 # del llavero de Windows; nunca se guardan en esta tarea ni en el log.
 #
 #   Instalar (desde C:\finauto):
@@ -31,12 +31,15 @@ New-Item -ItemType Directory -Path (Split-Path $log) -Force | Out-Null
 # se conserva tanto el resumen de Galicia como el motivo del error.
 $argumentos = '/d /c ""{0}" "{1}" --cliente navar --banco galicia >> "{2}" 2>&1"' -f $python, $script, $log
 $accionTarea = New-ScheduledTaskAction -Execute "cmd.exe" -Argument $argumentos -WorkingDirectory $repo
-$disparador = New-ScheduledTaskTrigger -Daily -At "07:00"
+# El segundo horario es el seguro: la primera corrida a veces falla en frío
+# (tareas 27 a 29). Volver a bajar reemplaza el archivo del día, no duplica.
+$disparador = New-ScheduledTaskTrigger -Daily -At "05:45"
+$disparadorSeguro = New-ScheduledTaskTrigger -Daily -At "05:48"
 $opciones = New-ScheduledTaskSettingsSet -StartWhenAvailable `
     -ExecutionTimeLimit (New-TimeSpan -Hours 1) -MultipleInstances IgnoreNew
 
 Unregister-ScheduledTask -TaskName $nombre -Confirm:$false -ErrorAction SilentlyContinue
-Register-ScheduledTask -TaskName $nombre -Action $accionTarea -Trigger $disparador `
+Register-ScheduledTask -TaskName $nombre -Action $accionTarea -Trigger @($disparador, $disparadorSeguro) `
     -Settings $opciones -Description "finauto: baja el extracto diario de Galicia" | Out-Null
 
-Write-Host "Galicia instalado: corre todos los días a las 07:00. Log: clientes\navar\privado\galicia.log"
+Write-Host "Galicia instalado: corre todos los días a las 05:45 y 05:48. Log: clientes\navar\privado\galicia.log"
