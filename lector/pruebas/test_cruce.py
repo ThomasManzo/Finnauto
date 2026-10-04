@@ -29,7 +29,9 @@ CUIT_A = "20-11111111-2"      # CUITs inventados con dígito verificador válido
 CUIT_B = "27-22222222-8"
 
 
-class Cruce(unittest.TestCase):
+class _Base(unittest.TestCase):
+    """Arma los dos Excel inventados y corre el cruce. No tiene pruebas propias."""
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
@@ -50,7 +52,7 @@ class Cruce(unittest.TestCase):
                         cuit if tipo != "REC" else None, nombre if tipo == "REC" else None,
                         nombre if tipo != "REC" else None, leyenda, fecha])
 
-    def correr(self, mes="2026-08"):
+    def correr(self, mes="2026-08", parchar=True):
         sheet, tango = self.base / "sheet.xlsx", self.base / "tango.xlsx"
         wb = openpyxl.Workbook()
         wb.active.title = "Cash"
@@ -67,9 +69,14 @@ class Cruce(unittest.TestCase):
             ws.append(f)
         ws.append([None] * len(ENC_TANGO))           # la fila casi vacía del final del export
         wb.save(tango)
-        with patch.object(cz, "cargar_config", return_value=cz_config()):
-            inf, md = cz.correr("prueba", mes, str(sheet), str(tango), str(self.base / "salidas"),
-                                hoy=dt.date(2026, 9, 28))
+        def correr():
+            return cz.correr("prueba", mes, str(sheet), str(tango), str(self.base / "salidas"),
+                             hoy=dt.date(2026, 9, 28))
+        if parchar:
+            with patch.object(cz, "cargar_config", return_value=cz_config()):
+                inf, md = correr()
+        else:
+            inf, md = correr()
         self.assertTrue(inf["control_ok"], md)
         return inf
 
@@ -80,7 +87,8 @@ class Cruce(unittest.TestCase):
                 return p["regla"]
         return None
 
-    # ---- las pruebas
+
+class Cruce(_Base):
     def test_exacto_banco_despues_y_antes(self):
         self.banco(D(2026, 8, 5), "GALICIA 111", 1000.0)          # 2 días después de Tango
         self.tango(D(2026, 8, 3), "REC", 5, 1000.0)
@@ -257,6 +265,109 @@ class Cruce(unittest.TestCase):
         self.assertEqual(wb.sheetnames, ["Resumen", "Conciliado", "Solo en banco", "Gastos bancarios",
                                          "Solo en Tango", "No pasa por banco", "Revisar"])
         self.assertTrue((self.base / "salidas" / "resumen_cruce_2026-08.md").exists())
+
+
+class Niveles(_Base):
+    """Cada par sale con nivel (Seguro / Sugerido / Posible) y un criterio en castellano."""
+
+    def par_de(self, inf, importe):
+        for p in inf["pares"] + inf["pares_internas"]:
+            if any(abs(b["c"] - round(importe * 100)) <= 1 for b in p["banco"]):
+                return p
+        self.fail("no hay par para %s" % importe)
+
+    def test_seguro_exacto_unico(self):
+        self.banco(D(2026, 8, 5), "GALICIA 111", 1000.0, "TRANSF 20111111112")
+        self.tango(D(2026, 8, 3), "REC", 5, 1000.0, cuit=CUIT_A)
+        par = self.par_de(self.correr(), 1000)
+        self.assertEqual(par["nivel"], "Seguro")
+        self.assertIn("importe exacto", par["criterio"])
+        self.assertIn("CUIT coincide", par["criterio"])
+        self.assertIn("banco 2 días después", par["criterio"])
+
+    def test_seguro_exacto_con_cuit_entre_varios(self):
+        self.banco(D(2026, 8, 12), "MACRO 222", -500.0, "TRANSF 27222222228 VAR")
+        self.banco(D(2026, 8, 12), "MACRO 222", -500.0, "TRANSF 20111111112 VAR")
+        self.tango(D(2026, 8, 12), "O/P", 25, -500.0, cuit=CUIT_A)
+        self.tango(D(2026, 8, 12), "O/P", 25, -500.0, cuit=CUIT_B)
+        inf = self.correr()
+        self.assertEqual({p["nivel"] for p in inf["pares"]}, {"Seguro"})
+        self.assertTrue(all("ganó el del mismo CUIT" in p["criterio"] for p in inf["pares"]))
+
+    def test_sugerido_exacto_desempatado_por_fecha(self):
+        self.banco(D(2026, 8, 12), "MACRO 222", -500.0, "DEBITO")
+        self.banco(D(2026, 8, 14), "MACRO 222", -500.0, "DEBITO")
+        self.tango(D(2026, 8, 12), "OPF", 25, -500.0)
+        self.tango(D(2026, 8, 13), "OPF", 25, -500.0)
+        inf = self.correr()
+        self.assertEqual({p["nivel"] for p in inf["pares"]}, {"Sugerido"})
+        criterios = sorted(p["criterio"] for p in inf["pares"])
+        self.assertTrue(any("ganó la fecha más cercana" in c for c in criterios))
+        self.assertTrue(any("después de otro desempate" in c for c in criterios))
+
+    def test_sugerido_bloque_y_seguro_descuento_neto(self):
+        for v in (100.0, 900.0):
+            self.banco(D(2026, 8, 26), "GALICIA 111", v, "CREDITO DESCUENTO DOCUMENTO", "Descuento de Cheques")
+        self.tango(D(2026, 8, 26), "BDG", 5, 1000.0)
+        self.banco(D(2026, 8, 6), "MACRO 222", 9600.0, "033000111", "Descuento de Cheques")
+        self.tango(D(2026, 8, 6), "BDM", 25, 10000.0)
+        self.tango(D(2026, 8, 6), "FPR", 25, -400.0, leyenda="INTERESES VTA.CH.")
+        inf = self.correr()
+        self.assertEqual(self.par_de(inf, 100)["nivel"], "Sugerido")
+        self.assertIn("2 banco ↔ 1 Tango", self.par_de(inf, 100)["criterio"])
+        self.assertEqual(self.par_de(inf, 9600)["nivel"], "Seguro")
+
+    def test_posible_agrupado_y_fecha_corrida(self):
+        self.banco(D(2026, 8, 12), "MACRO 222", 300.0, "ACREDITACION CHEQUE", "Cheques")
+        self.banco(D(2026, 8, 12), "MACRO 222", 700.0, "ACREDITACION CHEQUE", "Cheques")
+        self.banco(D(2026, 8, 12), "MACRO 222", 80.0, "ACREDITACION CHEQUE", "Cheques")
+        self.tango(D(2026, 8, 11), "BDM", 25, 1000.0)
+        self.banco(D(2026, 8, 24), "MACRO 222", -2983.0, "DEBITO PRESTAMOS", "Prestamo")
+        self.tango(D(2026, 9, 1), "FPR", 25, -2983.0)
+        inf = self.correr()
+        self.assertEqual(self.par_de(inf, 300)["nivel"], "Posible")
+        self.assertEqual(self.par_de(inf, -2983)["nivel"], "Posible")
+        self.assertIn("banco 8 días antes", self.par_de(inf, -2983)["criterio"])
+
+    def test_posible_exacto_con_cuit_distinto(self):
+        self.banco(D(2026, 8, 5), "GALICIA 111", -1000.0, "TRANSF 27222222228")
+        self.tango(D(2026, 8, 5), "O/P", 5, -1000.0, cuit=CUIT_A)
+        par = self.par_de(self.correr(), -1000)
+        self.assertEqual(par["nivel"], "Posible")
+        self.assertIn("CUIT distinto", par["criterio"])
+
+    def test_internas_son_seguro(self):
+        self.banco(D(2026, 8, 6), "BBVA 333/2", -4000.0, "TRANSFERENCIA CUENTAS PAIS", "Transferencia Interna")
+        self.banco(D(2026, 8, 6), "BBVA 333/1", 4000.0, "TRANSFERENCIA CUENTAS PAIS", "Transferencia Interna")
+        inf = self.correr()
+        self.assertEqual([p["nivel"] for p in inf["pares_internas"]], ["Seguro"])
+
+    def test_resumen_por_nivel_y_cuenta(self):
+        self.banco(D(2026, 8, 5), "GALICIA 111", 1000.0)
+        self.tango(D(2026, 8, 5), "REC", 5, 1000.0)
+        self.banco(D(2026, 8, 24), "GALICIA 111", -250.0, "DEBITO", "Prestamo")
+        self.tango(D(2026, 9, 2), "FPR", 5, -250.0)
+        r = self.correr()["resumen"][0]
+        self.assertEqual(r["por_nivel"]["Seguro"], {"n": 1, "c": 100000})
+        self.assertEqual(r["por_nivel"]["Posible"], {"n": 1, "c": 25000})
+        self.assertEqual(r["por_nivel"]["Sugerido"], {"n": 0, "c": 0})
+
+    def test_el_perfil_cambia_el_nivel(self):
+        self.banco(D(2026, 8, 24), "MACRO 222", -2983.0, "DEBITO PRESTAMOS", "Prestamo")
+        self.tango(D(2026, 9, 1), "FPR", 25, -2983.0)
+        cfg = cz_config()
+        cfg["niveles"] = {"fecha corrida": "Sugerido"}
+        with patch.object(cz, "cargar_config", return_value=cfg):
+            inf = self.correr(parchar=False)
+        self.assertEqual(self.par_de(inf, -2983)["nivel"], "Sugerido")
+
+    def test_nivel_invalido_en_el_perfil_frena(self):
+        ruta = self.base / "clientes" / "x" / "perfil.json"
+        ruta.parent.mkdir(parents=True)
+        ruta.write_text('{"cruce": {"cuentas": {"B 1": 5}, "niveles": {"agrupado": "Casi"}}}', encoding="utf-8")
+        with patch.object(cz, "BASE_REPO", str(self.base)):
+            with self.assertRaises(SystemExit):
+                cz.cargar_config("x")
 
 
 class Cuits(unittest.TestCase):

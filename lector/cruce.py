@@ -25,7 +25,7 @@ LAS REGLAS (en este orden; cada par guarda el nombre de la regla)
     0. internas de la misma cuenta: transferencias entre dos cuentas del extracto que van a la misma
        cuenta de Tango (las dos de BBVA). Se cancelan entre sí y Tango no las registra.
     0b. descuento neto: un crédito del banco = una boleta de depósito de Tango (bruto) + su interés
-       (FPR del mismo día, negativo). Así carga Tango los descuentos de Macro y Nación.
+       (FPR del mismo día, negativo). Así carga Tango los descuentos de cheques de algunos bancos.
     1. exacto: uno a uno por importe. Primero los que tienen un solo candidato de cada lado (así el
        resultado no depende del orden); después desempata el mismo CUIT y la fecha más cercana.
     2. mismo CUIT: uno contra varios (en cualquier dirección) del mismo CUIT que suman lo mismo.
@@ -37,6 +37,16 @@ LAS REGLAS (en este orden; cada par guarda el nombre de la regla)
     5. fecha corrida: lo que sobró y tiene un único par por importe exacto a menos de
        dias_fecha_corrida días. Es lo mismo cargado con otra fecha: conciliado, pero marcado.
     Cuando una regla encuentra más de una combinación posible, no empareja: va a "Revisar".
+
+QUÉ TAN SEGURO ES CADA PAR (perfil → cruce → niveles)
+    Cada par sale con un nivel y un "Criterio" en castellano (qué coincidió). La idea: el que revisa
+    mira solo lo Sugerido y lo Posible, no cada renglón.
+    Seguro   = no hay otra lectura posible: exacto con un solo candidato de cada lado o con el mismo
+               CUIT, descuento neto (boleta − interés da el neto al centavo), internas.
+    Sugerido = lo más probable, pero hubo que elegir: exacto desempatado por fecha, mismo CUIT uno
+               contra varios, bloque del día.
+    Posible  = cierra por importe pero conviene mirarlo: agrupado (combinación sin CUIT), fecha
+               corrida, exacto con CUIT distinto de cada lado.
 
 USO
     python lector/cruce.py --cliente navar --mes 2026-08 \\
@@ -66,6 +76,23 @@ BASE_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 MARGEN_CARGA = 10          # días antes y después del mes que se leen, para encontrar pares cruzados
 MAX_COMBINAR = {"mismo CUIT": 10, "agrupado": 12}   # candidatos como máximo al buscar combinaciones
+
+# Qué tan seguro es cada forma de emparejar. Se puede cambiar en perfil → cruce → niveles; esto es lo
+# que vale si el perfil no dice nada. La clave es la "variante": la regla más el detalle de cómo se
+# decidió (p. ej. un "exacto" con un solo candidato no es lo mismo que uno desempatado por fecha).
+NIVELES = ("Seguro", "Sugerido", "Posible")
+NIVELES_POR_DEFECTO = {
+    "exacto único": "Seguro",          # un solo candidato de cada lado
+    "exacto con CUIT": "Seguro",       # había varios, ganó el del mismo CUIT
+    "descuento neto": "Seguro",        # boleta − interés = neto del banco, al centavo
+    "internas": "Seguro",              # entre dos cuentas del extracto que son la misma cuenta de Tango
+    "exacto por fecha": "Sugerido",    # había varios del mismo importe, ganó la fecha más cercana
+    "mismo CUIT": "Sugerido",          # uno contra varios del mismo CUIT
+    "bloque del día": "Sugerido",      # total del día de cada lado
+    "agrupado": "Posible",             # combinación sin CUIT
+    "fecha corrida": "Posible",        # mismo importe pero fuera de la ventana de días
+    "exacto CUIT distinto": "Posible", # mismo importe, pero el CUIT del banco y el de Tango no coinciden
+}
 
 
 # ------------------------------------------------------------------ helpers
@@ -169,6 +196,12 @@ def cargar_config(cliente):
     cfg.setdefault("comprobantes_cobro", ["REC"])
     cfg.setdefault("comprobantes_pago", ["O/P", "OPF"])
     cfg["cuit_propio"] = re.sub(r"\D", "", str(cfg.get("cuit_propio") or ""))
+    niveles = dict(NIVELES_POR_DEFECTO)
+    niveles.update({k: v for k, v in (cfg.get("niveles") or {}).items() if not k.startswith("_")})
+    malos = {k: v for k, v in niveles.items() if v not in NIVELES}
+    if malos:
+        sys.exit("perfil → cruce → niveles: %s (los niveles posibles son %s)" % (malos, ", ".join(NIVELES)))
+    cfg["niveles"] = niveles
     return cfg
 
 
@@ -335,11 +368,14 @@ class Cruce:
     def iguales(self, a, b):
         return abs(a - b) <= self.tol
 
-    def emparejar(self, regla, bs, ts):
+    def emparejar(self, regla, bs, ts, variante=None, nota=""):
+        """variante = la clave de perfil → cruce → niveles (si no se dice, es la regla); nota = lo que
+        haya que contar en el Criterio además de lo que se ve en los datos (p. ej. un desempate)."""
         for x in list(bs) + list(ts):
             self.usados.add(id(x))
             self.ambiguos.pop(id(x), None)
-        self.pares.append({"regla": regla, "banco": list(bs), "tango": list(ts)})
+        self.pares.append({"regla": regla, "variante": variante or regla, "nota": nota,
+                           "banco": list(bs), "tango": list(ts)})
 
     def es_gasto(self, b):
         return b["categoria"] in self.cfg["categorias_gastos"]
@@ -424,7 +460,7 @@ class Cruce:
                 rivales = [o for o in banco if o is not b and self.libre(o) and o["cod"] == t["cod"]
                            and self.iguales(o["c"], t["c"]) and self.en_ventana(o["fecha"], t["fecha"])]
                 if not rivales:
-                    self.emparejar("exacto", [b], [t])
+                    self.emparejar("exacto", [b], [t], self._variante_exacto(b, t, "exacto único"))
                     cambio = True
         # 1b. el resto: gana el mismo CUIT, después la fecha más cercana
         for b in sorted(banco, key=lambda b: (b["fecha"], b["n"])):
@@ -434,7 +470,29 @@ class Cruce:
             if cands:
                 t = min(cands, key=lambda t: (0 if b["cuit"] and t["cuit"] == b["cuit"] else 1,
                                               abs((b["fecha"] - t["fecha"]).days), t["fecha"], t["n"]))
-                self.emparejar("exacto", [b], [t])
+                # cuántos competían: candidatos de Tango para este del banco + otros del banco para este de Tango
+                rivales = [o for o in banco if o is not b and self.libre(o) and o["cod"] == t["cod"]
+                           and self.iguales(o["c"], t["c"]) and self.en_ventana(o["fecha"], t["fecha"])]
+                # Acá nada es "único" de verdad: los únicos ya salieron en 1a. Si quedó un solo candidato
+                # es porque otro desempate del mismo importe se llevó al resto: depende de esa elección.
+                if b["cuit"] and t["cuit"] == b["cuit"]:
+                    self.emparejar("exacto", [b], [t], "exacto con CUIT",
+                                   "desempate: %d candidatos del mismo importe, ganó el del mismo CUIT"
+                                   % (len(cands) + len(rivales)))
+                elif len(cands) == 1 and not rivales:
+                    self.emparejar("exacto", [b], [t], self._variante_exacto(b, t, "exacto por fecha"),
+                                   "quedó solo después de otro desempate del mismo importe")
+                else:
+                    self.emparejar("exacto", [b], [t], self._variante_exacto(b, t, "exacto por fecha"),
+                                   "desempate: %d candidatos del mismo importe, ganó la fecha más cercana"
+                                   % (len(cands) + len(rivales)))
+
+    @staticmethod
+    def _variante_exacto(b, t, si_no):
+        """Un exacto donde los dos lados traen CUIT y no coinciden baja a 'Posible', sea como sea."""
+        if b["cuit"] and t["cuit"] and b["cuit"] != t["cuit"]:
+            return "exacto CUIT distinto"
+        return si_no
 
     # --- regla 2: mismo CUIT, uno contra varios
     def mismo_cuit(self):
@@ -524,7 +582,7 @@ class Cruce:
     def fecha_corrida(self):
         """Lo que sobró y tiene en la misma cuenta un único par por importe exacto dentro de
         dias_fecha_corrida (y ese par no tiene otro candidato). Es lo mismo, pero Tango lo cargó con
-        otra fecha (p. ej. cuotas de préstamo del 24-28 cargadas todas el 1ro). Cuenta como conciliado
+        otra fecha (p. ej. débitos de fin de mes que Tango carga el 1ro del mes siguiente). Cuenta como conciliado
         y queda marcado, porque corre la foto del día en el cash."""
         dias = int(self.cfg.get("dias_fecha_corrida", 15))
         cerca = lambda b, t: abs((b["fecha"] - t["fecha"]).days) <= dias
@@ -550,6 +608,47 @@ class Cruce:
         self.agrupado()
         self.fecha_corrida()
         return self
+
+
+# ------------------------------------------------------------------ nivel y criterio de cada par
+def _dias_txt(d):
+    if d == 0:
+        return "mismo día"
+    return "banco %d día%s %s que Tango" % (abs(d), "" if abs(d) == 1 else "s", "después" if d > 0 else "antes")
+
+
+def criterio(par):
+    """Qué coincidió, en castellano simple: importe, CUIT, días entre banco y Tango, cuántos renglones
+    de cada lado y, si hubo, el desempate. Es lo que lee el que revisa para decidir si confía."""
+    bs, ts = par["banco"], par["tango"]
+    partes = ["%d banco ↔ %d Tango" % (len(bs), len(ts))] if ts else ["%d ↔ %d entre cuentas del banco" % (1, 1)]
+    if ts:
+        dif = sum(b["c"] for b in bs) - sum(t["c"] for t in ts)
+        partes.append("importe exacto" if dif == 0 else "diferencia de %s" % _m(dif))
+        cb = {b["cuit"] for b in bs if b["cuit"]}
+        ct = {t["cuit"] for t in ts if t["cuit"]}
+        if cb and ct:
+            partes.append("CUIT coincide" if cb & ct else "CUIT distinto")
+        elif cb or ct:
+            partes.append("CUIT solo en el " + ("banco" if cb else "Tango") + ": no se pudo comparar")
+        else:
+            partes.append("sin CUIT")
+        partes.append(_dias_txt((min(b["fecha"] for b in bs) - min(t["fecha"] for t in ts)).days))
+    else:
+        partes += ["importe exacto con signo contrario", _dias_txt((bs[1]["fecha"] - bs[0]["fecha"]).days)
+                   .replace("banco", "una").replace("que Tango", "que la otra")]
+    extra = {
+        "descuento neto": "boleta de Tango menos su interés = lo que acreditó el banco",
+        "bloque del día": "el total del día del banco = el total de boletas de Tango",
+        "agrupado": "combinación única del mismo día, sin CUIT que lo confirme",
+        "fecha corrida": "único par con ese importe, pero fuera de la ventana normal de días",
+        "mismo CUIT": "varios renglones del mismo CUIT que suman lo mismo",
+    }.get(par["regla"])
+    if extra:
+        partes.append(extra)
+    if par.get("nota"):
+        partes.append(par["nota"])
+    return " · ".join(partes)
 
 
 # ------------------------------------------------------------------ clasificación
@@ -622,6 +721,15 @@ def armar_informe(banco, tango, cfg, mes_desde, mes_hasta, ultima, hoy, sin_par_
     pares = [p for p in cruce.pares if any(en_mes(x["fecha"]) for x in p["banco"] + p["tango"])]
     pares.sort(key=lambda p: min(x["fecha"] for x in p["banco"] + p["tango"]))
     internas = [p for p in cruce.internas if any(en_mes(x["fecha"]) for x in p)]
+    niveles = dict(NIVELES_POR_DEFECTO, **(cfg.get("niveles") or {}))
+    for par in pares:
+        par["nivel"] = niveles.get(par["variante"], "Posible")
+        par["criterio"] = criterio(par)
+    # las internas también se muestran como pares (sin lado Tango), así entran en la vista por nivel
+    pares_internas = [{"regla": "internas", "variante": "internas", "nota": "", "banco": list(p), "tango": [],
+                       "nivel": niveles.get("internas", "Seguro")} for p in internas]
+    for par in pares_internas:
+        par["criterio"] = criterio(par)
 
     contraparte_por_cuit = {}
     for t in tango:
@@ -735,8 +843,15 @@ def armar_informe(banco, tango, cfg, mes_desde, mes_hasta, ultima, hoy, sin_par_
         ok = total == partes and cantidad_ok
         control_ok &= ok
         movido = sum(abs(b["c"]) for b in del_mes)
+        # conciliado por nivel: cantidad de pares y lo movido en el banco (entradas + salidas sin signo)
+        por_nivel = {nv: {"n": 0, "c": 0} for nv in NIVELES}
+        for par in pares + pares_internas:
+            propios = [b for b in par["banco"] if b["cuenta"] == cta and en_mes(b["fecha"])]
+            if propios:
+                por_nivel[par["nivel"]]["n"] += 1
+                por_nivel[par["nivel"]]["c"] += sum(abs(b["c"]) for b in propios)
         filas_resumen.append({
-            "cuenta": cta, "cod": cod, "n": len(del_mes),
+            "cuenta": cta, "cod": cod, "n": len(del_mes), "por_nivel": por_nivel, "movido": movido,
             "entradas": sum(b["c"] for b in del_mes if b["c"] > 0),
             "salidas": sum(b["c"] for b in del_mes if b["c"] < 0),
             "conc_ent": sum(b["c"] for b in conc if b["c"] > 0),
@@ -753,11 +868,13 @@ def armar_informe(banco, tango, cfg, mes_desde, mes_hasta, ultima, hoy, sin_par_
         })
 
     return {
-        "pares": pares, "internas": internas, "solo_banco": solo_banco, "gastos": gastos,
+        "pares": pares, "internas": internas, "pares_internas": pares_internas,
+        "solo_banco": solo_banco, "gastos": gastos,
         "solo_tango": solo_tango, "no_banco": no_banco, "cheques_recibidos": cheques_recibidos,
         "revisar": revisar, "resumen": filas_resumen, "control_ok": control_ok,
         "sin_extracto": dict(sin_extracto), "sin_par_banco": sin_par_banco,
         "reglas": Counter(p["regla"] for p in pares),
+        "niveles": Counter(p["nivel"] for p in pares + pares_internas),
     }
 
 
@@ -793,23 +910,30 @@ def escribir_excel(inf, ruta, mes):
 
     # 1. Resumen
     enc = ["Cuenta", "Movimientos banco", "Entradas", "Salidas", "Conciliado entradas", "Conciliado salidas",
-           "% conciliado", "Solo en banco (sin gastos)", "Cant. solo en banco", "Gastos e impuestos (banco)",
+           "% conciliado"] + [x for nv in NIVELES for x in ("Pares %s" % nv, "%s ($ movido)" % nv, "%% %s" % nv)] + [
+           "Solo en banco (sin gastos)", "Cant. solo en banco", "Gastos e impuestos (banco)",
            "Cant. gastos", "Gastos que Tango tiene sin par", "Internas", "Revisar (banco)",
            "Solo en Tango", "Cant. solo en Tango", "Control"]
-    filas = [[r["cuenta"], r["n"], p(r["entradas"]), p(r["salidas"]), p(r["conc_ent"]), p(r["conc_sal"]), r["pct"],
+    def por_nivel(pn, movido):
+        return [x for nv in NIVELES for x in (pn[nv]["n"], p(pn[nv]["c"]), pn[nv]["c"] / movido if movido else 0)]
+    filas = [[r["cuenta"], r["n"], p(r["entradas"]), p(r["salidas"]), p(r["conc_ent"]), p(r["conc_sal"]), r["pct"]]
+             + por_nivel(r["por_nivel"], r["movido"]) + [
               p(r["solo_banco"]), r["n_solo_banco"], p(r["gastos"]), r["n_gastos"], p(r["gasto_tango"]), p(r["internas"]),
               p(r["revisar"]), p(r["solo_tango"]), r["n_solo_tango"], "OK" if r["ok"] else "NO DA"] for r in inf["resumen"]]
     R = inf["resumen"]
     tot = lambda k: sum(r[k] for r in R)
     movido = sum(abs(r["entradas"]) + abs(r["salidas"]) for r in R)
     conc = sum(r["pct"] * (abs(r["entradas"]) + abs(r["salidas"])) for r in R)
+    pn_tot = {nv: {"n": sum(r["por_nivel"][nv]["n"] for r in R), "c": sum(r["por_nivel"][nv]["c"] for r in R)}
+              for nv in NIVELES}
     filas.append(["TOTAL", tot("n"), p(tot("entradas")), p(tot("salidas")), p(tot("conc_ent")), p(tot("conc_sal")),
-                  conc / movido if movido else 0, p(tot("solo_banco")), tot("n_solo_banco"), p(tot("gastos")),
+                  conc / movido if movido else 0] + por_nivel(pn_tot, movido) + [p(tot("solo_banco")), tot("n_solo_banco"), p(tot("gastos")),
                   tot("n_gastos"), p(tot("gasto_tango")), p(tot("internas")), p(tot("revisar")), p(tot("solo_tango")),
                   tot("n_solo_tango"), "OK" if inf["control_ok"] else "NO DA"])
     ws = _hoja(wb, "Resumen", enc, filas,
-               {k: PESOS for k in enc if k not in ("Cuenta", "Movimientos banco", "% conciliado", "Control") and not k.startswith("Cant.")}
-               | {"% conciliado": PCT}, {"Cuenta": 28})
+               {k: (PCT if k.startswith("%") else PESOS) for k in enc
+                if k not in ("Cuenta", "Movimientos banco", "Control") and not k.startswith(("Cant.", "Pares"))},
+               {"Cuenta": 28})
     ws.auto_filter.ref = None
     for c in ws[ws.max_row]:
         c.font = Font(bold=True)
@@ -817,6 +941,9 @@ def escribir_excel(inf, ruta, mes):
     ws.append(["Cuenta de control: por cada cuenta, lo que se movió en el banco en el mes = conciliado + internas + "
                "solo en banco + gastos + revisar (lado banco). " + ("Da en todas." if inf["control_ok"] else "NO DA: el informe está mal, no usarlo.")])
     ws.append(["Pares por regla: " + ", ".join("%s %d" % (k, v) for k, v in sorted(inf["reglas"].items()))])
+    ws.append(["Niveles: Seguro = no hay otra lectura posible · Sugerido = lo más probable, hubo que elegir · "
+               "Posible = cierra por importe, conviene mirarlo. '$ movido' = entradas + salidas del banco sin signo; "
+               "'%' = sobre todo lo movido en la cuenta. Las internas cuentan como Seguro."])
     ws.append(["Cheques de terceros recibidos en el mes (entran al banco después, con la boleta de depósito): %d renglones, %s"
                % (inf["cheques_recibidos"][0], _m(inf["cheques_recibidos"][1]))])
     if inf["sin_extracto"]:
@@ -831,21 +958,20 @@ def escribir_excel(inf, ruta, mes):
             ws.cell(ws.max_row, 3).number_format = PESOS
 
     # 2. Conciliado
-    enc = ["Par", "Regla", "Lado", "Fecha", "Cuenta", "Importe", "Concepto / leyenda", "Comprobante Tango",
-           "CUIT", "Contraparte", "Días (banco − Tango)"]
+    enc = ["Par", "Nivel", "Regla", "Criterio", "Lado", "Fecha", "Cuenta", "Importe", "Concepto / leyenda",
+           "Comprobante Tango", "CUIT", "Contraparte", "Días (banco − Tango)"]
     filas = []
-    for i, par in enumerate(inf["pares"], start=1):
-        f_t = min(t["fecha"] for t in par["tango"])
+    for i, par in enumerate(inf["pares"] + inf["pares_internas"], start=1):
         f_b = min(b["fecha"] for b in par["banco"])
-        dias = (f_b - f_t).days
+        dias = (f_b - min(t["fecha"] for t in par["tango"])).days if par["tango"] else ""
+        cab = [i, par["nivel"], par["regla"], par["criterio"]]
         for b in par["banco"]:
-            filas.append([i, par["regla"], "Banco", b["fecha"], b["cuenta"], p(b["c"]), b["texto"], "",
-                          _cuit_lindo(b["cuit"]), "", dias])
+            filas.append(cab + ["Banco", b["fecha"], b["cuenta"], p(b["c"]), b["texto"], "", _cuit_lindo(b["cuit"]), "", dias])
         for t in par["tango"]:
-            filas.append([i, par["regla"], "Tango", t["fecha"], t["desc_cuenta"], p(t["c"]), t["texto"],
-                          ("%s %s" % (t["tipo"], t["comprobante"])).strip(), _cuit_lindo(t["cuit"]), t["contraparte"], dias])
+            filas.append(cab + ["Tango", t["fecha"], t["desc_cuenta"], p(t["c"]), t["texto"],
+                                ("%s %s" % (t["tipo"], t["comprobante"])).strip(), _cuit_lindo(t["cuit"]), t["contraparte"], dias])
     _hoja(wb, "Conciliado", enc, filas, {"Fecha": FECHA, "Importe": PESOS},
-          {"Concepto / leyenda": 50, "Cuenta": 26, "Contraparte": 30, "Comprobante Tango": 22})
+          {"Concepto / leyenda": 50, "Cuenta": 26, "Contraparte": 30, "Comprobante Tango": 22, "Criterio": 70})
 
     # 3. Solo en banco
     enc = ["Fecha", "Cuenta", "Categoría", "Concepto", "Importe", "CUIT", "Contraparte (según Tango)",
@@ -906,6 +1032,14 @@ def resumen_md(inf, mes, ruta_xlsx, archivo_tango, archivo_sheet):
             r["n_solo_banco"], _m(r["gastos"]), r["n_gastos"], _m(r["st_ent"]), _m(r["st_sal"]), r["n_solo_tango"]))
     L += ["", "Pares por regla: " + (", ".join("%s %d" % (k, v) for k, v in sorted(inf["reglas"].items())) or "ninguno")
           + " · internas de la misma cuenta: %d" % len(inf["internas"]), ""]
+    L += ["## Qué tan firme es lo conciliado", "",
+          "Pares y lo movido en el banco (entradas + salidas, sin signo). Mirar solo Sugerido y Posible.", "",
+          "| Cuenta | " + " | ".join(NIVELES) + " |", "|---|" + "---|" * len(NIVELES)]
+    for r in inf["resumen"]:
+        L.append("| %s | %s |" % (r["cuenta"], " | ".join(
+            "%d · %s (%.0f %%)" % (r["por_nivel"][nv]["n"], _m(r["por_nivel"][nv]["c"]),
+                                   100.0 * r["por_nivel"][nv]["c"] / r["movido"] if r["movido"] else 0) for nv in NIVELES)))
+    L.append("")
 
     L += ["## Lo más grande que falta imputar en Tango", ""]
     for b in sorted(inf["solo_banco"], key=lambda b: -abs(b["c"]))[:10]:

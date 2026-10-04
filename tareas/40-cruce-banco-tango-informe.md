@@ -276,31 +276,45 @@ y cualquier "Revisar". Montos con `_m` (formato `$X`).
 Archivos: `lector/cruce.py` (nuevo), `lector/pruebas/test_cruce.py` (nuevo, 21 pruebas con datos
 inventados), `clientes/navar/perfil.json` (bloque `cruce`).
 
-Cambios respecto de la consigna, todos por lo que mostraron los datos reales de agosto:
+Cambios respecto de la consigna, por lo que mostraron los datos reales (el detalle con números
+queda en `clientes/navar/privado/cruce/`, fuera de git):
 - **Regla nueva "descuento neto", antes de "exacto"**: un crédito del banco = una boleta de Tango
-  (bruto) + su FPR de interés del mismo día. En Macro cada descuento es 1 a 1 así (no por bloque del
-  día), y en Nación también: lo que el extracto llama "ALTA PRESTAMO DOCUMENTOS" Tango lo carga como
-  "VENTA VALORES BCO NACION" + intereses. Sin esta regla, "exacto" se robaba boletas sueltas que
-  casualmente igualaban otro crédito y descuadraba todo el día.
+  (bruto) + su FPR de interés del mismo día. Así se cargan los descuentos de cheques en dos de los
+  bancos (en uno de ellos el extracto lo llama "alta de préstamo documentos"). Sin esta regla,
+  "exacto" se robaba boletas sueltas que casualmente igualaban otro crédito y descuadraba el día.
 - **Regla nueva "fecha corrida", al final**: importe exacto, misma cuenta, a menos de 15 días
-  (`dias_fecha_corrida`), con un único candidato de cada lado. Caso real: las cuotas de préstamo de
-  Macro del 24-28/08 que Tango carga todas el 01/09. Cuenta como conciliado, marcada aparte.
+  (`dias_fecha_corrida`), con un único candidato de cada lado. Caso típico: débitos de fin de mes
+  que Tango carga el 1ro del mes siguiente. Cuenta como conciliado, marcada aparte.
 - **Anulados en Tango**: un comprobante y su reversión (REV) por el mismo importe se muestran en
   "Solo en Tango" con estado "anulado con su reversión" y no suman.
 - **Fechas imposibles**: más de 60 días después de hoy o antes del 2000 (no "fuera de la ventana":
-  una boleta de junio es normal). Se sugiere la fecha con el año del mes, y si un movimiento del banco
-  tiene el mismo importe, la pista lo dice.
+  una boleta de dos meses atrás es normal). Se sugiere la fecha con el año del mes, y si un
+  movimiento del banco tiene el mismo importe, la pista lo dice.
 - La pista del "solo en banco" también avisa "mismo importe en otra cuenta de Tango" (banco equivocado).
-- En cuentas de Tango compartidas (las dos BBVA), lo de Tango se muestra en una sola (la primera del
-  perfil) para no contarlo dos veces.
+- En cuentas de Tango compartidas (las dos de un mismo banco), lo de Tango se muestra en una sola
+  (la primera del perfil) para no contarlo dos veces.
 - Las pruebas usan `unittest` (como las otras de `lector/pruebas`); pytest no está instalado.
 
+**Agregado el 04/10/2026 (antes del merge): qué tan seguro es cada par.** Pedido de Thomas, visto en
+otro sistema de conciliación. El que revisa mira solo lo Sugerido y lo Posible, y el mismo motor va a
+servir para emparejar previsiones (sueldos, impuestos, cuotas) contra el banco.
+- Cada par tiene **Nivel** (Seguro / Sugerido / Posible) y **Criterio** en castellano: cuántos
+  renglones de cada lado, importe exacto o diferencia, CUIT (coincide / distinto / no se pudo
+  comparar), días entre banco y Tango, y el desempate si lo hubo.
+- El nivel sale de la **variante** de la regla, configurable en `perfil → cruce → niveles` (si falta
+  una, vale la del código; un nivel mal escrito frena con error). Variantes nuevas de "exacto":
+  `exacto único` (Seguro), `exacto con CUIT` (Seguro), `exacto por fecha` (Sugerido; incluye el que
+  "quedó solo después de otro desempate", porque depende de esa elección) y `exacto CUIT distinto`
+  (Posible: mismo importe pero los dos lados traen CUIT y no coinciden).
+- Las internas ahora también aparecen en la solapa Conciliado (como Seguro).
+- Resumen (Excel y `.md`): por cuenta y por nivel, cantidad de pares, $ movido en el banco y % del
+  total de la cuenta.
+
 Cómo se probó:
-- `python -m unittest lector.pruebas.test_cruce` → 21 OK.
-- Con datos reales (export de la Sheet del 24/09 + `A tesoreria detalle jun-hoy.xlsx`), julio y
-  agosto: la cuenta de control da en todas las cuentas. Agosto: conciliado BBVA 97-99 %, Corrientes
-  94 %, Macro 90 %, Galicia 85 %, Nación 48 % (lo que falta en Nación: tres cheques propios de $X M
-  por canje, la tarjeta y una cuota de préstamo, que Tango no tiene en esa cuenta). Los pares
-  agrupados se revisaron uno por uno a mano.
+- `python -m unittest lector.pruebas.test_cruce` → 31 OK (10 nuevas de niveles: al menos un caso por
+  nivel, el resumen por nivel, el cambio desde el perfil y el nivel inválido).
+- Con datos reales de julio y agosto: la cuenta de control da en todas las cuentas; los niveles no
+  cambian qué se empareja (mismos pares y mismos porcentajes que antes). Los pares agrupados y los
+  Sugerido/Posible se revisaron uno por uno a mano.
 
 ## Revisión

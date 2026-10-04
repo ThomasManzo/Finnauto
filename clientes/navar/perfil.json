@@ -167,6 +167,19 @@
     "cuentas_efectivo": ["CAJA"],
     "cuenta_cheques_terceros": "VALORES A DEPOSITAR",
     "comprobantes_cobro": ["REC"],
-    "comprobantes_pago": ["O/P", "OPF"]
+    "comprobantes_pago": ["O/P", "OPF"],
+    "_ayuda_niveles": "Qué tan seguro es cada forma de emparejar: Seguro (no hay otra lectura), Sugerido (lo más probable, hubo que elegir) o Posible (cierra por importe, conviene mirarlo). El que revisa mira solo Sugerido y Posible. Se puede cambiar el nivel de cada forma acá; la que no esté usa el valor del código.",
+    "niveles": {
+      "exacto único": "Seguro",
+      "exacto con CUIT": "Seguro",
+      "descuento neto": "Seguro",
+      "internas": "Seguro",
+      "exacto por fecha": "Sugerido",
+      "mismo CUIT": "Sugerido",
+      "bloque del día": "Sugerido",
+      "agrupado": "Posible",
+      "fecha corrida": "Posible",
+      "exacto CUIT distinto": "Posible"
+    }
   }
 }
