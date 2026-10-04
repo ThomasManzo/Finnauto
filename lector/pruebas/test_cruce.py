@@ -10,7 +10,7 @@ from lector import cruce as cz
 
 D = dt.datetime
 CFG = {
-    "empresa": "A", "cuit_propio": "30-55852502-5",
+    "empresa": "A", "cuit_propio": "30-99999999-5",
     "cuentas": {"GALICIA 111": 5, "MACRO 222": 25, "BBVA 333/1": 89, "BBVA 333/2": 89},
     "dias_antes": 3, "dias_despues": 5, "tolerancia": 1,
     "categorias_gastos": ["Impuestos", "Gastos Bancarios"],
@@ -181,7 +181,7 @@ class Cruce(_Base):
         self.assertEqual(len(inf["solo_tango"]), 0)
 
     def test_transferencia_entre_bancos_propios(self):
-        self.banco(D(2026, 8, 10), "MACRO 222", -25000.0, "TRANSF 30558525025 VAR", "Transferencia Interna")
+        self.banco(D(2026, 8, 10), "MACRO 222", -25000.0, "TRANSF 30999999995 VAR", "Transferencia Interna")
         self.banco(D(2026, 8, 10), "GALICIA 111", 25000.0, "TRANSFERENCIA DE CUENTA PROPIA", "Transferencia Interna")
         self.tango(D(2026, 8, 10), "EXT", 25, -25000.0, interno=900)
         self.tango(D(2026, 8, 10), "EXT", 5, 25000.0, interno=900)
@@ -375,13 +375,13 @@ class Cuits(unittest.TestCase):
         self.assertEqual(cz.cuit_del_banco("TRANSF:WY7ZEPN6-20111111112"), "20111111112")
         self.assertEqual(cz.cuit_del_banco("", "CUIT 27-22222222-8: proveedor"), "27222222228")
         self.assertEqual(cz.cuit_del_banco("CBU 28500331300000083019"), "")          # parte de un número largo
-        self.assertEqual(cz.cuit_del_banco("TRANSF 30558525025", propio="30558525025"), "")
+        self.assertEqual(cz.cuit_del_banco("TRANSF 30999999995", propio="30999999995"), "")
         self.assertEqual(cz.cuit_del_banco("TRANSF 20111111113"), "")               # verificador mal
 
 
 def cz_config():
     cfg = dict(CFG)
-    cfg["cuit_propio"] = "30558525025"
+    cfg["cuit_propio"] = "30999999995"
     return cfg
 
 
