@@ -127,7 +127,13 @@ contexto._ultimoConPrefijo_ = () => ({getName: () => 'inventado.xlsx', getId: ()
 contexto._registrar_ = (...r) => registros.push(r);
 contexto._importar_ = () => { throw Error('VERIFICACION_NO_CUADRA: Movimientos'); };
 contexto.Logger = {log() {}};
-contexto.PropertiesService = {getDocumentProperties: () => ({getProperty: () => null, setProperty: (...p) => firmas.push(p)})};
+// Doble de las propiedades de Apps Script: las del documento guardan la firma del reloj; las del
+// script tienen los destinatarios del aviso (desde el 04/10/2026 los mails viven ahí y no en el
+// código). El mail es inventado: el repo es público.
+contexto.PropertiesService = {
+  getDocumentProperties: () => ({getProperty: () => null, setProperty: (...p) => firmas.push(p)}),
+  getScriptProperties: () => ({getProperty: k => ({DESTINATARIOS: 'prueba@ejemplo.com'})[k] || null}),
+};
 assert.throws(() => contexto._importarManual_('tango'), /VERIFICACION_NO_CUADRA/);
 contexto.importarLoNuevo();
 // Una importación manual más todas las fuentes automáticas configuradas.
@@ -139,9 +145,14 @@ console.log('OK: lista vacía, cola mal borrada, Registro manual/automático y f
 // El aviso destaca la falta de coincidencia sin mandar correos.
 vm.runInContext(fs.readFileSync(path.join(__dirname,
   '../../clientes/navar/herramientas/aviso_diario.gs'), 'utf8'), contexto);
+// El aviso toma los destinatarios de las Propiedades del script (el doble de arriba).
+assert.equal(contexto.DESTINATARIOS, 'prueba@ejemplo.com');
 contexto._fechaAviso_ = () => '2026-09-22';
 const ahora = new Date('2026-09-22T12:00:00Z');
 const aviso = contexto._armarAviso_(ahora, {entradas: [], publicados: [], retenidos: [], log: [],
   extracto: ahora, errores: {}, registro: [{fecha: ahora, tipo: 'tango', estado: 'ERROR', detalle: 'VERIFICACION_NO_CUADRA: Cartera de Cheques'}]});
-assert.ok(aviso.alertas.some(a => a.includes('NO CUADRÓ')));
+// Desde el aviso como checklist (ff2e4ca) la alerta ya no dice "NO CUADRÓ": dice "Falló la
+// importación de <tipo>" y copia el motivo, que nombra la lista que no cuadró.
+assert.ok(aviso.alertas.some(a => a.includes('Falló la importación de tango') &&
+  a.includes('VERIFICACION_NO_CUADRA: Cartera de Cheques')));
 console.log('OK: alerta explícita del aviso diario, sin enviar mails.');
