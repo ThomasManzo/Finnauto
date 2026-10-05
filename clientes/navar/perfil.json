@@ -139,5 +139,47 @@
     "_origen": "Procesos, empresas y consultas personalizadas comprobados contra Live el 25/09/2026. NAVAR SA = 13 y NAVAR SA Otros = 56. La API funciona con parametros despues de '?'; la ruta dibujada por la pantalla devuelve HTML.",
     "_movimientos_tesoreria": "11591 = movimientos de tesorería (un renglón por comprobante: cobros, pagos y otros, con Desc. relacionado). A (empresa 13, consulta 19): últimos 400 días configurables, carpeta Tesoreria A. AA (empresa 56, consulta 17): historia completa, carpeta Tesoreria AA (tolera tilde), sigue como efectivo con lector/tesoreria_aa.py. Ambas alimentan lector/ultimos_pagos.py; nunca mezclar las carpetas.",
     "_cheques_terceros": "Las consultas 18 (A) y 16 (AA) filtran Estado = En Cartera en Live (25/09/2026): sin ese filtro A bajaba 75 mil cheques de historia para quedarse con ~44. La bajada igual vuelve a filtrar por código C."
+  },
+  "cruce": {
+    "_ayuda": "Cruce banco <-> Tango (lector/cruce.py). Solo la empresa A: AA opera en efectivo y no tiene banco. 'cuentas' dice qué cuenta de Tango (Cód. cuenta del detalle de comprobantes de Tesorería) corresponde a cada cuenta del extracto ('Banco / Cuenta' de la solapa Movimientos). Las dos de BBVA van a la misma: la recaudadora le pasa todo a la principal, y las transferencias entre ellas se apartan como internas.",
+    "empresa": "A",
+    "cuit_propio": "30-55852502-5",
+    "cuentas": {
+      "GALICIA 0005459-5 070-1": 5,
+      "MACRO 3-033-0000083019-1": 25,
+      "BBVA 489-000765/9": 89,
+      "BBVA 489-000806/5": 89,
+      "NACION 19477890007728": 88,
+      "CORRIENTES 130559": 4
+    },
+    "_ayuda_fechas": "La fecha del banco puede estar hasta dias_antes ANTES de la de Tango (Tango se cargó tarde) y hasta dias_despues DESPUÉS (el banco acredita unos días más tarde). tolerancia: pesos de diferencia aceptada.",
+    "dias_antes": 3,
+    "dias_despues": 5,
+    "tolerancia": 1,
+    "_ayuda_fecha_corrida": "Regla del final: lo que sobra y tiene un UNICO par por importe exacto a menos de dias_fecha_corrida dias se da por conciliado, marcado 'fecha corrida' (Tango lo cargo con otra fecha).",
+    "dias_fecha_corrida": 15,
+    "_ayuda_categorias": "categorias_gastos: del banco, no se emparejan uno por uno (son cientos por mes); se informan como total por cuenta. categorias_deposito: créditos del banco que pueden ser un cheque de una boleta de depósito o descuento (regla 'bloque del día').",
+    "categorias_gastos": ["Impuestos", "Gastos Bancarios"],
+    "categorias_deposito": ["Cheques", "Descuento de Cheques"],
+    "_ayuda_tango": "comprobantes_deposito: boletas de depósito de Tango (Macro, Galicia, Nación, Corrientes, Francés). intereses_descuento: un FPR es interés de un descuento de cheques si su leyenda tiene TODAS las palabras de 'todas' y ALGUNA de 'alguna' (ej. 'INTERESES VTA VALORES MACRO'); en Macro la boleta va en bruto y el banco acredita el neto. cuentas_efectivo y cuenta_cheques_terceros: por descripción, para el bloque 'no pasa por el banco' (efectivo y endosos).",
+    "comprobantes_deposito": ["BDM", "BDG", "BNA", "BDC", "BDF"],
+    "intereses_descuento": {"todas": ["INTERES"], "alguna": ["VTA", "VALORES"]},
+    "cuentas_efectivo": ["CAJA"],
+    "cuenta_cheques_terceros": "VALORES A DEPOSITAR",
+    "comprobantes_cobro": ["REC"],
+    "comprobantes_pago": ["O/P", "OPF"],
+    "_ayuda_niveles": "Qué tan seguro es cada forma de emparejar: Seguro (no hay otra lectura), Sugerido (lo más probable, hubo que elegir) o Posible (cierra por importe, conviene mirarlo). El que revisa mira solo Sugerido y Posible. Se puede cambiar el nivel de cada forma acá; la que no esté usa el valor del código.",
+    "niveles": {
+      "exacto único": "Seguro",
+      "exacto con CUIT": "Seguro",
+      "descuento neto": "Seguro",
+      "internas": "Seguro",
+      "exacto por fecha": "Sugerido",
+      "mismo CUIT": "Sugerido",
+      "bloque del día": "Sugerido",
+      "agrupado": "Posible",
+      "fecha corrida": "Posible",
+      "exacto CUIT distinto": "Posible"
+    }
   }
 }
