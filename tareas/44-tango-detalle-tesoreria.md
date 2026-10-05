@@ -1,5 +1,5 @@
 # Tarea 44 — La bajada de Tango trae el detalle de tesorería de A (para el cruce)
-Estado: lista para revisión
+Estado: aprobada
 Rama: tarea/tesoreria-a-detalle
 
 ## Objetivo
@@ -42,3 +42,6 @@ bajada (3 nuevas: el cruce lee la foto, sin columnas no se publica, solo A con v
 31 del cruce, `.cjs` del aviso con el caso "falló solo el detalle".
 
 ## Revisión
+05/10/2026: mergeada con el OK de Thomas. `--probar detalle_tesoreria --empresa A` en la notebook
+confirmó los nombres de la API: llegan las 18 columnas y se traducen todas. Vienen 4 más sin
+equivalencia (`ID_SBA04`, `ASOCIA_UNIDADES`, `ID_SBA01`, `COD_TIPO_CUENTA`) que quedan al final.
