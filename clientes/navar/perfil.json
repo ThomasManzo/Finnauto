@@ -104,7 +104,7 @@
   },
   "_ayuda_modos_de_prueba": "Para probar un bot: en el banco que quieras, poner 'solo_empresa_activa': true o 'solo_estas_empresas': ['Nombre Tal Cual']. Vacio + solo_empresa_activa false = PRODUCCION (todas).",
   "tango_live": {
-    "_ayuda": "Bajada automatica de Tango Live por API (ingestas/tango_live.py). La llamada usa /Api/GetApiLiveQueryData con parametros de query. Cada empresa y consulta exige su consultas_personalizadas: sin ese numero no se baja la vista por defecto porque le faltan columnas. El token NO va aca: queda en el llavero de Windows. Son nueve bajadas diarias. Cheques propios y tesoreria A filtran desde hoy menos su dias_atras; las demas fotos, incluida tesoreria AA, mandan fechas vacias para traer todo.",
+    "_ayuda": "Bajada automatica de Tango Live por API (ingestas/tango_live.py). La llamada usa /Api/GetApiLiveQueryData con parametros de query. Cada empresa y consulta exige su consultas_personalizadas: sin ese numero no se baja la vista por defecto porque le faltan columnas. El token NO va aca: queda en el llavero de Windows. Son diez bajadas diarias. Cheques propios, tesoreria A y el detalle de tesoreria A filtran desde hoy menos su dias_atras; las demas fotos, incluida tesoreria AA, mandan fechas vacias para traer todo.",
     "url": "http://servidor:17000",
     "empresas": {
       "A": 13,
@@ -115,7 +115,8 @@
       "pagos": 17696,
       "cheques_terceros": 11583,
       "cheques_propios": 11584,
-      "movimientos_tesoreria": 11591
+      "movimientos_tesoreria": 11591,
+      "detalle_tesoreria": 12480
     },
     "consultas_personalizadas": {
       "A": {
@@ -123,7 +124,8 @@
         "pagos": 11,
         "cheques_terceros": 18,
         "cheques_propios": 13,
-        "movimientos_tesoreria": 19
+        "movimientos_tesoreria": 19,
+        "detalle_tesoreria": 21
       },
       "AA": {
         "cobranzas": 14,
@@ -134,8 +136,10 @@
     },
     "dias_atras": {
       "cheques_propios": 60,
-      "movimientos_tesoreria_A": 400
+      "movimientos_tesoreria_A": 400,
+      "detalle_tesoreria": 120
     },
+    "_detalle_tesoreria": "12480 = Tesoreria > Consultas > Comprobantes > Detalle (un renglon por cuenta imputada: banco, caja, cartera de cheques...). Solo A (empresa 13), consulta personalizada 21 'Finauto A tesoreria detalle', creada el 05/10/2026. Ultimos 120 dias, carpeta 'Tesoreria A detalle'. La usa lector/cruce.py (cruce banco <-> Tango). NO borrarla ni editarla en Live.",
     "_origen": "Procesos, empresas y consultas personalizadas comprobados contra Live el 25/09/2026. NAVAR SA = 13 y NAVAR SA Otros = 56. La API funciona con parametros despues de '?'; la ruta dibujada por la pantalla devuelve HTML.",
     "_movimientos_tesoreria": "11591 = movimientos de tesorería (un renglón por comprobante: cobros, pagos y otros, con Desc. relacionado). A (empresa 13, consulta 19): últimos 400 días configurables, carpeta Tesoreria A. AA (empresa 56, consulta 17): historia completa, carpeta Tesoreria AA (tolera tilde), sigue como efectivo con lector/tesoreria_aa.py. Ambas alimentan lector/ultimos_pagos.py; nunca mezclar las carpetas.",
     "_cheques_terceros": "Las consultas 18 (A) y 16 (AA) filtran Estado = En Cartera en Live (25/09/2026): sin ese filtro A bajaba 75 mil cheques de historia para quedarse con ~44. La bajada igual vuelve a filtrar por código C."
