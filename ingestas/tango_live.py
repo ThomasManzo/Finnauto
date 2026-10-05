@@ -53,12 +53,19 @@ DESTINO = {
     "cheques_terceros": ("Cheques", "%s cheques terceros %s.xlsx"),
     "cheques_propios": ("Cheques", "%s cheques propios %s.xlsx"),
     "movimientos_tesoreria": ("Tesoreria AA", "%s movimientos tesoreria %s.xlsx"),
+    # Detalle de comprobantes de tesorería (un renglón por cuenta imputada): lo usa el cruce
+    # banco ↔ Tango (lector/cruce.py) para saber por qué cuenta de banco entró o salió cada peso.
+    # Carpeta propia: no se mezcla con "Tesoreria A", que es otra consulta (un renglón por comprobante).
+    "detalle_tesoreria": ("Tesoreria A detalle", "%s tesoreria detalle %s.xlsx"),
 }
+# Consultas que existen solo para la empresa A (AA no tiene cheques propios ni bancos).
+SOLO_A = {"cheques_propios", "detalle_tesoreria"}
 PAGINA = 5000
 TIMEOUT_PAGINA = 300
-# El circuito diario tiene cinco fotos de A y cuatro de AA. Si una configuración
-# queda incompleta, el parte debe mostrar que faltó algo en vez de decir 5 de 5.
-TOTAL_BAJADAS_DIARIAS = 9
+# El circuito diario tiene seis fotos de A y cuatro de AA. Si una configuración
+# queda incompleta, el parte debe mostrar que faltó algo en vez de decir 6 de 6.
+# Tiene que coincidir con TANGO_BAJADAS de clientes/navar/herramientas/aviso_diario.gs.
+TOTAL_BAJADAS_DIARIAS = 10
 
 # Qué encabezado manual corresponde a cada campo comprobado de la API. El orden
 # es el orden útil del export manual; todo campo no listado se agrega después sin
@@ -124,6 +131,31 @@ COLUMNAS_EXPORT = {
     ],
 }
 
+# Columnas del detalle de tesorería, con los nombres del export manual que lee lector/cruce.py.
+COLUMNAS_EXPORT["detalle_tesoreria"] = [
+    ("Fecha de emisión", "FECHA_DE_EMISION", "crudo"),
+    ("Cód. comprobante", "COD_COMPROBANTE", "crudo"),
+    ("Desc. comprobante", "DESC_COMPROBANTE", "crudo"),
+    ("Comprobante", "COMPROBANTE", "crudo"),
+    ("Nro. interno", "NRO_INTERNO", "crudo"),
+    ("Renglón", "RENGLON", "crudo"),
+    ("Cód. cuenta", "COD_CUENTA", "crudo"),
+    ("Desc. contable", "DESC_CONTABLE", "crudo"),
+    ("Desc. cuenta", "DESC_CUENTA", "crudo"),
+    ("Banco", "BANCO", "crudo"),
+    ("Debe (cte) (renglón)", "DEBE_CTE_RENGLON", "crudo"),
+    ("Haber (cte) (renglón)", "HABER_CTE_RENGLON", "crudo"),
+    ("Total comp. (cte)", "TOTAL_COMP_CTE", "crudo"),
+    ("CUIT cliente (encab.)", "CUIT_ENCAB", "crudo"),
+    ("CUIT proveedor (encab.)", "CUIT_PROVEEDOR_ENCAB", "crudo"),
+    ("Razón social (encab.)", "RAZON_SOCIAL_ENCAB", "crudo"),
+    ("Proveedor (encab.)", "PROVEEDOR_ENCAB", "crudo"),
+    ("Leyenda", "LEYENDA", "crudo"),
+]
+# Sin estas el cruce no puede trabajar: si Live deja de mandarlas, no se publica el archivo.
+DETALLE_OBLIGATORIAS = ("Fecha de emisión", "Cód. comprobante", "Cód. cuenta",
+                        "Debe (cte) (renglón)", "Haber (cte) (renglón)")
+
 TRADUCCIONES = {
     "estado_terceros": {"C": "En Cartera", "A": "Aplicado", "R": "Rechazado"},
     "estado_propios": {"E": "Al Cobro"},
@@ -165,7 +197,7 @@ def rango_fechas(cfg, hoy, consulta, empresa="AA"):
     clave = consulta
     if consulta == "movimientos_tesoreria" and empresa == "A":
         clave = "movimientos_tesoreria_A"
-    elif consulta != "cheques_propios":
+    elif consulta not in ("cheques_propios", "detalle_tesoreria"):
         return "", ""
     try:
         dias = int(cfg.get("dias_atras", {}).get(clave))
@@ -383,6 +415,12 @@ def preparar_filas(consulta, empresa, filas):
                       if not str(f.get("Clase") or "").startswith("(código ")]
     if consulta == "cheques_terceros":
         traducidas = [f for f in traducidas if _codigo(f.get("Cód. estado")) == "C"]
+    if consulta == "detalle_tesoreria" and filas:
+        faltan = [c for c in DETALLE_OBLIGATORIAS if c not in columnas]
+        if faltan:
+            raise RuntimeError(
+                "al detalle de tesorería le faltan columnas que usa el cruce (%s): ¿alguien editó la "
+                "consulta personalizada en Live? No se escribe el archivo" % ", ".join(faltan))
     return traducidas, columnas, linea_codigos, linea_pares
 
 
@@ -497,11 +535,11 @@ def _bajada_completa_hoy(raiz, hoy):
 
 
 def pendientes(cfg):
-    """Las nueve fotos válidas: cinco de A y cuatro de AA."""
+    """Las diez fotos válidas: seis de A y cuatro de AA."""
     return [(empresa, consulta, proceso)
             for empresa, empresa_id in cfg.get("empresas", {}).items() if empresa_id
             for consulta, proceso in cfg.get("consultas", {}).items() if proceso
-            if not (empresa == "AA" and consulta == "cheques_propios")]
+            if not (empresa != "A" and consulta in SOLO_A)]
 
 
 def _mostrar_prueba(cfg, tok, consulta, empresa, proceso, desde, hasta):

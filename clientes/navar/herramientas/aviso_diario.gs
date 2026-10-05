@@ -21,7 +21,7 @@ var DESTINATARIOS = (typeof PropertiesService !== "undefined" &&
 var AVISO_ZONA = "America/Argentina/Buenos_Aires";
 var AVISO_DIA = 24 * 60 * 60 * 1000;
 // Tiene que coincidir con TOTAL_BAJADAS_DIARIAS de ingestas/tango_live.py.
-var TANGO_BAJADAS = 9;
+var TANGO_BAJADAS = 10;
 // Estas fuentes ya llegan solas. Al automatizar otro banco, se lo agrega acá para
 // que el aviso deje de pedir una carga manual y pase a revisar la notebook.
 var FUENTES_AUTOMATICAS = ["tango", "tesoreria_aa", "galicia"];
@@ -188,7 +188,7 @@ function _leerDatosAviso_(ahora) {
     var carpetas = DriveApp.getFoldersByName(CARPETA_RAIZ);
     if (!carpetas.hasNext()) throw new Error("No encontré " + CARPETA_RAIZ);
     raiz = carpetas.next();
-    var mapa = {"Tesoreria A": "tesoreria_a", "Bancos": "bancos", "Cuentas a cobrar": "tango", "Cuentas a pagar": "tango",
+    var mapa = {"Tesoreria A": "tesoreria_a", "Tesoreria A detalle": "tesoreria_a", "Bancos": "bancos", "Cuentas a cobrar": "tango", "Cuentas a pagar": "tango",
       "Cheques": "tango", "Deuda bancaria": "deuda", "Impuestos": "impuestos",
       "Tesorería AA": "tesoreria_aa", "Tesoreria AA": "tesoreria_aa"};
     var sub = raiz.getFolders();
@@ -344,8 +344,12 @@ function _armarAviso_(ahora, datos) {
       .sort(function (a, b) { return b.fecha - a.fecha; })[0];
   }
   var entradas = datos.entradas || [], parte = datos.tangoParte;
-  var fotos = {A: ["cobranzas", "pagos", "cheques terceros", "cheques propios", "movimientos tesoreria"],
-    AA: ["cobranzas", "pagos", "cheques terceros", "movimientos tesoreria"]};
+  // "tesoreria detalle" (tarea 44): el detalle de comprobantes de A que usa el cruce banco ↔ Tango.
+  var fotos = {A: ["cobranzas", "pagos", "cheques terceros", "cheques propios", "movimientos tesoreria",
+    "tesoreria detalle"], AA: ["cobranzas", "pagos", "cheques terceros", "movimientos tesoreria"]};
+  function nombreFoto(foto) {
+    return foto.replace("movimientos tesoreria", "tesorería").replace("tesoreria detalle", "detalle de tesorería");
+  }
   var fallas = parte && parte.fallas || [];
   ["A", "AA"].forEach(function (empresa) {
     if (errores.TangoParte || !parte || !deHoy(parte.fecha)) {
@@ -354,7 +358,7 @@ function _armarAviso_(ahora, datos) {
       return;
     }
     if (parte.ok === parte.total && parte.total === TANGO_BAJADAS && !fallas.length) {
-      poner(true, "Tango " + empresa + ": " + fotos[empresa].join(", ").replace("movimientos tesoreria", "tesorería") +
+      poner(true, "Tango " + empresa + ": " + fotos[empresa].map(nombreFoto).join(", ") +
         " (" + _fechaAviso_(parte.fecha, "HH:mm") + ")");
       return;
     }
@@ -366,7 +370,7 @@ function _armarAviso_(ahora, datos) {
       }));
       var falla = fallas.filter(function (f) { return f.toLowerCase().indexOf(prefijo) === 0; })[0];
       if (falla || errores.Drive || !archivo || _fechaNombreAviso_(archivo.nombre) !== hoy) {
-        faltan.push(foto.replace("movimientos tesoreria", "tesorería") + ": " +
+        faltan.push(nombreFoto(foto) + ": " +
           (falla ? _textoAviso_(falla.replace(/^[^:]+:\s*/, ""), 100) : "no llegó la foto de hoy") +
           " · último archivo: " + fecha(archivo && archivo.fecha));
       }

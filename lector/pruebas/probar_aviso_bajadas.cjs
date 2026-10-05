@@ -38,11 +38,11 @@ const ahora = new Date('2026-09-28T10:30:00Z'); // lunes 07:30
 const fecha = (dia, hora='00:00') => new Date(`2026-09-${dia}T${hora}:00-03:00`);
 function foto() {
   const entradas = [];
-  for (const empresa of ['A','AA']) for (const lista of (empresa==='A'?['cobranzas','pagos','cheques terceros','cheques propios','movimientos tesoreria']:['cobranzas','pagos','cheques terceros','movimientos tesoreria']))
+  for (const empresa of ['A','AA']) for (const lista of (empresa==='A'?['cobranzas','pagos','cheques terceros','cheques propios','movimientos tesoreria','tesoreria detalle']:['cobranzas','pagos','cheques terceros','movimientos tesoreria']))
     entradas.push({nombre:`${empresa} ${lista} 2026-09-28.xlsx`,ruta:'Tango/inventado.xlsx',tipo:lista.includes('tesoreria')?(empresa==='A'?'tesoreria_a':'tesoreria_aa'):'tango',fecha:fecha('28','05:46')});
   entradas.push({nombre:'Movimientos Galicia 2026-09-28.xlsx',ruta:'Bancos/galicia/Movimientos Galicia 2026-09-28.xlsx',tipo:'bancos',fecha:fecha('28','05:48')});
   return {entradas, publicados:[],retenidos:[],log:[],errores:{},ultimaPasada:fecha('28','07:08'),
-    tangoParte:{fecha:fecha('28','05:46'),ok:9,total:9,fallas:[]},
+    tangoParte:{fecha:fecha('28','05:46'),ok:10,total:10,fallas:[]},
     galiciaParte:{fecha:fecha('28','05:48'),ok:true,detalle:''},
     registro:[{tipo:'tango',estado:'ok',fecha:fecha('28','06:33'),detalle:'listo'}],
     saldos:[{banco:'Galicia',origen:'Extracto Galicia',empresa:'A',fecha:fecha('24')},
@@ -63,7 +63,7 @@ function probar(cambio, n, presentes=[], ausentes=[]) {
   assert.equal(lineas.filter(l=>l.startsWith('☐')).length,n);
   casos++;return aviso;
 }
-probar(()=>{},0,['☑ Tango A: cobranzas, pagos, cheques terceros, cheques propios, tesorería', '☑ Tango AA:','☑ Galicia: 05:48 · movimientos hasta 24/09','☑ Macro: al día, extracto hasta 25/09','☑ La Sheet se actualizó (06:33)'],['❌','⚠️','El vigilante procesó','Llegó a Drive']);
+probar(()=>{},0,['☑ Tango A: cobranzas, pagos, cheques terceros, cheques propios, tesorería, detalle de tesorería', '☑ Tango AA:','☑ Galicia: 05:48 · movimientos hasta 24/09','☑ Macro: al día, extracto hasta 25/09','☑ La Sheet se actualizó (06:33)'],['❌','⚠️','El vigilante procesó','Llegó a Drive']);
 probar(d=>{d.tangoParte.ok=7;d.tangoParte.fallas=['A pagos 2026-09-28.xlsx: timeout','AA cobranzas 2026-09-28.xlsx: HTTP 500'];},2,['☐ Tango A: pagos: timeout','☐ Tango AA: cobranzas: HTTP 500','último archivo: 28/09 05:46']);
 probar(d=>{d.tangoParte.fecha=fecha('27','05:46');},2,['la bajada de Tango no corrió hoy · última: 27/09 05:46']);
 probar(d=>{d.tangoParte=null;},2,['última: no disponible']);
@@ -85,7 +85,7 @@ console.log(`OK: ${casos} casos de checklist y lectura de partes; sin Google ni 
 // Un ok de instalación no cuenta como importación; tampoco se acepta una fecha futura.
 probar(d=>{d.registro[0].tipo='sistema';},1,['La Sheet no importó lo de hoy']);
 probar(d=>{d.registro[0].fecha=fecha('28','08:00');},1,['La Sheet no importó lo de hoy']);
-probar(d=>{d.tangoParte.ok=8;d.tangoParte.fallas=['A cheques propios 2026-09-28.xlsx: timeout'];
+probar(d=>{d.tangoParte.ok=9;d.tangoParte.fallas=['A cheques propios 2026-09-28.xlsx: timeout'];
   const f=d.entradas.find(f=>f.nombre.startsWith('A cheques propios'));
   f.nombre='A cheques propios 2026-09-25.xlsx';f.fecha=fecha('25','05:46');
 },1,['☐ Tango A: cheques propios: timeout · último archivo: 25/09 05:46','☑ Tango AA: las 4 fotos llegaron']);
@@ -137,14 +137,17 @@ assert.match(ajeno.errores.GaliciaParte,/no corresponde al banco/);
 console.log('OK: nombres en checklist y lectura de partes ausentes, duplicados, ilegibles y ajenos.');
 
 // Las nueve fotos incluyen tesorería de A; una falla suya no desmarca AA.
-probar(d=>{d.tangoParte.ok=8;d.tangoParte.fallas=['A movimientos tesoreria 2026-09-28.xlsx: timeout'];},1,
+probar(d=>{d.tangoParte.ok=9;d.tangoParte.fallas=['A movimientos tesoreria 2026-09-28.xlsx: timeout'];},1,
   ['☐ Tango A: tesorería: timeout · último archivo: 28/09 05:46','☑ Tango AA: las 4 fotos llegaron']);
-probar(d=>{d.tangoParte.ok=8;d.tangoParte.fallas=['AA movimientos tesoreria 2026-09-28.xlsx: timeout'];},1,
-  ['☑ Tango A: las 5 fotos llegaron','☐ Tango AA: tesorería: timeout']);
-probar(d=>{d.tangoParte.ok=8;d.tangoParte.total=8;},2,
-  ['☐ Tango A:', '☐ Tango AA:', 'parte incompleto (8 de 8)'], ['☑ Tango A:', '☑ Tango AA:']);
+probar(d=>{d.tangoParte.ok=9;d.tangoParte.fallas=['AA movimientos tesoreria 2026-09-28.xlsx: timeout'];},1,
+  ['☑ Tango A: las 6 fotos llegaron','☐ Tango AA: tesorería: timeout']);
+probar(d=>{d.tangoParte.ok=9;d.tangoParte.total=9;},2,
+  ['☐ Tango A:', '☐ Tango AA:', 'parte incompleto (9 de 9)'], ['☑ Tango A:', '☑ Tango AA:']);
 assert.equal(contexto._parteTangoAviso_('2026-09-28T08:46:00+00:00\n9 de 9').total,9);
-assert.equal(contexto.TANGO_BAJADAS,9);
+assert.equal(contexto.TANGO_BAJADAS,10);
+// Si falla solo el detalle de tesorería (tarea 44), se nombra con su nombre en castellano.
+probar(d=>{d.tangoParte.ok=9;d.tangoParte.fallas=['A tesoreria detalle 2026-09-28.xlsx: timeout'];},1,
+  ['☐ Tango A: detalle de tesorería: timeout','☑ Tango AA: las 4 fotos llegaron']);
 
 // Lee la carpeta real del mapa con un doble de Drive: A no se etiqueta como caja AA.
 const exportA = {getName:()=> 'A movimientos tesoreria 2026-09-28.xlsx',
@@ -159,9 +162,9 @@ assert.equal(leidos.entradas.length,1);
 assert.equal(leidos.entradas[0].tipo,'tesoreria_a');
 assert.equal(leidos.entradas[0].nombre,exportA.getName());
 probar(d=>{d.entradas=d.entradas.filter(f=>f.tipo!=='tesoreria_a').concat(leidos.entradas);
-  d.tangoParte.ok=8;d.tangoParte.fallas=['A movimientos tesoreria 2026-09-28.xlsx: timeout'];},1,
+  d.tangoParte.ok=9;d.tangoParte.fallas=['A movimientos tesoreria 2026-09-28.xlsx: timeout'];},1,
   ['☐ Tango A: tesorería: timeout · último archivo: 28/09 05:46','☑ Tango AA:']);
-console.log('OK: nueve bajadas, partes viejos incompletos y tesorería A separada de caja AA.');
+console.log('OK: diez bajadas, partes viejos incompletos y tesorería A separada de caja AA.');
 
 // Tarea 39: un extracto que llegó y no se pudo leer se dice con su nombre, no como "subir a mano".
 assert.deepEqual(JSON.parse(JSON.stringify(contexto._ilegiblesAviso_(

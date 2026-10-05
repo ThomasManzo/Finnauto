@@ -256,17 +256,27 @@ def leer_banco(ruta_sheet, cfg, desde, hasta):
     return movs, ultima, dict(sin_par)
 
 
+def _es_detalle(wb):
+    """El export a mano trae la hoja 'Detalle de comprobantes'; el que baja la API (carpeta
+    'Tesoreria A detalle') trae una hoja sin nombre útil, pero con 'Cód. cuenta' y el Debe del renglón."""
+    if "Detalle de comprobantes" in wb.sheetnames:
+        return True
+    enc = next(wb.worksheets[0].iter_rows(max_row=1, values_only=True), ())
+    return _col(enc, "Cód. cuenta") is not None and _col(enc, "Debe (cte) (renglón)") is not None
+
+
 def _archivo_tango(ruta):
-    """Si --tango es una carpeta, el Excel más nuevo que tenga la hoja 'Detalle de comprobantes'."""
+    """Si --tango es una carpeta, el Excel más nuevo que sea un detalle de comprobantes."""
     if os.path.isfile(ruta):
         return ruta
     candidatos = []
     for p in glob.glob(os.path.join(ruta, "*.xlsx")):
-        if os.path.basename(p).startswith("~$"):
+        nombre = os.path.basename(p)
+        if nombre.startswith("~$") or nombre.endswith(".parte.xlsx"):
             continue
         try:
             wb = openpyxl.load_workbook(p, read_only=True)
-            if "Detalle de comprobantes" in wb.sheetnames:
+            if _es_detalle(wb):
                 candidatos.append(p)
             wb.close()
         except Exception:
