@@ -1,5 +1,5 @@
 # Tarea 45 — Cruce banco ↔ Tango: tres casos que aparecieron en septiembre
-Estado: lista para revisión
+Estado: aprobada
 Rama: tarea/cruce-ajustes
 
 ## Objetivo
@@ -48,3 +48,4 @@ septiembre (impuestos y descuentos). Ojo al comparar con corridas viejas: Tango 
 (la administración cargó cosas después), así que agosto mejora también por eso.
 
 ## Revisión
+05/10/2026: mergeada con el OK de Thomas. Julio, agosto y septiembre con datos reales: control OK; pares nuevos revisados a mano.
