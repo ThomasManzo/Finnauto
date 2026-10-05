@@ -26,6 +26,8 @@ LAS REGLAS (en este orden; cada par guarda el nombre de la regla)
        cuenta de Tango (las dos de BBVA). Se cancelan entre sí y Tango no las registra.
     0b. descuento neto: un crédito del banco = una boleta de depósito de Tango (bruto) + su interés
        (FPR del mismo día, negativo). Así carga Tango los descuentos de cheques de algunos bancos.
+       Si no da así, se prueba "corrido": el interés cargado el día del banco y la boleta otro día
+       (hasta dias_fecha_corrida).
     1. exacto: uno a uno por importe. Primero los que tienen un solo candidato de cada lado (así el
        resultado no depende del orden); después desempata el mismo CUIT y la fecha más cercana.
     2. mismo CUIT: uno contra varios (en cualquier dirección) del mismo CUIT que suman lo mismo.
@@ -34,6 +36,10 @@ LAS REGLAS (en este orden; cada par guarda el nombre de la regla)
        (FPR), y el banco acredita el neto. Se compara el total del día de cada lado.
     4. agrupado: último recurso, uno contra una combinación del mismo día sin CUIT. Solo si la
        combinación es única.
+    4b. impuestos agrupados: un débito de impuestos del banco (VEP de ARCA) = varias órdenes de pago
+       de Tango sin CUIT de un tercero (el impuesto y sus intereses), aunque estén en días distintos.
+    4c. agrupado en dos días: una boleta de depósito = cheques que el banco acreditó en dos días
+       seguidos (cada cheque se acredita cuando lo compensa la cámara).
     5. fecha corrida: lo que sobró y tiene un único par por importe exacto a menos de
        dias_fecha_corrida días. Es lo mismo cargado con otra fecha: conciliado, pero marcado.
     Cuando una regla encuentra más de una combinación posible, no empareja: va a "Revisar".
@@ -44,9 +50,9 @@ QUÉ TAN SEGURO ES CADA PAR (perfil → cruce → niveles)
     Seguro   = no hay otra lectura posible: exacto con un solo candidato de cada lado o con el mismo
                CUIT, descuento neto (boleta − interés da el neto al centavo), internas.
     Sugerido = lo más probable, pero hubo que elegir: exacto desempatado por fecha, mismo CUIT uno
-               contra varios, bloque del día.
-    Posible  = cierra por importe pero conviene mirarlo: agrupado (combinación sin CUIT), fecha
-               corrida, exacto con CUIT distinto de cada lado.
+               contra varios, bloque del día, descuento neto corrido, impuestos agrupados.
+    Posible  = cierra por importe pero conviene mirarlo: agrupado (combinación sin CUIT, en uno o dos
+               días), fecha corrida, exacto con CUIT distinto de cada lado.
 
 USO
     python lector/cruce.py --cliente navar --mes 2026-08 \\
@@ -89,6 +95,9 @@ NIVELES_POR_DEFECTO = {
     "exacto por fecha": "Sugerido",    # había varios del mismo importe, ganó la fecha más cercana
     "mismo CUIT": "Sugerido",          # uno contra varios del mismo CUIT
     "bloque del día": "Sugerido",      # total del día de cada lado
+    "descuento neto corrido": "Sugerido",  # boleta − interés = neto, pero cargados en días distintos
+    "impuestos agrupados": "Sugerido", # varios pagos de impuestos de Tango = un débito del banco
+    "agrupado en dos días": "Posible", # cheques acreditados en dos días seguidos = una boleta
     "agrupado": "Posible",             # combinación sin CUIT
     "fecha corrida": "Posible",        # mismo importe pero fuera de la ventana de días
     "exacto CUIT distinto": "Posible", # mismo importe, pero el CUIT del banco y el de Tango no coinciden
@@ -195,6 +204,9 @@ def cargar_config(cliente):
     cfg.setdefault("cuenta_cheques_terceros", "VALORES A DEPOSITAR")
     cfg.setdefault("comprobantes_cobro", ["REC"])
     cfg.setdefault("comprobantes_pago", ["O/P", "OPF"])
+    cfg.setdefault("categorias_impuestos", ["Impuestos"])
+    cfg.setdefault("comprobantes_impuesto", ["OPF"])
+    cfg.setdefault("impuestos_minimo", 100000)
     cfg["cuit_propio"] = re.sub(r"\D", "", str(cfg.get("cuit_propio") or ""))
     niveles = dict(NIVELES_POR_DEFECTO)
     niveles.update({k: v for k, v in (cfg.get("niveles") or {}).items() if not k.startswith("_")})
@@ -436,18 +448,35 @@ class Cruce:
         'exacto' porque si no, una boleta suelta que casualmente iguala otro crédito se lo roba.
         Solo se empareja si hay una única combinación boleta + interés que da."""
         deps = set(self.cfg["comprobantes_deposito"])
-        for b in sorted(self.banco, key=lambda b: (b["fecha"], b["n"])):
-            if not self.libre(b) or b["c"] <= 0 or self.es_gasto(b):
-                continue
-            boletas = [t for t in self.tango if self.libre(t) and t["cod"] == b["cod"] and t["tipo"] in deps
-                       and t["c"] > b["c"] and self.en_ventana(b["fecha"], t["fecha"])]
-            if not boletas:
-                continue
-            intereses = [t for t in self.tango if self.libre(t) and t["cod"] == b["cod"] and self.es_interes_descuento(t)]
-            combos = [(d, i) for d in boletas for i in intereses
-                      if i["fecha"] == d["fecha"] and self.iguales(d["c"] + i["c"], b["c"])]
-            if len(combos) == 1:
-                self.emparejar("descuento neto", [b], list(combos[0]))
+        lejos = int(self.cfg.get("dias_fecha_corrida", 15))
+        # Pasada 1: boleta e interés del mismo día, dentro de la ventana normal.
+        # Pasada 2 ("corrido", con lo que sobró): el interés cargado cerca del día del banco y la
+        # boleta en otro día (hasta dias_fecha_corrida). Pasa cuando la boleta se carga días después.
+        for corrido in (False, True):
+            for b in sorted(self.banco, key=lambda b: (b["fecha"], b["n"])):
+                if not self.libre(b) or b["c"] <= 0 or self.es_gasto(b):
+                    continue
+                boletas = [t for t in self.tango if self.libre(t) and t["cod"] == b["cod"] and t["tipo"] in deps
+                           and t["c"] > b["c"] and (abs((b["fecha"] - t["fecha"]).days) <= lejos if corrido
+                                                    else self.en_ventana(b["fecha"], t["fecha"]))]
+                if not boletas:
+                    continue
+                intereses = [t for t in self.tango if self.libre(t) and t["cod"] == b["cod"] and self.es_interes_descuento(t)]
+                if corrido:
+                    combos = [(d, i) for d in boletas for i in intereses if i["fecha"] != d["fecha"]
+                              and self.en_ventana(b["fecha"], i["fecha"]) and self.iguales(d["c"] + i["c"], b["c"])]
+                else:
+                    combos = [(d, i) for d in boletas for i in intereses
+                              if i["fecha"] == d["fecha"] and self.iguales(d["c"] + i["c"], b["c"])]
+                if len(combos) != 1:
+                    continue
+                d, i = combos[0]
+                if corrido:
+                    self.emparejar("descuento neto", [b], [d, i], "descuento neto corrido",
+                                   "boleta del %s e interés del %s: cargados en días distintos"
+                                   % (d["fecha"].strftime("%d/%m"), i["fecha"].strftime("%d/%m")))
+                else:
+                    self.emparejar("descuento neto", [b], [d, i])
 
     # --- regla 1: exacto
     def candidatos_exacto(self, b):
@@ -588,6 +617,65 @@ class Cruce:
                 if self._resolver("agrupado", [b], cands, b["c"], maximo, lado_uno="banco"):
                     break
 
+    # --- regla 4b: impuestos agrupados (un VEP del banco = varias órdenes de pago de Tango)
+    def impuestos_agrupados(self):
+        """ARCA debita en un solo renglón lo que Tango carga en varias órdenes de pago: el impuesto y
+        sus intereses, a veces en días distintos. Se busca, entre las órdenes de pago de impuestos sin
+        CUIT de un tercero y dentro de la ventana de días, la única combinación que da el débito."""
+        cats = set(self.cfg.get("categorias_impuestos", ["Impuestos"]))
+        tipos = set(self.cfg.get("comprobantes_impuesto", ["OPF"]))
+        minimo = int(round(float(self.cfg.get("impuestos_minimo", 100000)) * 100))
+        for b in sorted(self.banco, key=lambda b: (b["fecha"], b["n"])):
+            if not self.libre(b) or b["c"] >= 0 or -b["c"] < minimo or b["categoria"] not in cats:
+                continue
+            cands = [t for t in self.tango if self.libre(t) and t["cod"] == b["cod"] and t["c"] < 0
+                     and t["tipo"] in tipos and not t["cuit"] and self.en_ventana(b["fecha"], t["fecha"])]
+            combos = self.combinaciones(cands, b["c"], MAX_COMBINAR["agrupado"])
+            if combos is None or not combos:
+                continue
+            if len(combos) > 1:
+                self.ambiguos.setdefault(id(b), "impuestos agrupados: más de una combinación posible entre %d"
+                                                " órdenes de pago" % len(cands))
+                continue
+            self.emparejar("impuestos", [b], list(combos[0]), "impuestos agrupados")
+
+    # --- regla 4c: agrupado en dos días (una boleta = cheques acreditados en dos días seguidos)
+    def agrupado_dos_dias(self):
+        """Los cheques de una misma boleta se acreditan cuando los compensa la cámara: a veces unos un
+        día y otros al siguiente. Se prueba, por cada boleta sin par, cada par de días seguidos con
+        créditos de cheques en la ventana; la combinación tiene que usar los dos días y ser única."""
+        cats = set(self.cfg["categorias_deposito"])
+        deps = set(self.cfg["comprobantes_deposito"])
+        maximo = MAX_COMBINAR["agrupado"]
+        for t in sorted(self.tango, key=lambda t: (t["fecha"], t["n"])):
+            if not self.libre(t) or t["tipo"] not in deps or t["c"] <= 0:
+                continue
+            dias = sorted({b["fecha"] for b in self.banco if self.libre(b) and b["cod"] == t["cod"] and b["c"] > 0
+                           and b["categoria"] in cats and self.en_ventana(b["fecha"], t["fecha"])})
+            encontradas = []
+            for d1, d2 in zip(dias, dias[1:]):
+                cands = [b for b in self.banco if self.libre(b) and b["cod"] == t["cod"] and b["c"] > 0
+                         and b["categoria"] in cats and b["fecha"] in (d1, d2)]
+                if len(cands) > maximo:
+                    continue
+                for k in range(2, len(cands) + 1):
+                    for combo in itertools.combinations(cands, k):
+                        if ({b["fecha"] for b in combo} == {d1, d2}
+                                and self.iguales(sum(b["c"] for b in combo), t["c"])):
+                            encontradas.append((combo, d1, d2))
+                            if len(encontradas) > 1:
+                                break
+                    if len(encontradas) > 1:
+                        break
+                if len(encontradas) > 1:
+                    break
+            if len(encontradas) == 1:
+                combo, d1, d2 = encontradas[0]
+                self.emparejar("agrupado", list(combo), [t], "agrupado en dos días",
+                               "cheques acreditados el %s y el %s" % (d1.strftime("%d/%m"), d2.strftime("%d/%m")))
+            elif len(encontradas) > 1:
+                self.ambiguos.setdefault(id(t), "agrupado en dos días: más de una combinación posible")
+
     # --- regla 5: fecha corrida (mismo importe, cargado en Tango bastante antes o después)
     def fecha_corrida(self):
         """Lo que sobró y tiene en la misma cuenta un único par por importe exacto dentro de
@@ -616,6 +704,8 @@ class Cruce:
         self.mismo_cuit()
         self.bloque_del_dia()
         self.agrupado()
+        self.impuestos_agrupados()
+        self.agrupado_dos_dias()
         self.fecha_corrida()
         return self
 
@@ -648,6 +738,10 @@ def criterio(par):
         partes += ["importe exacto con signo contrario", _dias_txt((bs[1]["fecha"] - bs[0]["fecha"]).days)
                    .replace("banco", "una").replace("que Tango", "que la otra")]
     extra = {
+        "descuento neto corrido": "boleta de Tango menos su interés = lo que acreditó el banco",
+        "impuestos agrupados": "varias órdenes de pago de impuestos de Tango (impuesto e intereses) suman el débito",
+        "agrupado en dos días": "combinación única de cheques de dos días seguidos, sin CUIT que lo confirme",
+    }.get(par.get("variante")) or {
         "descuento neto": "boleta de Tango menos su interés = lo que acreditó el banco",
         "bloque del día": "el total del día del banco = el total de boletas de Tango",
         "agrupado": "combinación única del mismo día, sin CUIT que lo confirme",
@@ -685,6 +779,15 @@ def candidato_probable(b, tango_banco, cfg, contraparte_por_cuit, imposibles=())
         t = min(otra, key=lambda t: abs((t["fecha"] - b["fecha"]).days))
         return "mismo importe el %s en otra cuenta de Tango (%s): ¿imputado al banco equivocado?" % (
             t["fecha"].strftime("%d/%m"), t["desc_cuenta"] or t["cod"])
+    # Mismos dígitos en otro orden (12.345.678 contra 12.354.678): típico error de tipeo al cargar.
+    pesos = lambda c: str(abs(c) // 100)
+    tipeo = [t for t in tango_banco if t["cod"] == b["cod"] and (t["c"] > 0) == (b["c"] > 0)
+             and abs(t["c"]) >= 100000 * 100 and pesos(t["c"]) != pesos(b["c"])
+             and sorted(pesos(t["c"])) == sorted(pesos(b["c"])) and abs((t["fecha"] - b["fecha"]).days) <= 45]
+    if tipeo:
+        t = min(tipeo, key=lambda t: abs((t["fecha"] - b["fecha"]).days))
+        return "¿error de tipeo? Tango tiene %s el %s (%s %s): mismos dígitos en otro orden" % (
+            _m(t["c"]), t["fecha"].strftime("%d/%m"), t["tipo"], t["comprobante"])
     if b["cuit"]:
         cuit = [t for t in tango_banco if t["cuit"] == b["cuit"] and abs((t["fecha"] - b["fecha"]).days) <= 15]
         if cuit:

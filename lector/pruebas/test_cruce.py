@@ -267,6 +267,77 @@ class Cruce(_Base):
         self.assertTrue((self.base / "salidas" / "resumen_cruce_2026-08.md").exists())
 
 
+class ReglasDeSeptiembre(_Base):
+    """Casos que aparecieron con los datos de septiembre (tarea 45). Datos inventados."""
+
+    def par_de(self, inf, importe):
+        for p in inf["pares"]:
+            if any(abs(b["c"] - round(importe * 100)) <= 1 for b in p["banco"]):
+                return p
+        return None
+
+    def test_impuestos_agrupados_en_dias_distintos(self):
+        self.banco(D(2026, 9, 16), "MACRO 222", -2210.0 * 1000, "IMP. AFIP", "Impuestos")
+        self.tango(D(2026, 9, 15), "OPF", 25, -2000.0 * 1000, leyenda="PAGO APORTES")
+        self.tango(D(2026, 9, 15), "OPF", 25, -200.0 * 1000, leyenda="INTERES APORTES")
+        self.tango(D(2026, 9, 16), "OPF", 25, -10.0 * 1000, leyenda="PAGO INTERES APORTE")
+        par = self.par_de(self.correr("2026-09"), -2210000)
+        self.assertEqual(("impuestos", "Sugerido", 3), (par["regla"], par["nivel"], len(par["tango"])))
+        self.assertIn("órdenes de pago de impuestos", par["criterio"])
+
+    def test_impuestos_no_toma_pagos_a_proveedores_ni_montos_chicos(self):
+        self.banco(D(2026, 9, 16), "MACRO 222", -300.0 * 1000, "IMP. AFIP", "Impuestos")
+        self.tango(D(2026, 9, 16), "OPF", 25, -100.0 * 1000, cuit=CUIT_A)   # tiene CUIT: es un tercero
+        self.tango(D(2026, 9, 16), "OPF", 25, -200.0 * 1000)
+        self.banco(D(2026, 9, 17), "MACRO 222", -500.0, "IMP. AFIP", "Impuestos")   # menos del mínimo
+        self.tango(D(2026, 9, 17), "OPF", 25, -300.0)
+        self.tango(D(2026, 9, 17), "OPF", 25, -200.0)
+        inf = self.correr("2026-09")
+        self.assertEqual(inf["pares"], [])
+        self.assertEqual(len(inf["gastos"]), 2)
+
+    def test_impuestos_ambiguo_va_a_revisar(self):
+        self.banco(D(2026, 9, 16), "MACRO 222", -300.0 * 1000, "IMP. AFIP", "Impuestos")
+        for v in (100.0, 200.0, 150.0, 150.0):
+            self.tango(D(2026, 9, 16), "OPF", 25, -v * 1000)
+        inf = self.correr("2026-09")
+        self.assertEqual(inf["pares"], [])
+        self.assertTrue(any("impuestos agrupados" in r["motivo"] for r in inf["revisar"]))
+        self.assertEqual(inf["gastos"], [])
+
+    def test_descuento_neto_corrido(self):
+        # el interés se carga el día del banco y la boleta dos días después
+        self.banco(D(2026, 9, 14), "MACRO 222", 9600.0, "033000111", "Descuento de Cheques")
+        self.tango(D(2026, 9, 16), "BDM", 25, 10000.0)
+        self.tango(D(2026, 9, 14), "FPR", 25, -400.0, leyenda="INTERESES VTA VALORES MACRO")
+        par = self.par_de(self.correr("2026-09"), 9600)
+        self.assertEqual(("descuento neto", "Sugerido"), (par["regla"], par["nivel"]))
+        self.assertIn("cargados en días distintos", par["criterio"])
+
+    def test_descuento_del_mismo_dia_sigue_siendo_seguro(self):
+        self.banco(D(2026, 9, 14), "MACRO 222", 9600.0, "033000111", "Descuento de Cheques")
+        self.tango(D(2026, 9, 14), "BDM", 25, 10000.0)
+        self.tango(D(2026, 9, 14), "FPR", 25, -400.0, leyenda="INTERESES VTA VALORES MACRO")
+        self.assertEqual("Seguro", self.par_de(self.correr("2026-09"), 9600)["nivel"])
+
+    def test_deposito_acreditado_en_dos_dias(self):
+        self.banco(D(2026, 8, 5), "MACRO 222", 1600.0, "DEPOSITO CANJE", "Cheques")
+        self.banco(D(2026, 8, 6), "MACRO 222", 1200.0, "ACREDITACION CHEQUE", "Cheques")
+        self.banco(D(2026, 8, 6), "MACRO 222", 77.0, "ACREDITACION CHEQUE", "Cheques")    # de otra cosa
+        self.tango(D(2026, 8, 5), "BDM", 25, 2800.0)
+        inf = self.correr()
+        par = self.par_de(inf, 1600)
+        self.assertEqual(("agrupado", "Posible", 2), (par["regla"], par["nivel"], len(par["banco"])))
+        self.assertIn("acreditados el 05/08 y el 06/08", par["criterio"])
+        self.assertEqual([b["c"] for b in inf["solo_banco"]], [7700])
+
+    def test_pista_de_error_de_tipeo(self):
+        self.banco(D(2026, 9, 14), "MACRO 222", -12345678.0, "TARJETA DE CREDITO", "Otros")
+        self.tango(D(2026, 8, 31), "EXT", 25, -12354678.0)
+        inf = self.correr("2026-09")
+        self.assertIn("error de tipeo", inf["solo_banco"][0]["pista"])
+
+
 class Niveles(_Base):
     """Cada par sale con nivel (Seguro / Sugerido / Posible) y un criterio en castellano."""
 

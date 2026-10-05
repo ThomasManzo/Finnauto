@@ -172,6 +172,10 @@
     "cuenta_cheques_terceros": "VALORES A DEPOSITAR",
     "comprobantes_cobro": ["REC"],
     "comprobantes_pago": ["O/P", "OPF"],
+    "_ayuda_impuestos": "Regla 'impuestos agrupados': un debito del banco de categorias_impuestos (VEP de ARCA) de al menos impuestos_minimo pesos = varias ordenes de pago de Tango de comprobantes_impuesto sin CUIT de un tercero (el impuesto y sus intereses), dentro de la ventana de dias.",
+    "categorias_impuestos": ["Impuestos"],
+    "comprobantes_impuesto": ["OPF"],
+    "impuestos_minimo": 100000,
     "_ayuda_niveles": "Qué tan seguro es cada forma de emparejar: Seguro (no hay otra lectura), Sugerido (lo más probable, hubo que elegir) o Posible (cierra por importe, conviene mirarlo). El que revisa mira solo Sugerido y Posible. Se puede cambiar el nivel de cada forma acá; la que no esté usa el valor del código.",
     "niveles": {
       "exacto único": "Seguro",
@@ -181,6 +185,9 @@
       "exacto por fecha": "Sugerido",
       "mismo CUIT": "Sugerido",
       "bloque del día": "Sugerido",
+      "descuento neto corrido": "Sugerido",
+      "impuestos agrupados": "Sugerido",
+      "agrupado en dos días": "Posible",
       "agrupado": "Posible",
       "fecha corrida": "Posible",
       "exacto CUIT distinto": "Posible"
