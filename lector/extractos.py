@@ -830,6 +830,11 @@ REGLAS_INGRESO = [
     ("MMO.TITULAR", "Transferencia Interna", "Transferencia", True),   # TRANSF.INTER.MMO.TITULAR
     ("DIST.TITULAR", "Cobranza Facturas", "Transferencia", False),     # TRANSF.INT.DIST.TITULAR
     ("DIS TIT", "Cobranza Facturas", "Transferencia", False),          # C BE TR O/BCO-DIS TIT IBK
+    # "ALTA PRESTAMO DOCUMENTOS" es un DESCUENTO DE CHEQUES (cruce banco ↔ Tango, 05/10/2026): Tango lo
+    # carga como boleta de depósito que saca los cheques de la cartera + intereses aparte, y la boleta
+    # menos el interés da al centavo lo acreditado. El banco lo instrumenta como préstamo con los
+    # cheques de garantía, pero para el cash es cobranza adelantada, igual que en Macro.
+    ("ALTA PRESTAMO DOCUMENTOS", "Descuento de Cheques", "Transferencia", False),
     ("ALTA PRESTAMO", "Prestamo", "Transferencia", False),
     ("DEP. CH", "Cheques", "Cheque de Terceros", False),
     ("CAM.FED", "Cheques", "Cheque de Terceros", False),               # cámara federal: cheques de otra plaza
@@ -880,7 +885,8 @@ NOTAS = {
     "PM/TOT": "pago del resumen de la tarjeta corporativa / AgroNación",
     "CHEQ.RECH": "cheque de un cliente que rebotó: se acreditó y se volvió a debitar",
     "CAM FED": "cheque de un cliente rechazado (cámara), después se debita",
-    "ALTA PRESTAMO": "préstamo nuevo (documentos) acreditado: financiación, no cobranza",
+    "ALTA PRESTAMO DOCUMENTOS": "descuento de cheques en Nación (el banco lo llama préstamo documentos; Tango: venta de valores + intereses)",
+    "ALTA PRESTAMO": "préstamo nuevo acreditado: financiación, no cobranza",
     "NUMERO DE OPERACION": "depósito por número de operación: ¿cobranza? revisar",
     "CCERR": "cheque de cámara acreditado (circuito cerrado)",
     "DEUD. PUBLICA": "transferencia de un cliente (confirmado por administración el 18/09)",
