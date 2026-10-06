@@ -369,7 +369,8 @@ class TangoLiveTest(unittest.TestCase):
         """La foto del detalle sale con los encabezados del export manual y lector/cruce la lee."""
         from lector import cruce
         filas = [
-            {"FECHA_DE_EMISION": "2026-08-05T00:00:00", "COD_COMPROBANTE": "REC", "DESC_COMPROBANTE": "RECIBO",
+            {"FECHA": "2026-08-05T00:00:00", "FECHA_DE_EMISION": "2036-08-05T00:00:00",
+             "COD_COMPROBANTE": "REC", "DESC_COMPROBANTE": "RECIBO",
              "COMPROBANTE": " 0000000000001/0", "NRO_INTERNO": 7, "RENGLON": 1, "COD_CUENTA": 5,
              "DESC_CONTABLE": "BANCO INVENTADO", "DESC_CUENTA": "BANCO", "BANCO": "INVENTADO",
              "DEBE_CTE_RENGLON": 1000.5, "HABER_CTE_RENGLON": 0, "TOTAL_COMP_CTE": 1000.5,
@@ -377,7 +378,7 @@ class TangoLiveTest(unittest.TestCase):
              "PROVEEDOR_ENCAB": None, "LEYENDA": "COBRANZA", "COLUMNA_NUEVA": "x"},
         ]
         preparadas, columnas, _, _ = live.preparar_filas("detalle_tesoreria", "A", filas)
-        self.assertEqual("Fecha de emisión", columnas[0])
+        self.assertEqual(["Fecha", "Fecha de emisión"], columnas[:2])
         self.assertIn("COLUMNA_NUEVA", columnas)          # lo que no se conoce se conserva al final
         with tempfile.TemporaryDirectory() as carpeta:
             ruta = os.path.join(carpeta, "A tesoreria detalle 2026-09-25.xlsx")
@@ -390,7 +391,8 @@ class TangoLiveTest(unittest.TestCase):
         self.assertEqual("BANCO INVENTADO", r["desc_cuenta"])
 
     def test_detalle_tesoreria_sin_columnas_del_cruce_no_se_publica(self):
-        filas = [{"FECHA_DE_EMISION": "2026-08-05T00:00:00", "COD_COMPROBANTE": "REC", "COMPROBANTE": "1"}]
+        filas = [{"FECHA_DE_EMISION": "2026-08-05T00:00:00", "COD_COMPROBANTE": "REC", "COMPROBANTE": "1",
+                  "COD_CUENTA": 5, "DEBE_CTE_RENGLON": 1, "HABER_CTE_RENGLON": 0}]   # falta FECHA
         with self.assertRaisesRegex(RuntimeError, "faltan columnas que usa el cruce"):
             live.preparar_filas("detalle_tesoreria", "A", filas)
 
