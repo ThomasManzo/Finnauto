@@ -210,6 +210,13 @@ class Cruce(_Base):
         inf = self.correr()
         self.assertEqual(sorted(r["n_solo_tango"] for r in inf["resumen"]), [0, 1])
 
+    def test_pago_a_arca_no_es_gasto_del_banco(self):
+        self.banco(D(2026, 8, 11), "MACRO 222", -5592.0, "IMP. AFIP", "Impuestos")
+        self.banco(D(2026, 8, 11), "MACRO 222", -15.0, "DBCR 25413 S/CR TASA GRAL", "Impuestos")
+        inf = self.correr()
+        self.assertEqual([b["texto"] for b in inf["solo_banco"]], ["IMP. AFIP"])
+        self.assertEqual([b["texto"] for b in inf["gastos"]], ["DBCR 25413 S/CR TASA GRAL"])
+
     def test_gastos_van_a_su_bloque(self):
         self.banco(D(2026, 8, 3), "GALICIA 111", -12.34, "IMP DEBITOS Y CREDITOS", "Impuestos")
         self.banco(D(2026, 8, 3), "GALICIA 111", -50.0, "COMISION", "Gastos Bancarios")
@@ -307,7 +314,9 @@ class ReglasDeSeptiembre(_Base):
         self.tango(D(2026, 9, 17), "OPF", 25, -200.0)
         inf = self.correr("2026-09")
         self.assertEqual(inf["pares"], [])
-        self.assertEqual(len(inf["gastos"]), 2)
+        # pagos a ARCA: no son gastos del banco, quedan para cargar uno por uno
+        self.assertEqual(len(inf["solo_banco"]), 2)
+        self.assertEqual(inf["gastos"], [])
 
     def test_impuestos_ambiguo_va_a_revisar(self):
         self.banco(D(2026, 9, 16), "MACRO 222", -300.0 * 1000, "IMP. AFIP", "Impuestos")

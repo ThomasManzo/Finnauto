@@ -135,6 +135,10 @@ function onOpen() {
     .addItem("Guardar foto semanal ahora", "guardarFotoSemanal")
     .addItem("Instalar resumen semanal (lunes 08:00)", "instalarResumenSemanal")
     .addSeparator()
+    .addItem("Ver el cruce semanal (sin mandar)", "cruceSemanalPrueba")       // cruce_semanal.gs
+    .addItem("Instalar cruce semanal (miércoles 09:30)", "instalarCruceSemanal")
+    .addItem("Quitar cruce semanal", "quitarCruceSemanal")
+    .addSeparator()
     .addItem("Armar solapa Cash (Cash, Semanal, Mensual)", "armarCash")
     .addItem("Armar solapa Plan (pisa las decisiones cargadas)", "armarPlan")
     .addItem("Arreglar los desplegables (Origen, Banco, Categoria)", "arreglarValidaciones")   // crear_cash.gs

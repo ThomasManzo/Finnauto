@@ -176,6 +176,8 @@
     "categorias_impuestos": ["Impuestos"],
     "comprobantes_impuesto": ["OPF"],
     "impuestos_minimo": 100000,
+    "_ayuda_pagos_de_impuestos": "Debitos de la categoria Impuestos que son pagos a ARCA (VEP), no gastos del banco: se informan uno por uno como 'falta cargar en Tango', no como total de gastos.",
+    "pagos_de_impuestos": ["AFIP", "ARCA", "VEP"],
     "_ayuda_niveles": "Qué tan seguro es cada forma de emparejar: Seguro (no hay otra lectura), Sugerido (lo más probable, hubo que elegir) o Posible (cierra por importe, conviene mirarlo). El que revisa mira solo Sugerido y Posible. Se puede cambiar el nivel de cada forma acá; la que no esté usa el valor del código.",
     "niveles": {
       "exacto único": "Seguro",
