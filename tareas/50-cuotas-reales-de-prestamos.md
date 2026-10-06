@@ -1,5 +1,5 @@
 # Tarea 50 — Cuotas reales de los préstamos (tablas de amortización de los bancos)
-Estado: lista para revisión
+Estado: aprobada
 Rama: tarea/cuotas-reales
 
 ## Objetivo
@@ -47,3 +47,4 @@ banco (las 53 cuotas a vencer cierran). La Sheet calcula "Importe Total Cuota" =
 es lo que usan el Cash y el informe.
 
 ## Revisión
+06/10/2026: mergeada con el OK de Thomas.
