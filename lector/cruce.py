@@ -24,6 +24,10 @@ LAS REGLAS (en este orden; cada par guarda el nombre de la regla)
     acredita unos días después, y a veces Tango se carga tarde y queda después del banco.
     0. internas de la misma cuenta: transferencias entre dos cuentas del extracto que van a la misma
        cuenta de Tango (las dos de BBVA). Se cancelan entre sí y Tango no las registra.
+    0a. cheque propio (si se pasa --cheques): un débito del banco = un cheque propio de la lista de
+       Tango (misma cuenta, mismo importe, cobrado entre 1 día antes y 10 después de su fecha). Las
+       órdenes de pago que se pagaron con cheques diferidos no son diferencia: el banco las va
+       debitando a medida que se cobran los cheques.
     0b. descuento neto: un crédito del banco = una boleta de depósito de Tango (bruto) + su interés
        (FPR del mismo día, negativo). Así carga Tango los descuentos de cheques de algunos bancos.
        Si no da así, se prueba "corrido": el interés cargado el día del banco y la boleta otro día
@@ -37,11 +41,16 @@ LAS REGLAS (en este orden; cada par guarda el nombre de la regla)
     4. agrupado: último recurso, uno contra una combinación del mismo día sin CUIT. Solo si la
        combinación es única.
     4b. impuestos agrupados: un débito de impuestos del banco (VEP de ARCA) = varias órdenes de pago
-       de Tango sin CUIT de un tercero (el impuesto y sus intereses), aunque estén en días distintos.
-    4c. agrupado en dos días: una boleta de depósito = cheques que el banco acreditó en dos días
-       seguidos (cada cheque se acredita cuando lo compensa la cámara).
+       de Tango sin CUIT de un tercero (el impuesto y sus intereses), aunque estén en días distintos;
+       o al revés, una orden de pago = varios débitos de ARCA (planes de pago).
+    4c. agrupado en varios días: una boleta de depósito = cheques que el banco acreditó en dos o tres
+       días seguidos (cada cheque se acredita cuando lo compensa la cámara).
+    4d. neto con cargos: un movimiento del banco = uno de Tango más grande menos sus cargos del
+       mismo día (p. ej. un préstamo acreditado neto del impuesto de sellos).
     5. fecha corrida: lo que sobró y tiene un único par por importe exacto a menos de
        dias_fecha_corrida días. Es lo mismo cargado con otra fecha: conciliado, pero marcado.
+    6. mes vencido (corre antes que fecha corrida): cuotas e intereses que Tango carga los primeros
+       días del mes siguiente contra el débito del banco del mes anterior (único par por importe).
     Cuando una regla encuentra más de una combinación posible, no empareja: va a "Revisar".
 
 QUÉ TAN SEGURO ES CADA PAR (perfil → cruce → niveles)
@@ -80,7 +89,9 @@ from openpyxl.utils import get_column_letter
 
 BASE_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-MARGEN_CARGA = 10          # días antes y después del mes que se leen, para encontrar pares cruzados
+# Días antes y después del mes que se leen, para encontrar pares cruzados. 40 y no 10: Tango carga
+# las cuotas del mes el día 1 del siguiente, y el débito del banco puede ser de principios de mes.
+MARGEN_CARGA = 40
 MAX_COMBINAR = {"mismo CUIT": 10, "agrupado": 12}   # candidatos como máximo al buscar combinaciones
 
 # Qué tan seguro es cada forma de emparejar. Se puede cambiar en perfil → cruce → niveles; esto es lo
@@ -97,7 +108,11 @@ NIVELES_POR_DEFECTO = {
     "bloque del día": "Sugerido",      # total del día de cada lado
     "descuento neto corrido": "Sugerido",  # boleta − interés = neto, pero cargados en días distintos
     "impuestos agrupados": "Sugerido", # varios pagos de impuestos de Tango = un débito del banco
-    "agrupado en dos días": "Posible", # cheques acreditados en dos días seguidos = una boleta
+    "agrupado en varios días": "Posible",  # cheques acreditados en 2 o 3 días seguidos = una boleta
+    "cheque propio": "Seguro",         # débito del banco = un cheque propio de la lista de Tango
+    "cheque propio por fecha": "Sugerido",  # varios cheques del mismo importe: el de fecha más cercana
+    "neto con cargos": "Sugerido",     # uno de Tango menos sus cargos del mismo día = el banco
+    "cargado a mes vencido": "Sugerido",   # Tango lo cargó el día 1 del mes siguiente
     "agrupado": "Posible",             # combinación sin CUIT
     "fecha corrida": "Posible",        # mismo importe pero fuera de la ventana de días
     "exacto CUIT distinto": "Posible", # mismo importe, pero el CUIT del banco y el de Tango no coinciden
@@ -199,7 +214,8 @@ def cargar_config(cliente):
     cfg.setdefault("categorias_gastos", ["Impuestos", "Gastos Bancarios"])
     cfg.setdefault("categorias_deposito", ["Cheques", "Descuento de Cheques"])
     cfg.setdefault("comprobantes_deposito", ["BDM", "BDG", "BNA", "BDC", "BDF"])
-    cfg.setdefault("intereses_descuento", {"todas": ["INTERES"], "alguna": ["VTA", "VALORES"]})
+    # "INTER" y no "INTERES": en Tango aparece mal escrito ("INTERSES VTA.CH.").
+    cfg.setdefault("intereses_descuento", {"todas": ["INTER"], "alguna": ["VTA", "VALORES"]})
     cfg.setdefault("cuentas_efectivo", ["CAJA"])
     cfg.setdefault("cuenta_cheques_terceros", "VALORES A DEPOSITAR")
     cfg.setdefault("comprobantes_cobro", ["REC"])
@@ -316,6 +332,7 @@ def leer_tango(ruta, cfg):
         "interno": ("Nro. interno", "Número interno"),
         "cod": ("Cód. cuenta", "Código cuenta"),
         "desc_cuenta": ("Desc. contable", "Desc. cuenta", "Cuenta"),
+        "nombre_cuenta": ("Desc. cuenta",),
         "banco": ("Banco",),
         "debe": ("Debe (cte) (renglón)", "Debe (cte)", "Debe"),
         "haber": ("Haber (cte) (renglón)", "Haber (cte)", "Haber"),
@@ -351,6 +368,7 @@ def leer_tango(ruta, cfg):
             "comprobante": " ".join(str(val(r, "comprobante") or "").split()),
             "interno": val(r, "interno"),
             "desc_cuenta": str(val(r, "desc_cuenta") or "").strip(),
+            "nombre_cuenta": str(val(r, "nombre_cuenta") or "").strip(),
             "banco": str(val(r, "banco") or "").strip(),
             "c": _centavos(val(r, "debe")) - _centavos(val(r, "haber")),
             "total": _centavos(val(r, "total")),
@@ -362,13 +380,68 @@ def leer_tango(ruta, cfg):
     return renglones, ruta
 
 
+def leer_cheques(ruta, renglones_tango):
+    """Cheques propios de Tango (la foto 'A cheques propios' de la bajada). Cada cheque se convierte
+    en un renglón como los de Tango, con importe negativo y la FECHA DEL CHEQUE (cuando el banco lo
+    debita). La cuenta se reconoce por el nombre del banco ('Cuenta emisión'), el mismo que trae la
+    columna 'Desc. cuenta' del detalle de tesorería. Devuelve (cheques, cuentas que no se reconocieron)."""
+    if not ruta:
+        return [], []
+    if os.path.isdir(ruta):
+        archivos = [p for p in glob.glob(os.path.join(ruta, "*cheques propios*.xlsx"))
+                    if not os.path.basename(p).startswith("~$") and not p.endswith(".parte.xlsx")
+                    and os.path.basename(p).upper().startswith("A ")]
+        if not archivos:
+            return [], []
+        ruta = max(archivos, key=os.path.getmtime)
+    cod_por_nombre = {}
+    for t in renglones_tango:
+        if t.get("nombre_cuenta") and t["cod"] is not None:
+            cod_por_nombre.setdefault(_norm(t["nombre_cuenta"]), t["cod"])
+    wb = openpyxl.load_workbook(ruta, read_only=True, data_only=True)
+    filas = wb.worksheets[0].iter_rows(values_only=True)
+    enc = list(next(filas))
+    ix = {k: _col(enc, *v) for k, v in {
+        "nro": ("Nro. de cheque", "Nro. cheque"), "fecha": ("Fecha del cheque",), "emision": ("Fecha de emisión",),
+        "importe": ("Importe mon. cta.", "Importe"), "cuenta": ("Cuenta emisión",), "razon": ("Razón social", "Proveedor"),
+        "banco": ("Banco",)}.items()}
+    if ix["fecha"] is None or ix["importe"] is None or ix["cuenta"] is None:
+        sys.exit("a la lista de cheques propios le faltan columnas (Fecha del cheque, Importe, Cuenta emisión)")
+
+    def val(r, k):
+        return r[ix[k]] if ix[k] is not None and ix[k] < len(r) else None
+
+    cheques, sin_cuenta = [], set()
+    for r in filas:
+        f, imp = _fecha(val(r, "fecha")), _centavos(val(r, "importe"))
+        if not f or not imp:
+            continue
+        cuenta = str(val(r, "cuenta") or "").strip()
+        cod = cod_por_nombre.get(_norm(cuenta))
+        if cod is None:
+            sin_cuenta.add(cuenta)
+            continue
+        emision = _fecha(val(r, "emision"))
+        cheques.append({
+            "lado": "Tango", "fila": None, "fecha": f, "emision": emision, "cod": cod, "tipo": "CHP",
+            "comprobante": "cheque %s" % val(r, "nro"), "interno": None, "desc_cuenta": cuenta,
+            "nombre_cuenta": cuenta, "banco": str(val(r, "banco") or ""), "c": -abs(imp), "total": 0,
+            "cuit": "", "contraparte": str(val(r, "razon") or "").strip(),
+            "texto": "cheque propio" + (" emitido el %s" % emision.strftime("%d/%m/%Y") if emision else ""),
+            "es_cheque": True,
+        })
+    wb.close()
+    return cheques, sorted(sin_cuenta)
+
+
 # ------------------------------------------------------------------ emparejado
 class Cruce:
     """Guarda qué renglón ya se usó y los pares/grupos armados. Trabaja con listas de diccionarios:
     no sabe nada de archivos."""
 
-    def __init__(self, banco, tango, cfg):
+    def __init__(self, banco, tango, cfg, cheques=()):
         self.banco, self.tango, self.cfg = banco, tango, cfg
+        self.cheques = list(cheques)         # cheques propios: solo los usa la regla "cheque propio"
         self.tol = int(round(float(cfg["tolerancia"]) * 100))
         self.antes, self.despues = int(cfg["dias_antes"]), int(cfg["dias_despues"])
         self.usados = set()             # id() de los renglones ya emparejados
@@ -379,6 +452,8 @@ class Cruce:
             b["n"] = i
         for i, t in enumerate(tango):
             t["n"] = i
+        for i, t in enumerate(self.cheques):
+            t["n"] = len(tango) + i
 
     # --- utilidades
     def libre(self, x):
@@ -440,6 +515,43 @@ class Cruce:
                 e = min(cands, key=lambda e: (abs((e["fecha"] - s["fecha"]).days), e["n"]))
                 self.usados.update({id(s), id(e)})
                 self.internas.append([s, e])
+
+    # --- regla 0a: cheque propio (débito del banco = un cheque de la lista de cheques propios)
+    def cheque_propio(self):
+        """El banco debita un cheque propio cuando lo cobran (canje, cámara): entre 1 día antes y 10
+        después de la fecha del cheque. Único de los dos lados, por importe exacto y misma cuenta."""
+        def cerca(b, ch):
+            return -1 <= (b["fecha"] - ch["fecha"]).days <= 10
+
+        def competencia(b):
+            """Cuántos cheques podía ser este débito (y cuántos débitos ese cheque) ANTES de empezar:
+            si quedó solo porque otro débito se llevó el resto, igual dependió de una elección."""
+            chs = [ch for ch in self.cheques if self.libre(ch) and ch["cod"] == b["cod"]
+                   and self.iguales(ch["c"], b["c"]) and cerca(b, ch)]
+            bs = [o for o in self.banco if self.libre(o) and o["cod"] == b["cod"] and self.iguales(o["c"], b["c"])
+                  and any(cerca(o, ch) for ch in chs)]
+            return len(chs) > 1 or len(bs) > 1
+        disputados = {id(b) for b in self.banco if self.libre(b) and b["c"] < 0 and competencia(b)}
+        for b in sorted(self.banco, key=lambda b: (b["fecha"], b["n"])):
+            if not self.libre(b) or b["c"] >= 0:
+                continue
+            cands = [ch for ch in self.cheques if self.libre(ch) and ch["cod"] == b["cod"]
+                     and self.iguales(ch["c"], b["c"]) and cerca(b, ch)]
+            if not cands:
+                continue
+            # Cheques del mismo importe con una semana de diferencia (pagos fijos): se recorre el banco
+            # en orden de fecha y cada débito toma el cheque de fecha más cercana. Si había uno solo de
+            # cada lado es Seguro; si hubo que elegir por fecha, Sugerido.
+            ch = min(cands, key=lambda ch: (abs((b["fecha"] - ch["fecha"]).days), ch["fecha"]))
+            rivales = [o for o in self.banco if o is not b and self.libre(o) and o["cod"] == ch["cod"]
+                       and self.iguales(o["c"], ch["c"]) and cerca(o, ch)]
+            detalle = "%s a %s, fecha del cheque %s" % (ch["comprobante"], ch["contraparte"] or "?",
+                                                        ch["fecha"].strftime("%d/%m/%Y"))
+            if len(cands) == 1 and not rivales and id(b) not in disputados:
+                self.emparejar("cheque propio", [b], [ch], "cheque propio", detalle)
+            else:
+                self.emparejar("cheque propio", [b], [ch], "cheque propio por fecha",
+                               detalle + "; había otros cheques del mismo importe y se tomó el de fecha más cercana")
 
     # --- regla 0b: descuento neto (una boleta bruta menos su interés = el crédito del banco)
     def descuento_neto(self):
@@ -515,9 +627,10 @@ class Cruce:
                 # Acá nada es "único" de verdad: los únicos ya salieron en 1a. Si quedó un solo candidato
                 # es porque otro desempate del mismo importe se llevó al resto: depende de esa elección.
                 if b["cuit"] and t["cuit"] == b["cuit"]:
+                    n_cand = len(cands) + len(rivales)
                     self.emparejar("exacto", [b], [t], "exacto con CUIT",
-                                   "desempate: %d candidatos del mismo importe, ganó el del mismo CUIT"
-                                   % (len(cands) + len(rivales)))
+                                   ("desempate: %d candidatos del mismo importe, ganó el del mismo CUIT" % n_cand)
+                                   if n_cand > 1 else "quedó solo después de otro desempate; el CUIT coincide")
                 elif len(cands) == 1 and not rivales:
                     self.emparejar("exacto", [b], [t], self._variante_exacto(b, t, "exacto por fecha"),
                                    "quedó solo después de otro desempate del mismo importe")
@@ -638,12 +751,28 @@ class Cruce:
                                                 " órdenes de pago" % len(cands))
                 continue
             self.emparejar("impuestos", [b], list(combos[0]), "impuestos agrupados")
+        # Al revés: una orden de pago de Tango (p. ej. "planes de pago ARCA") = varios débitos de ARCA
+        # del banco (un VEP por plan). Mismas condiciones: sin CUIT de un tercero, dentro de la
+        # ventana, cada débito de al menos el mínimo, y una sola combinación posible.
+        for t in sorted(self.tango, key=lambda t: (t["fecha"], t["n"])):
+            if not self.libre(t) or t["c"] >= 0 or -t["c"] < minimo or t["tipo"] not in tipos or t["cuit"]:
+                continue
+            cands = [b for b in self.banco if self.libre(b) and b["cod"] == t["cod"] and b["c"] < 0
+                     and -b["c"] >= minimo and b["categoria"] in cats and self.en_ventana(b["fecha"], t["fecha"])]
+            combos = self.combinaciones(cands, t["c"], MAX_COMBINAR["agrupado"])
+            if combos is None or not combos:
+                continue
+            if len(combos) > 1:
+                self.ambiguos.setdefault(id(t), "impuestos agrupados: más de una combinación posible entre %d"
+                                                " débitos" % len(cands))
+                continue
+            self.emparejar("impuestos", list(combos[0]), [t], "impuestos agrupados")
 
-    # --- regla 4c: agrupado en dos días (una boleta = cheques acreditados en dos días seguidos)
-    def agrupado_dos_dias(self):
-        """Los cheques de una misma boleta se acreditan cuando los compensa la cámara: a veces unos un
-        día y otros al siguiente. Se prueba, por cada boleta sin par, cada par de días seguidos con
-        créditos de cheques en la ventana; la combinación tiene que usar los dos días y ser única."""
+    # --- regla 4c: agrupado en varios días (una boleta = cheques acreditados en 2 o 3 días seguidos)
+    def agrupado_varios_dias(self):
+        """Los cheques de una misma boleta se acreditan cuando los compensa la cámara: a veces en días
+        distintos. Se prueban tramos de 2 y de 3 días seguidos con créditos de cheques dentro de la
+        ventana; la combinación tiene que usar más de un día y ser única."""
         cats = set(self.cfg["categorias_deposito"])
         deps = set(self.cfg["comprobantes_deposito"])
         maximo = MAX_COMBINAR["agrupado"]
@@ -652,29 +781,83 @@ class Cruce:
                 continue
             dias = sorted({b["fecha"] for b in self.banco if self.libre(b) and b["cod"] == t["cod"] and b["c"] > 0
                            and b["categoria"] in cats and self.en_ventana(b["fecha"], t["fecha"])})
-            encontradas = []
-            for d1, d2 in zip(dias, dias[1:]):
-                cands = [b for b in self.banco if self.libre(b) and b["cod"] == t["cod"] and b["c"] > 0
-                         and b["categoria"] in cats and b["fecha"] in (d1, d2)]
-                if len(cands) > maximo:
-                    continue
-                for k in range(2, len(cands) + 1):
-                    for combo in itertools.combinations(cands, k):
-                        if ({b["fecha"] for b in combo} == {d1, d2}
-                                and self.iguales(sum(b["c"] for b in combo), t["c"])):
-                            encontradas.append((combo, d1, d2))
-                            if len(encontradas) > 1:
-                                break
+            encontradas = {}
+            for largo in (2, 3):
+                for k0 in range(len(dias) - largo + 1):
+                    tramo = dias[k0:k0 + largo]
+                    cands = [b for b in self.banco if self.libre(b) and b["cod"] == t["cod"] and b["c"] > 0
+                             and b["categoria"] in cats and b["fecha"] in tramo]
+                    if len(cands) > maximo:
+                        continue
+                    for k in range(2, len(cands) + 1):
+                        for combo in itertools.combinations(cands, k):
+                            if (len({b["fecha"] for b in combo}) > 1
+                                    and self.iguales(sum(b["c"] for b in combo), t["c"])):
+                                encontradas[frozenset(id(b) for b in combo)] = combo
+                        if len(encontradas) > 1:
+                            break
                     if len(encontradas) > 1:
                         break
                 if len(encontradas) > 1:
                     break
             if len(encontradas) == 1:
-                combo, d1, d2 = encontradas[0]
-                self.emparejar("agrupado", list(combo), [t], "agrupado en dos días",
-                               "cheques acreditados el %s y el %s" % (d1.strftime("%d/%m"), d2.strftime("%d/%m")))
+                combo = list(encontradas.values())[0]
+                f1, f2 = min(b["fecha"] for b in combo), max(b["fecha"] for b in combo)
+                self.emparejar("agrupado", list(combo), [t], "agrupado en varios días",
+                               "cheques acreditados entre el %s y el %s" % (f1.strftime("%d/%m"), f2.strftime("%d/%m")))
             elif len(encontradas) > 1:
-                self.ambiguos.setdefault(id(t), "agrupado en dos días: más de una combinación posible")
+                self.ambiguos.setdefault(id(t), "agrupado en varios días: más de una combinación posible")
+
+    # --- regla 4d: neto con cargos (uno de Tango menos sus cargos del mismo día = el banco)
+    def neto_con_cargos(self):
+        """Un préstamo se acredita neto del impuesto de sellos; Tango carga el préstamo bruto (REC) y
+        el sello aparte (OPF). Se busca: un renglón de Tango más grande, del mismo signo que el banco, y
+        1 o 2 cargos del MISMO día (OPF/FPR sin CUIT de un tercero) que lo bajan justo al importe."""
+        for b in sorted(self.banco, key=lambda b: (b["fecha"], b["n"])):
+            if not self.libre(b) or self.es_gasto(b):
+                continue
+            encontradas = []
+            principales = [t for t in self.tango if self.libre(t) and t["cod"] == b["cod"]
+                           and (t["c"] > 0) == (b["c"] > 0) and abs(t["c"]) > abs(b["c"])
+                           and self.en_ventana(b["fecha"], t["fecha"])]
+            for m in principales:
+                cargos = [t for t in self.tango if self.libre(t) and t is not m and t["cod"] == m["cod"]
+                          and t["fecha"] == m["fecha"] and (t["c"] > 0) != (m["c"] > 0)
+                          and t["tipo"] in ("OPF", "FPR") and (not t["cuit"] or "BANCO" in _norm(t["contraparte"]))]
+                if len(cargos) > MAX_COMBINAR["agrupado"]:
+                    continue
+                for k in (1, 2):
+                    for combo in itertools.combinations(cargos, k):
+                        if self.iguales(m["c"] + sum(t["c"] for t in combo), b["c"]):
+                            encontradas.append([m] + list(combo))
+            if len(encontradas) == 1:
+                self.emparejar("neto con cargos", [b], encontradas[0], "neto con cargos")
+            elif len(encontradas) > 1:
+                self.ambiguos.setdefault(id(b), "neto con cargos: más de una combinación posible")
+
+    # --- regla 6: mes vencido (cuotas e intereses cargados el día 1 del mes siguiente)
+    def mes_vencido(self):
+        """Tango carga las cuotas de préstamo y los intereses del mes todos juntos los primeros días del
+        mes siguiente. Se empareja con el débito del banco del mes anterior si el importe es exacto y
+        el par es único de los dos lados."""
+        def del_mes_anterior(b, t):
+            return b["fecha"] < t["fecha"].replace(day=1) and (t["fecha"] - b["fecha"]).days <= 40
+        tangos = [t for t in self.tango if self.libre(t) and t["c"] < 0 and t["tipo"] in ("FPR", "OPF")
+                  and t["fecha"].day <= 5]
+        for t in sorted(tangos, key=lambda t: (t["fecha"], t["n"])):
+            if not self.libre(t):
+                continue
+            cands = [b for b in self.banco if self.libre(b) and b["cod"] == t["cod"]
+                     and self.iguales(b["c"], t["c"]) and del_mes_anterior(b, t)]
+            if len(cands) != 1:
+                continue
+            b = cands[0]
+            rivales = [o for o in tangos if o is not t and self.libre(o) and o["cod"] == b["cod"]
+                       and self.iguales(o["c"], b["c"]) and del_mes_anterior(b, o)]
+            if not rivales:
+                self.emparejar("mes vencido", [b], [t], "cargado a mes vencido",
+                               "Tango lo cargó el %s; el banco lo debitó el %s" % (
+                                   t["fecha"].strftime("%d/%m"), b["fecha"].strftime("%d/%m")))
 
     # --- regla 5: fecha corrida (mismo importe, cargado en Tango bastante antes o después)
     def fecha_corrida(self):
@@ -699,13 +882,16 @@ class Cruce:
 
     def correr(self):
         self.internas_misma_cuenta()
+        self.cheque_propio()
         self.descuento_neto()
         self.exacto()
         self.mismo_cuit()
         self.bloque_del_dia()
         self.agrupado()
         self.impuestos_agrupados()
-        self.agrupado_dos_dias()
+        self.agrupado_varios_dias()
+        self.neto_con_cargos()
+        self.mes_vencido()          # antes que fecha corrida: es el caso más específico (cuotas del día 1)
         self.fecha_corrida()
         return self
 
@@ -739,8 +925,12 @@ def criterio(par):
                    .replace("banco", "una").replace("que Tango", "que la otra")]
     extra = {
         "descuento neto corrido": "boleta de Tango menos su interés = lo que acreditó el banco",
-        "impuestos agrupados": "varias órdenes de pago de impuestos de Tango (impuesto e intereses) suman el débito",
-        "agrupado en dos días": "combinación única de cheques de dos días seguidos, sin CUIT que lo confirme",
+        "impuestos agrupados": "pagos de impuestos: lo de Tango y lo del banco suman lo mismo (impuesto e intereses, o varios VEP)",
+        "agrupado en varios días": "combinación única de cheques de días seguidos, sin CUIT que lo confirme",
+        "cheque propio": "el banco debitó un cheque propio de la lista de Tango",
+        "cheque propio por fecha": "el banco debitó un cheque propio de la lista de Tango",
+        "neto con cargos": "un movimiento de Tango menos sus cargos del mismo día = lo del banco",
+        "cargado a mes vencido": "mismo importe; Tango lo cargó a principios del mes siguiente",
     }.get(par.get("variante")) or {
         "descuento neto": "boleta de Tango menos su interés = lo que acreditó el banco",
         "bloque del día": "el total del día del banco = el total de boletas de Tango",
@@ -798,7 +988,8 @@ def candidato_probable(b, tango_banco, cfg, contraparte_por_cuit, imposibles=())
     return ""
 
 
-def armar_informe(banco, tango, cfg, mes_desde, mes_hasta, ultima, hoy, sin_par_banco):
+def armar_informe(banco, tango, cfg, mes_desde, mes_hasta, ultima, hoy, sin_par_banco, cheques=(),
+                  cheques_sin_cuenta=()):
     """Corre las reglas y arma todas las listas del informe. Devuelve un diccionario."""
     cods = set(cfg["cuentas"].values())
     carga_desde = mes_desde - datetime.timedelta(days=MARGEN_CARGA)
@@ -828,7 +1019,7 @@ def armar_informe(banco, tango, cfg, mes_desde, mes_hasta, ultima, hoy, sin_par_
         if t["cod"] is None and t["c"] != 0 and en_mes(t["fecha"]):
             revisar.append(dict(t, motivo="renglón sin cuenta"))
 
-    cruce = Cruce(banco, tango_banco, cfg).correr()
+    cruce = Cruce(banco, tango_banco, cfg, cheques).correr()
 
     # pares que tocan el mes (por cualquiera de las dos fechas)
     pares = [p for p in cruce.pares if any(en_mes(x["fecha"]) for x in p["banco"] + p["tango"])]
@@ -873,14 +1064,52 @@ def armar_informe(banco, tango, cfg, mes_desde, mes_hasta, ultima, hoy, sin_par_
         if pares_rev:
             o = min(pares_rev, key=lambda t: (abs((t["fecha"] - r["fecha"]).days), t["fila"]))
             anulados.update({id(r), id(o)})
+    # Anulaciones que no son REV: Tango a veces anula con el mismo tipo de comprobante (p. ej. una
+    # transferencia "EXT 123/1" que da vuelta la "EXT 123") y vuelve a cargar con otro número. Dos
+    # renglones sin par, de la misma cuenta, por el mismo importe con signo contrario y a menos de 5
+    # días se compensan: en Tango no movieron plata, así que no son diferencia con el banco.
+    sueltos = sorted((t for t in tango_banco if cruce.libre(t) and id(t) not in anulados),
+                     key=lambda t: (t["fecha"], t["fila"]))
+    for t in sueltos:
+        if id(t) in anulados:
+            continue
+        otros = [o for o in sueltos if o is not t and id(o) not in anulados and o["cod"] == t["cod"]
+                 and o["c"] == -t["c"] and abs((o["fecha"] - t["fecha"]).days) <= 5]
+        if otros:
+            o = min(otros, key=lambda o: (abs((o["fecha"] - t["fecha"]).days), o["fila"]))
+            anulados.update({id(t), id(o)})
+
+    # Órdenes de pago pagadas con cheques propios diferidos: Tango las imputa al banco el día de la
+    # orden, pero el banco debita cada cheque cuando se cobra (meses después). Si los cheques de la
+    # lista (mismo proveedor, misma cuenta, emitidos ese día) suman la orden, no es diferencia.
+    diferidos = {}
+    for t in tango_banco:
+        if not cruce.libre(t) or id(t) in anulados or t["tipo"] not in set(cfg["comprobantes_pago"]) or t["c"] >= 0:
+            continue
+        suyos = [ch for ch in cheques if ch["cod"] == t["cod"] and ch.get("emision") == t["fecha"]
+                 and _norm(ch["contraparte"]) == _norm(t["contraparte"])]
+        if not suyos:
+            continue
+        total = sum(-ch["c"] for ch in suyos)
+        desde_h, hasta_h = min(ch["fecha"] for ch in suyos), max(ch["fecha"] for ch in suyos)
+        rango = "del %s al %s" % (desde_h.strftime("%d/%m/%Y"), hasta_h.strftime("%d/%m/%Y"))
+        if abs(total + t["c"]) <= int(round(float(cfg["tolerancia"]) * 100)):
+            diferidos[id(t)] = (True, "%d cheques diferidos %s" % (len(suyos), rango))
+        elif total < -t["c"]:
+            diferidos[id(t)] = (False, "pagada en parte con %d cheques diferidos (%s, %s); el resto pueden ser "
+                                       "cheques ya cobrados que la bajada no trae" % (len(suyos), _m(total), rango))
 
     solo_tango = []
     for t in tango_banco:
         if not cruce.libre(t) or not en_mes(t["fecha"]):
             continue
         if id(t) in anulados:
-            solo_tango.append(dict(t, estado="anulado con su reversión: no es diferencia", anulado=True))
+            solo_tango.append(dict(t, estado=("anulado con su reversión" if t["tipo"] == "REV" else
+                                              "se compensa con otro movimiento de Tango (anulación)")
+                                   + ": no es diferencia", anulado=True))
             continue
+        if id(t) in diferidos and diferidos[id(t)][0]:
+            continue                          # va a "No pasa por banco" (abajo)
         if id(t) in cruce.ambiguos:
             revisar.append(dict(t, motivo=cruce.ambiguos[id(t)]))
             continue
@@ -889,11 +1118,24 @@ def armar_informe(banco, tango, cfg, mes_desde, mes_hasta, ultima, hoy, sin_par_
             estado = "todavía no acreditado (probable)"
         else:
             estado = "no aparece en el banco: revisar"
+        if id(t) in diferidos:
+            estado = diferidos[id(t)][1]
         solo_tango.append(dict(t, estado=estado))
+
+    # cheques propios que ya tendrían que haberse cobrado y el banco no debitó (informativo: van a Revisar)
+    for ch in cheques:
+        ult = ultima.get(ch["cod"])
+        if (cruce.libre(ch) and en_mes(ch["fecha"]) and ult is not None
+                and ch["fecha"] <= ult - datetime.timedelta(days=3)):
+            revisar.append(dict(ch, motivo="cheque propio con fecha %s: el banco todavía no lo debitó"
+                                           % ch["fecha"].strftime("%d/%m/%Y")))
 
     # Tango de gastos sin par (para comparar con los gastos del banco, no para emparejar)
     def parece_gasto(t):
-        return t["tipo"] in ("FPR", "OPF") and t["c"] < 0 and (not t["cuit"] or "BANCO" in _norm(t["contraparte"]))
+        # intereses, comisiones e impuestos del banco; las cuotas de préstamo no son gastos
+        ley = _norm(t["texto"])
+        return (t["tipo"] in ("FPR", "OPF") and t["c"] < 0 and (not t["cuit"] or "BANCO" in _norm(t["contraparte"]))
+                and "PRESTAMO" not in ley and "CUOTA" not in ley)
     gasto_tango = defaultdict(int)
     for t in solo_tango:
         if parece_gasto(t) and not t.get("anulado"):
@@ -901,7 +1143,7 @@ def armar_informe(banco, tango, cfg, mes_desde, mes_hasta, ultima, hoy, sin_par_
 
     # lo que no pasa por el banco: efectivo y endosos
     efectivo = {_norm(x) for x in cfg["cuentas_efectivo"]}
-    cheques = _norm(cfg["cuenta_cheques_terceros"])
+    cartera = _norm(cfg["cuenta_cheques_terceros"])
     cobros, pagos = set(cfg["comprobantes_cobro"]), set(cfg["comprobantes_pago"])
     no_banco = defaultdict(lambda: {"c": 0})
     cheques_recibidos = [0, 0]
@@ -911,9 +1153,9 @@ def armar_informe(banco, tango, cfg, mes_desde, mes_hasta, ultima, hoy, sin_par_
         cta = _norm(t["desc_cuenta"])
         if cta in efectivo:
             clase = "Efectivo (cobro)" if t["tipo"] in cobros else "Efectivo (pago)"
-        elif cta == cheques and t["tipo"] in pagos:
+        elif cta == cartera and t["tipo"] in pagos:
             clase = "Cheque de tercero endosado"
-        elif cta == cheques and t["tipo"] in cobros:
+        elif cta == cartera and t["tipo"] in cobros:
             cheques_recibidos[0] += 1
             cheques_recibidos[1] += t["c"]
             continue
@@ -924,6 +1166,12 @@ def armar_informe(banco, tango, cfg, mes_desde, mes_hasta, ultima, hoy, sin_par_
         g.update({"clase": clase, "fecha": t["fecha"], "tipo": t["tipo"], "comprobante": t["comprobante"],
                   "contraparte": t["contraparte"], "cuit": t["cuit"], "cuenta": t["desc_cuenta"], "texto": t["texto"]})
         g["c"] += t["c"]
+    for t in tango_banco:
+        if id(t) in diferidos and diferidos[id(t)][0] and en_mes(t["fecha"]):
+            no_banco[("diferidos", t["tipo"], t["comprobante"], t["interno"])] = {
+                "clase": "Pago con cheques propios diferidos", "fecha": t["fecha"], "tipo": t["tipo"],
+                "comprobante": t["comprobante"], "contraparte": t["contraparte"], "cuit": t["cuit"],
+                "cuenta": t["desc_cuenta"], "texto": diferidos[id(t)][1], "c": t["c"]}
     no_banco = sorted(no_banco.values(), key=lambda g: (g["clase"], g["fecha"]))
 
     # cuentas de Tango que parecen de banco (tienen "Banco") pero no tienen extracto
@@ -986,6 +1234,7 @@ def armar_informe(banco, tango, cfg, mes_desde, mes_hasta, ultima, hoy, sin_par_
         "solo_tango": solo_tango, "no_banco": no_banco, "cheques_recibidos": cheques_recibidos,
         "revisar": revisar, "resumen": filas_resumen, "control_ok": control_ok,
         "sin_extracto": dict(sin_extracto), "sin_par_banco": sin_par_banco,
+        "cheques_leidos": len(cheques), "cheques_sin_cuenta": list(cheques_sin_cuenta),
         "reglas": Counter(p["regla"] for p in pares),
         "niveles": Counter(p["nivel"] for p in pares + pares_internas),
     }
@@ -1025,7 +1274,7 @@ def escribir_excel(inf, ruta, mes):
     enc = ["Cuenta", "Movimientos banco", "Entradas", "Salidas", "Conciliado entradas", "Conciliado salidas",
            "% conciliado"] + [x for nv in NIVELES for x in ("Pares %s" % nv, "%s ($ movido)" % nv, "%% %s" % nv)] + [
            "Solo en banco (sin gastos)", "Cant. solo en banco", "Gastos e impuestos (banco)",
-           "Cant. gastos", "Gastos que Tango tiene sin par", "Internas", "Revisar (banco)",
+           "Cant. gastos", "Cargos del banco en Tango sin par", "Internas", "Revisar (banco)",
            "Solo en Tango", "Cant. solo en Tango", "Control"]
     def por_nivel(pn, movido):
         return [x for nv in NIVELES for x in (pn[nv]["n"], p(pn[nv]["c"]), pn[nv]["c"] / movido if movido else 0)]
@@ -1064,6 +1313,9 @@ def escribir_excel(inf, ruta, mes):
         for k, (n, c) in sorted(inf["sin_extracto"].items()):
             ws.append(["   " + k, n, p(c)])
             ws.cell(ws.max_row, 3).number_format = PESOS
+    ws.append(["Cheques propios leídos: %d%s" % (inf.get("cheques_leidos", 0),
+               (" · cuentas de cheques que no se reconocieron: " + ", ".join(inf["cheques_sin_cuenta"]))
+               if inf.get("cheques_sin_cuenta") else "")])
     if inf["sin_par_banco"]:
         ws.append(["Cuentas del extracto sin cuenta de Tango en el perfil (quedan afuera):"])
         for k, (n, c) in sorted(inf["sin_par_banco"].items()):
@@ -1181,7 +1433,7 @@ def resumen_md(inf, mes, ruta_xlsx, archivo_tango, archivo_sheet):
 
 
 # ------------------------------------------------------------------ main
-def correr(cliente, mes, sheet, tango, salidas, hoy=None):
+def correr(cliente, mes, sheet, tango, salidas, hoy=None, cheques=None):
     cfg = cargar_config(cliente)
     anio, m = (int(x) for x in mes.split("-"))
     mes_desde = datetime.date(anio, m, 1)
@@ -1190,7 +1442,9 @@ def correr(cliente, mes, sheet, tango, salidas, hoy=None):
     banco, ultima, sin_par = leer_banco(sheet, cfg, mes_desde - datetime.timedelta(days=MARGEN_CARGA),
                                         mes_hasta + datetime.timedelta(days=MARGEN_CARGA))
     renglones, archivo_tango = leer_tango(tango, cfg)
-    inf = armar_informe(banco, renglones, cfg, mes_desde, mes_hasta, ultima, hoy, sin_par)
+    lista_cheques, cheques_sin_cuenta = leer_cheques(cheques, renglones)
+    inf = armar_informe(banco, renglones, cfg, mes_desde, mes_hasta, ultima, hoy, sin_par,
+                        lista_cheques, cheques_sin_cuenta)
     os.makedirs(salidas, exist_ok=True)
     ruta = escribir_excel(inf, os.path.join(salidas, "cruce_%s.xlsx" % mes), mes)
     md = resumen_md(inf, mes, ruta, archivo_tango, sheet)
@@ -1206,10 +1460,12 @@ def main():
     ap.add_argument("--sheet", required=True, help="export de la Sheet en Excel (solapa Movimientos)")
     ap.add_argument("--tango", required=True, help="detalle de comprobantes de Tesorería (archivo o carpeta)")
     ap.add_argument("--salidas", required=True)
+    ap.add_argument("--cheques", default=None,
+                    help="cheques propios de Tango ('A cheques propios <fecha>.xlsx' o la carpeta Cheques); opcional")
     ap.add_argument("--hoy", default=None)
     a = ap.parse_args()
     hoy = datetime.date.fromisoformat(a.hoy) if a.hoy else None
-    inf, md = correr(a.cliente, a.mes, a.sheet, a.tango, a.salidas, hoy)
+    inf, md = correr(a.cliente, a.mes, a.sheet, a.tango, a.salidas, hoy, a.cheques)
     print(md)
     if not inf["control_ok"]:
         sys.exit(1)
