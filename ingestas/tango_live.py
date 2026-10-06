@@ -133,6 +133,9 @@ COLUMNAS_EXPORT = {
 
 # Columnas del detalle de tesorería, con los nombres del export manual que lee lector/cruce.py.
 COLUMNAS_EXPORT["detalle_tesoreria"] = [
+    # "Fecha" es la del movimiento (la que se ve en el comprobante); la de emisión a veces está mal
+    # cargada. Columna sumada a la consulta 21 el 06/10/2026 (tarea 47).
+    ("Fecha", "FECHA", "crudo"),
     ("Fecha de emisión", "FECHA_DE_EMISION", "crudo"),
     ("Cód. comprobante", "COD_COMPROBANTE", "crudo"),
     ("Desc. comprobante", "DESC_COMPROBANTE", "crudo"),
@@ -153,7 +156,7 @@ COLUMNAS_EXPORT["detalle_tesoreria"] = [
     ("Leyenda", "LEYENDA", "crudo"),
 ]
 # Sin estas el cruce no puede trabajar: si Live deja de mandarlas, no se publica el archivo.
-DETALLE_OBLIGATORIAS = ("Fecha de emisión", "Cód. comprobante", "Cód. cuenta",
+DETALLE_OBLIGATORIAS = ("Fecha", "Cód. comprobante", "Cód. cuenta",
                         "Debe (cte) (renglón)", "Haber (cte) (renglón)")
 
 TRADUCCIONES = {

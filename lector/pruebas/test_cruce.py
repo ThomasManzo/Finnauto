@@ -65,7 +65,9 @@ class _Base(unittest.TestCase):
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "Detalle de comprobantes"
-        ws.append(ENC_TANGO)
+        # la columna "Fecha" (la del movimiento) solo va si alguna prueba la cargó
+        ancho = max([len(f) for f in self.tg] + [len(ENC_TANGO)])
+        ws.append(ENC_TANGO + ["Fecha"][:ancho - len(ENC_TANGO)])
         for f in self.tg:
             ws.append(f)
         ws.append([None] * len(ENC_TANGO))           # la fila casi vacía del final del export
@@ -347,6 +349,24 @@ class ReglasDeSeptiembre(_Base):
         self.tango(D(2026, 8, 31), "EXT", 25, -12354678.0)
         inf = self.correr("2026-09")
         self.assertIn("error de tipeo", inf["solo_banco"][0]["pista"])
+
+
+class FechaDelMovimiento(_Base):
+    """Tango tiene dos fechas; el cruce usa 'Fecha' (la del movimiento) y no 'Fecha de emisión'."""
+
+    def test_usa_fecha_y_no_la_de_emision(self):
+        self.banco(D(2026, 8, 13), "MACRO 222", 8980.0, "ACREDITACION CHEQUE", "Cheques")
+        self.tango(D(2036, 8, 12), "BDM", 25, 8980.0)            # emisión mal cargada
+        self.tg[-1] += [None, D(2026, 8, 12)]                      # Desc. cuenta, Fecha (la buena)
+        inf = self.correr()
+        self.assertEqual(len(inf["pares"]), 1)
+        self.assertEqual(inf["revisar"], [])
+        self.assertFalse(inf["fecha_de_emision"])
+
+    def test_sin_columna_fecha_avisa(self):
+        self.banco(D(2026, 8, 13), "MACRO 222", 10.0, "X")
+        self.tango(D(2026, 8, 13), "REC", 25, 10.0)
+        self.assertTrue(self.correr()["fecha_de_emision"])
 
 
 class MejorasTarea46(_Base):

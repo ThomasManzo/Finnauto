@@ -325,7 +325,11 @@ def leer_tango(ruta, cfg):
     filas = ws.iter_rows(values_only=True)
     enc = list(next(filas))
     alt = {
-        "fecha": ("Fecha de emisión", "Fecha emisión", "Fecha"),
+        # "Fecha" es la del movimiento (la que se ve en la pantalla del comprobante). "Fecha de emisión"
+        # es otra y a veces está mal cargada (se vio un año 2036 y un mes corrido): se usa solo si el
+        # archivo no trae "Fecha" (el export a mano del 18/09 no la tiene).
+        "fecha": ("Fecha",),
+        "fecha_emision": ("Fecha de emisión", "Fecha emisión"),
         "tipo": ("Cód. comprobante", "Tipo", "Tipo de comprobante"),
         "desc_tipo": ("Desc. comprobante",),
         "comprobante": ("Comprobante", "Nro. comprobante", "Número"),
@@ -344,16 +348,19 @@ def leer_tango(ruta, cfg):
         "leyenda": ("Leyenda",),
     }
     ix = {k: _col(enc, *v) for k, v in alt.items()}
-    for k in ("fecha", "tipo", "cod", "debe", "haber"):
+    for k in ("tipo", "cod", "debe", "haber"):
         if ix[k] is None:
             sys.exit("al detalle de Tango le falta la columna de %r (%s)" % (k, alt[k][0]))
+    if ix["fecha"] is None and ix["fecha_emision"] is None:
+        sys.exit("al detalle de Tango le falta la fecha (columna 'Fecha' o 'Fecha de emisión')")
+    origen_fecha = "movimiento" if ix["fecha"] is not None else "emision"
 
     def val(r, k):
         return r[ix[k]] if ix[k] is not None and ix[k] < len(r) else None
 
     renglones = []
     for n, r in enumerate(filas, start=2):
-        f = _fecha(val(r, "fecha"))
+        f = _fecha(val(r, "fecha")) or _fecha(val(r, "fecha_emision"))
         if not f:
             continue                            # la fila casi vacía del final
         cod = val(r, "cod")
@@ -363,7 +370,7 @@ def leer_tango(ruta, cfg):
             cod = None
         cuit = _cuit_de_tango(val(r, "cuit_cli")) or _cuit_de_tango(val(r, "cuit_prov"))
         renglones.append({
-            "lado": "Tango", "fila": n, "fecha": f, "cod": cod,
+            "lado": "Tango", "fila": n, "fecha": f, "cod": cod, "fecha_origen": origen_fecha,
             "tipo": str(val(r, "tipo") or "").strip(),
             "comprobante": " ".join(str(val(r, "comprobante") or "").split()),
             "interno": val(r, "interno"),
@@ -1235,6 +1242,7 @@ def armar_informe(banco, tango, cfg, mes_desde, mes_hasta, ultima, hoy, sin_par_
         "revisar": revisar, "resumen": filas_resumen, "control_ok": control_ok,
         "sin_extracto": dict(sin_extracto), "sin_par_banco": sin_par_banco,
         "cheques_leidos": len(cheques), "cheques_sin_cuenta": list(cheques_sin_cuenta),
+        "fecha_de_emision": any(t.get("fecha_origen") == "emision" for t in tango),
         "reglas": Counter(p["regla"] for p in pares),
         "niveles": Counter(p["nivel"] for p in pares + pares_internas),
     }
@@ -1313,6 +1321,9 @@ def escribir_excel(inf, ruta, mes):
         for k, (n, c) in sorted(inf["sin_extracto"].items()):
             ws.append(["   " + k, n, p(c)])
             ws.cell(ws.max_row, 3).number_format = PESOS
+    if inf.get("fecha_de_emision"):
+        ws.append(["OJO: el detalle de Tango no trae la columna 'Fecha' (la del movimiento); se usó la "
+                   "'Fecha de emisión', que a veces está mal cargada."])
     ws.append(["Cheques propios leídos: %d%s" % (inf.get("cheques_leidos", 0),
                (" · cuentas de cheques que no se reconocieron: " + ", ".join(inf["cheques_sin_cuenta"]))
                if inf.get("cheques_sin_cuenta") else "")])
@@ -1388,6 +1399,9 @@ def resumen_md(inf, mes, ruta_xlsx, archivo_tango, archivo_sheet):
          "Banco: solapa Movimientos de `%s` · Tango: `%s`." % (os.path.basename(archivo_sheet), os.path.basename(archivo_tango)), ""]
     if not inf["control_ok"]:
         L += ["## ⚠️ LA CUENTA DE CONTROL NO DA — el informe está mal, no usarlo", ""]
+    if inf.get("fecha_de_emision"):
+        L += ["OJO: el detalle de Tango no trae la columna 'Fecha' (la del movimiento); se usó la "
+              "'Fecha de emisión', que a veces está mal cargada.", ""]
     L += ["Entradas / salidas por separado (no se netean). Entre paréntesis, cantidad de renglones.", "",
           "| Cuenta | Movs | Movido (entra / sale) | Conciliado | Solo en banco (entra / sale) | Gastos banco | Solo en Tango (entra / sale) |",
           "|---|---|---|---|---|---|---|"]
