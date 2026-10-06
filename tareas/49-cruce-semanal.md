@@ -1,4 +1,4 @@
-# Tarea 48 — Cruce banco ↔ Tango semanal, con mail a la administración
+# Tarea 49 — Cruce banco ↔ Tango semanal, con mail a la administración
 Estado: aprobada
 Rama: tarea/cruce-semanal
 
@@ -45,3 +45,4 @@ septiembre dan los mismos pares que antes.
 
 ## Revisión
 06/10/2026: mergeada con el OK de Thomas (le gustaron el mail y el Excel de ejemplo).
+Renumerada de 48 a 49 (06/10/2026): otro chat había tomado la 48 (cajas de A y AA) unos minutos antes.
