@@ -244,7 +244,7 @@ def leer_banco(ruta_sheet, cfg, desde, hasta):
     filas = wb["Movimientos"].iter_rows(values_only=True)
     enc = list(next(filas))
     ix = {k: _col(enc, k) for k in ("ID", "Fecha", "Empresa", "Categoria", "Concepto / Detalle", "Importe",
-                                    "Banco / Cuenta", "Origen", "Observaciones")}
+                                    "Banco / Cuenta", "Origen", "Observaciones", "Referencia")}
     for k in ("Fecha", "Importe", "Banco / Cuenta", "Origen"):
         if ix[k] is None:
             sys.exit("a la solapa Movimientos le falta la columna %r" % k)
@@ -278,6 +278,7 @@ def leer_banco(ruta_sheet, cfg, desde, hasta):
         movs.append({
             "lado": "Banco", "id": val(r, "ID") or "fila %d" % n, "fecha": f, "cuenta": cta, "cod": cod,
             "c": c, "categoria": str(val(r, "Categoria") or ""), "texto": concepto, "obs": obs,
+            "ref": val(r, "Referencia"),
             "cuit": cuit_del_banco(concepto, obs, propio=cfg["cuit_propio"]),
         })
     wb.close()
@@ -482,7 +483,19 @@ class Cruce:
                            "banco": list(bs), "tango": list(ts)})
 
     def es_gasto(self, b):
-        return b["categoria"] in self.cfg["categorias_gastos"]
+        """Gastos e impuestos del banco (comisiones, impuesto al débito y crédito, percepciones): se
+        informan como total. Los pagos a ARCA (VEP) están en la categoría Impuestos pero NO son gastos
+        del banco: son impuestos que hay que cargar uno por uno, así que van como cualquier otro."""
+        if b["categoria"] not in self.cfg["categorias_gastos"]:
+            return False
+        texto = _norm(b["texto"])
+        return not any(p in texto for p in self.cfg.get("pagos_de_impuestos", ["AFIP", "ARCA", "VEP"]))
+
+    def es_impuesto(self, b):
+        """Débitos de la categoría Impuestos: los empareja solo la regla 'impuestos agrupados' (o
+        'exacto' si es uno a uno). Las combinaciones generales no los tocan: podrían mezclarlos con
+        pagos a terceros que casualmente suman lo mismo."""
+        return b["categoria"] in self.cfg.get("categorias_impuestos", ["Impuestos"])
 
     def es_interes_descuento(self, t):
         ley = _norm(t["texto"])
@@ -723,11 +736,11 @@ class Cruce:
                            and self.en_ventana(b["fecha"], t["fecha"])}, key=lambda d: (abs((d - t["fecha"]).days), d))
             for d in dias:
                 cands = [b for b in self.banco if self.libre(b) and b["cod"] == t["cod"] and b["fecha"] == d
-                         and (b["c"] > 0) == (t["c"] > 0) and not self.es_gasto(b)]
+                         and (b["c"] > 0) == (t["c"] > 0) and not self.es_gasto(b) and not self.es_impuesto(b)]
                 if self._resolver("agrupado", [t], cands, t["c"], maximo, lado_uno="tango"):
                     break
         for b in sorted(self.banco, key=lambda b: (b["fecha"], b["n"])):
-            if not self.libre(b) or self.es_gasto(b):
+            if not self.libre(b) or self.es_gasto(b) or self.es_impuesto(b):
                 continue
             dias = sorted({t["fecha"] for t in self.tango if self.libre(t) and t["cod"] == b["cod"]
                            and self.en_ventana(b["fecha"], t["fecha"])}, key=lambda d: (abs((b["fecha"] - d).days), d))
@@ -821,7 +834,7 @@ class Cruce:
         el sello aparte (OPF). Se busca: un renglón de Tango más grande, del mismo signo que el banco, y
         1 o 2 cargos del MISMO día (OPF/FPR sin CUIT de un tercero) que lo bajan justo al importe."""
         for b in sorted(self.banco, key=lambda b: (b["fecha"], b["n"])):
-            if not self.libre(b) or self.es_gasto(b):
+            if not self.libre(b) or self.es_gasto(b) or self.es_impuesto(b):
                 continue
             encontradas = []
             principales = [t for t in self.tango if self.libre(t) and t["cod"] == b["cod"]
