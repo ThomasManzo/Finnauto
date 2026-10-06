@@ -198,7 +198,7 @@ class UltimosPagos(unittest.TestCase):
 
 
 class VigilanteUltimosPagos(unittest.TestCase):
-    def test_archivo_nuevo_a_dispara_lista_pero_no_caja_aa(self):
+    def test_archivo_nuevo_dispara_solo_la_lista(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             a = excel(root / "Tesoreria A" / "A anterior.xlsx", [fila()])
@@ -239,13 +239,13 @@ class VigilanteUltimosPagos(unittest.TestCase):
                     self.assertEqual(comando.call_count, 2)
                     nuevo_aa = excel(aa.parent / "AA nuevo.xlsx", [fila(numero="22")])
                     os.utime(aa, (time.time() - 300, time.time() - 300))
+                    # Desde la tarea 48 la caja de AA sale del detalle (lector/cajas.py): un
+                    # archivo nuevo de "Tesoreria AA" solo rearma la lista de últimos pagos.
                     self.assertEqual(vigilante.main(), 0)
-                    self.assertEqual(comando.call_count, 4)
-                    ultimas = [c.args[0] for c in comando.call_args_list[-2:]]
-                    self.assertEqual([Path(c[1]).name for c in ultimas],
-                                     ["tesoreria_aa.py", "ultimos_pagos.py"])
-                    self.assertIn(str(nuevo_aa), ultimas[0])
-                    self.assertNotIn(str(nuevo), ultimas[0])
+                    self.assertEqual(comando.call_count, 3)
+                    ultima = comando.call_args_list[-1].args[0]
+                    self.assertEqual(Path(ultima[1]).name, "ultimos_pagos.py")
+                    self.assertIn(str(nuevo_aa), ultima)
                     nuevo_aa.unlink()
                 aa.unlink()
                 fuente = next(f for f in vigilante.fuentes(dt.date(2026, 9, 29)) if f["nombre"] == "ultimos_pagos")
@@ -256,11 +256,10 @@ class VigilanteUltimosPagos(unittest.TestCase):
             aa = excel(Path(tmp) / "Tesorería AA" / "AA.xlsx", [fila()])
             fuentes = {f["nombre"]: f for f in vigilante.fuentes(dt.date(2026, 9, 29))}
             self.assertEqual(fuentes["ultimos_pagos"]["archivos"], [])
-            self.assertIn(str(aa), fuentes["tesoreria_aa"]["cmd"]())
+            self.assertNotIn("tesoreria_aa", fuentes)       # tarea 48: ya no corre
             excel(Path(tmp) / "Tesoreria A" / "A.xlsx", [fila()])
             fuentes = {f["nombre"]: f for f in vigilante.fuentes(dt.date(2026, 9, 29))}
             self.assertIn(str(aa), fuentes["ultimos_pagos"]["cmd"]())
-            self.assertEqual(len(fuentes["tesoreria_aa"]["archivos"]), 1)
 
 
 if __name__ == "__main__":

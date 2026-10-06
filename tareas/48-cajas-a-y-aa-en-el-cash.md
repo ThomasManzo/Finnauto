@@ -1,5 +1,5 @@
 # Tarea 48 — Las cajas de A y de AA en el cash, con "de qué caja sale" y la leyenda
-Estado: pendiente
+Estado: hecha (falta validar con datos reales)
 Rama: tarea/cajas-a-y-aa
 
 ## Objetivo
@@ -149,5 +149,64 @@ Lo que existe hoy:
   cambie por los pases internos.
 
 ## Qué hice
+**La escribió Claude** (Codex sin margen). Lo pedido, punto por punto, y dónde se aparta de la consigna:
+
+1. **Bajada**: AA baja el detalle (consulta 22) a `Tesoreria AA detalle/`; las dos con 180 días; 11 bajadas.
+2. **Perfil `cajas`**: A = `CAJA CONTADO`; AA = `CAJA DIRECTORIO` y `CAJA CONTADO`. Pendiente: si
+   `CAJA FACTURACION` de A es efectivo (preguntado a NAVAR). Cuentas de pase: Mercado Pago y la otra empresa.
+3. **`lector/cajas.py`**: una fila de Movimientos por renglón de caja, con `Cuenta Tango` y `Leyenda`.
+   Cambios respecto de la consigna, vistos con los datos reales de A:
+   - **La categoría se decide por las cuentas del lado contrario a la caja** (hacia dónde va la plata).
+     Lo del mismo lado (retenciones, el convenio gremial que se descuenta al productor, el banco que
+     pone la otra parte del pago) no decide. Sin esto, un pago a un productor caía en Sueldos.
+   - **Depósito de la caja en el banco → `Cobranza Facturas` en negativo**, no Transferencia Interna.
+     El extracto trae ese depósito como cobro ("Depósito en efectivo" → Cobranza Facturas). Si la caja
+     lo marcara como interno, el cobro se contaría dos veces: al entrar a la caja y al llegar al banco.
+     Así se cancelan. Los saldos no cambian por esto; solo los renglones.
+   - **Entre la caja y la cartera de cheques → `Cheques`** (la cartera está fuera del cash; el vuelto
+     en efectivo de un recibo pagado con cheque resta donde el cheque va a sumar).
+   - **Tipo** según lo que es (una cobranza es Ingreso aunque reste), no según el signo.
+   - Del banco a la caja, entre cajas y pases: Transferencia Interna.
+4. **Vigilante**: fuente `cajas` (el más nuevo de cada carpeta de detalle, solo si están las dos).
+   La salida se arma en `.run/cajas` y no en la carpeta del detalle, que la lee también el cruce.
+   `tesoreria_aa` deja de correr (el lector queda en el repo).
+5. **Importador**: entrada `cajas` (pisa `Tango AA` y `Tango caja A`), en `ORDEN_AUTO` en lugar de
+   `tesoreria_aa`, y en el menú. Las dos columnas nuevas se agregan solas al final de Movimientos.
+6. **Cash**:
+   - `_bancos_` reconoce "Caja A" y "Caja AA" (y "(varios)" como AA).
+   - Cada saldo de caja suma solo su caja (`Banco / Cuenta`), Origen `Tango*`. Un banco cargado a mano
+     ya no suma movimientos de caja (antes sí sumaba los de AA).
+   - `Tango caja A*` en `ORIGENES_REALES`.
+   - **Corte**: las dos cajas comparten `$B$5` = último día con movimientos de cualquiera de las dos,
+     porque bajan juntas. Con un corte por caja, una caja que no se movió ayer parecería atrasada.
+   - **Arreglo de paso**: lo real que se descuenta en la columna que contiene el último extracto ahora
+     usa el corte de cada origen (`_hastaReal_`). Antes usaba el del banco para todo, así que la caja
+     de AA posterior al extracto quedaba contada dos veces en esa columna (semanal y mensual).
+   - Textos de Instrucciones al día.
+7. **Aviso**:
+   - 11 bajadas y la foto "detalle de tesorería" también en AA.
+   - `cajas` en lugar de `tesoreria_aa`.
+   - "Caja A" y "Caja AA" de Saldos Bancarios no se tratan como bancos sin extracto: antes "Caja A"
+     habría aparecido como "subir a mano".
+
+Fuera de la lista de archivos: `lector/pruebas/test_ultimos_pagos.py` probaba que corriera
+`tesoreria_aa`; ahora prueba que no.
+
+Pruebas:
+- 16 de `test_cajas`, con datos inventados: los casos de la consigna, más depósito, cartera, retenciones
+  del mismo lado y el vigilante.
+- 122 de Python en total.
+- `.cjs` nuevos: `probar_importador_cajas` (columnas nuevas, bancos y manuales intactos) y
+  `probar_cash_cajas` (saldo de cada caja por separado, corte por origen, el depósito cuenta una vez).
+- Todos los `.cjs` pasan.
+
+Con datos reales de A (local, sin subir): 223 filas en 180 días. No hay transferencias internas
+grandes: los 3 depósitos al banco quedan como cobranza en negativo.
+
+**Falta validar con datos reales** (Claude, con NAVAR):
+- el detalle de AA, después de la primera bajada;
+- AA viejo contra nuevo;
+- el saldo de cada caja contra el arqueo del día siguiente;
+- que el total del cash no salte.
 
 ## Revisión

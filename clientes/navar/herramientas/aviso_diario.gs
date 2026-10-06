@@ -21,10 +21,10 @@ var DESTINATARIOS = (typeof PropertiesService !== "undefined" &&
 var AVISO_ZONA = "America/Argentina/Buenos_Aires";
 var AVISO_DIA = 24 * 60 * 60 * 1000;
 // Tiene que coincidir con TOTAL_BAJADAS_DIARIAS de ingestas/tango_live.py.
-var TANGO_BAJADAS = 10;
+var TANGO_BAJADAS = 11;
 // Estas fuentes ya llegan solas. Al automatizar otro banco, se lo agrega acá para
 // que el aviso deje de pedir una carga manual y pase a revisar la notebook.
-var FUENTES_AUTOMATICAS = ["tango", "tesoreria_aa", "galicia"];
+var FUENTES_AUTOMATICAS = ["tango", "cajas", "galicia"];
 
 // Manda exactamente el texto que también permite revisar el botón de prueba.
 function avisoDiario() {
@@ -190,7 +190,7 @@ function _leerDatosAviso_(ahora) {
     raiz = carpetas.next();
     var mapa = {"Tesoreria A": "tesoreria_a", "Tesoreria A detalle": "tesoreria_a", "Bancos": "bancos", "Cuentas a cobrar": "tango", "Cuentas a pagar": "tango",
       "Cheques": "tango", "Deuda bancaria": "deuda", "Impuestos": "impuestos",
-      "Tesorería AA": "tesoreria_aa", "Tesoreria AA": "tesoreria_aa"};
+      "Tesorería AA": "tesoreria_aa", "Tesoreria AA": "tesoreria_aa", "Tesoreria AA detalle": "tesoreria_aa"};
     var sub = raiz.getFolders();
     while (sub.hasNext()) {
       var c = sub.next(), nombre = c.getName();
@@ -242,7 +242,7 @@ function _leerDatosAviso_(ahora) {
   });
   datos.bancosPartes = {};
   FUENTES_AUTOMATICAS.filter(function (banco) {
-    return ["tango", "tesoreria_aa"].indexOf(banco) < 0;
+    return ["tango", "cajas"].indexOf(banco) < 0;
   }).forEach(function (banco) {
     var etiqueta = banco.charAt(0).toUpperCase() + banco.slice(1);
     leer(banco === "galicia" ? "GaliciaParte" : banco + "Parte", function () {
@@ -344,9 +344,10 @@ function _armarAviso_(ahora, datos) {
       .sort(function (a, b) { return b.fecha - a.fecha; })[0];
   }
   var entradas = datos.entradas || [], parte = datos.tangoParte;
-  // "tesoreria detalle" (tarea 44): el detalle de comprobantes de A que usa el cruce banco ↔ Tango.
+  // "tesoreria detalle": el detalle de comprobantes (un renglón por cuenta). El de A lo usa el cruce
+  // banco ↔ Tango (tarea 44); los de A y AA arman las cajas del cash (tarea 48).
   var fotos = {A: ["cobranzas", "pagos", "cheques terceros", "cheques propios", "movimientos tesoreria",
-    "tesoreria detalle"], AA: ["cobranzas", "pagos", "cheques terceros", "movimientos tesoreria"]};
+    "tesoreria detalle"], AA: ["cobranzas", "pagos", "cheques terceros", "movimientos tesoreria", "tesoreria detalle"]};
   function nombreFoto(foto) {
     return foto.replace("movimientos tesoreria", "tesorería").replace("tesoreria detalle", "detalle de tesorería");
   }
@@ -385,7 +386,8 @@ function _armarAviso_(ahora, datos) {
   (datos.saldos || []).forEach(function (r) {
     var banco = _esExtractoAviso_(r.origen) ? _bancoExtractoAviso_(r) : _textoAviso_(r.banco);
     var d = valida(r.fecha) ? _diaAviso_(r.fecha) : "";
-    if (/^(\(varios\)|varios|caja)$/i.test(banco)) {
+    // Las cajas (arqueo a mano) no son bancos: "Caja A", "Caja AA" y el viejo "(varios)" de AA.
+    if (/^(\(varios\)|varios|caja( aa?)?)$/i.test(banco)) {
       if (_textoAviso_(r.empresa).toUpperCase() === "AA" && /^manual$/i.test(_textoAviso_(r.origen)) && d > arqueo) arqueo = d;
       return;
     }
