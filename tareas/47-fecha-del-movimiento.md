@@ -1,5 +1,5 @@
 # Tarea 47 — El cruce usa la fecha del movimiento, no la de emisión
-Estado: lista para revisión
+Estado: aprobada
 Rama: tarea/fecha-movimiento
 
 ## Objetivo
@@ -29,3 +29,4 @@ Pruebas (74 OK). En la notebook, `--probar detalle_tesoreria --empresa A` tiene 
 2036; avisa si falta) y las de la bajada actualizadas.
 
 ## Revisión
+06/10/2026: mergeada con el OK de Thomas. `--probar` en la notebook confirmó que la consulta 21 trae `FECHA`.
