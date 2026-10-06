@@ -1,5 +1,5 @@
 # Tarea 48 — Cruce banco ↔ Tango semanal, con mail a la administración
-Estado: lista para revisión
+Estado: aprobada
 Rama: tarea/cruce-semanal
 
 ## Objetivo
@@ -44,3 +44,4 @@ cruce de hoy, la falla de control y que no se instala sin destinatarios. Los inf
 septiembre dan los mismos pares que antes.
 
 ## Revisión
+06/10/2026: mergeada con el OK de Thomas (le gustaron el mail y el Excel de ejemplo).
