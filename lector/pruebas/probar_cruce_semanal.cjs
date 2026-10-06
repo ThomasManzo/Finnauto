@@ -48,7 +48,8 @@ const datos = (cambios = {}) => Object.assign({
     {cuenta: 'Nación 222', extracto_hasta: '2026-09-24', dias_sin_extracto: 13, conciliado: [0.1, null]}
   ],
   falta_total: {cantidad: 3, importe: 1500.5},
-  falta: [{fecha: '2026-09-30', banco: 'Galicia 111', concepto: 'CUOTA DE PRESTAMO', importe: -1000.25},
+  falta: [{fecha: '2026-09-30', banco: 'Galicia 111', concepto: 'CUOTA DE PRESTAMO', importe: -1000.25,
+           desglose: 'cuota 6 del préstamo 123 (Préstamo X): capital $800,00 · interés $200,25'},
           {fecha: '2026-09-14', banco: 'Nación 222', concepto: 'TARJETA', importe: -500.25}],
   gastos: [{banco: 'Galicia 111', cantidad: 40, importe: -123.4}],
   errores: ['En Tango, BDM 1 por $10,00: fecha imposible 12/08/2036'],
@@ -64,7 +65,8 @@ const datos = (cambios = {}) => Object.assign({
                    'Nación 222: extracto hasta el 24/09 (sin extracto nuevo hace 13 días) · septiembre 10 % conciliado',
                    '3 movimientos por $1.500,50 en total. Los 2 más grandes:',
                    '30/09 · Galicia 111 · CUOTA DE PRESTAMO · -$1.000,25',
-                   'Galicia 111: 40 renglones, -$123,40', 'fecha imposible 12/08/2036', 'Excel adjunto']) {
+                   'Galicia 111: 40 renglones, -$123,40',
+                   '      cuota 6 del préstamo 123 (Préstamo X): capital $800,00 · interés $200,25', 'fecha imposible 12/08/2036', 'Excel adjunto']) {
     assert.ok(r.cuerpo.includes(t), 'falta en el mail: ' + t + '\n\n' + r.cuerpo);
   }
   assert.ok(!r.cuerpo.includes('octubre undefined'));

@@ -173,6 +173,8 @@ function _armarCruceSemanal_(datos) {
       (falta.cantidad > datos.falta.length ? "Los " + datos.falta.length + " más grandes:" : "Son estos:"));
     datos.falta.forEach(function (f) {
       L.push("  · " + _ddmmCruce_(f.fecha) + " · " + f.banco + " · " + f.concepto + " · " + _plataCruce_(f.importe));
+      // cuotas de préstamos: el desglose de la tabla del banco, para poder cargarlas (tarea 50)
+      if (f.desglose) L.push("      " + f.desglose);
     });
   }
   if (datos.gastos && datos.gastos.length) {
