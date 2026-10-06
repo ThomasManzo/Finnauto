@@ -114,6 +114,23 @@ class CajasTest(unittest.TestCase):
         m = self.mov([renglon(8, "O/P", "ACREEDORES VARIOS", debe=60), renglon(8, "O/P", "CAJA FUERTE", haber=60)], "AA")
         self.assertEqual("Proveedores AA", m[0]["Categoria"])
 
+    def test_pase_de_aa_a_la_caja_de_a_se_refleja_en_la_caja_de_a(self):
+        # En el Tango de AA la caja de A es una cuenta más; A no anota la entrada en el suyo.
+        cfg = dict(CFG, AA=dict(CFG["AA"], espejo={"empresa": "A", "cuentas": ["CAJA DE LA OTRA"]}),
+                   cuentas_de_pase=CFG["cuentas_de_pase"] + ["CAJA DE LA OTRA"])
+        ruta = os.path.join(self.dir, "aa.xlsx")
+        escribir(ruta, [renglon(30, "EXT", "CAJA FUERTE", haber=20, leyenda="DEPOSITO BANCO INVENTADO"),
+                        renglon(30, "EXT", "CAJA DE LA OTRA EMPRESA", debe=20),
+                        renglon(31, "EXT", "CAJA FUERTE", debe=5), renglon(31, "EXT", "CAJA DE LA OTRA EMPRESA", haber=5)])
+        m = cajas.movimientos(cajas.leer_detalle(ruta), "AA", cfg, "aa.xlsx")
+        self.assertEqual([("AA", "Caja AA", -20), ("A", "Caja A", 20), ("AA", "Caja AA", 5), ("A", "Caja A", -5)],
+                         [(x["Empresa"], x["Banco / Cuenta"], x["Importe"]) for x in m])
+        self.assertEqual({"Transferencia Interna"}, {x["Categoria"] for x in m})
+        self.assertTrue(m[1]["Origen"].startswith("Tango caja A"))   # suma en el saldo de la Caja A
+        self.assertEqual("DEPOSITO BANCO INVENTADO", m[1]["Leyenda"])
+        # Sin espejo en el perfil, A no recibe nada.
+        self.assertEqual(["AA", "AA"], [x["Empresa"] for x in cajas.movimientos(cajas.leer_detalle(ruta), "AA", CFG, "aa.xlsx")])
+
     def test_pago_a_la_empresa_hermana_es_interno(self):
         m = self.mov([renglon(10, "O/P", "ACREEDORES VARIOS", debe=10), renglon(10, "O/P", "CAJA FUERTE", haber=10, razon="NAVAR S.A.")], "AA")
         self.assertEqual("Transferencia Interna", m[0]["Categoria"])

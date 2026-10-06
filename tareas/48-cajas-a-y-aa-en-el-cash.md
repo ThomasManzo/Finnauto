@@ -209,4 +209,16 @@ grandes: los 3 depósitos al banco quedan como cobranza en negativo.
 - el saldo de cada caja contra el arqueo del día siguiente;
 - que el total del cash no salte.
 
+### Ajuste después de la primera bajada real (06/10, noche)
+- **Espejo AA → A** (perfil `cajas.AA.espejo`): en el Tango de AA, la cuenta "CAJA BLANCO NAVAR S.A." es
+  la caja de A. AA le pasa efectivo (sobre todo para depositar en bancos de A) y lo anota contra esa
+  cuenta; A no anota la entrada, solo el depósito. Cada renglón de esa cuenta en AA genera ahora también
+  una fila en la Caja A (Transferencia Interna, Origen "Tango caja A"). Sin esto la Caja A bajaba por
+  cada depósito sin haber subido nunca. Verificado que A no tiene ninguna cuenta contra AA (no duplica).
+- **AA viejo contra nuevo**: el lector viejo contaba como efectivo los pagos y cobros con cheques (todo el
+  comprobante) y ponía todos los EXT en negativo. El nuevo toma solo el renglón de caja con su signo.
+  Contra los arqueos cargados, ninguno de los dos cierra exacto; el nuevo queda más cerca en el último
+  tramo. El saldo del cash arranca del arqueo del 06/10, así que la historia no lo mueve.
+- Para preguntar a NAVAR: CAJA FACTURACION (A) y CAJA SEMANAL (AA), ¿son efectivo que entra en el arqueo?
+
 ## Revisión
