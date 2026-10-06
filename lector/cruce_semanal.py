@@ -43,6 +43,7 @@ import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill
 
 from lector import cruce as cz
+from lector import cuotas_prestamos
 
 DIAS_PENDIENTE = 7          # lo más nuevo se espera: la administración carga con días de atraso
 CUANTOS_EN_EL_MAIL = 15     # el resto va en el Excel
@@ -121,6 +122,12 @@ def armar(drive, cliente="navar", hoy=None, dias=DIAS_PENDIENTE):
     limite = hoy - datetime.timedelta(days=dias)
     falta = [b for inf in informes for b in inf["solo_banco"] if b["fecha"] <= limite]
     falta.sort(key=lambda b: (-abs(b["c"]), b["fecha"]))
+    # cuotas de préstamos: el desglose de la tabla del banco (lo que la administración necesita para
+    # cargarlas en Tango: capital, interés, IVA, percepción)
+    tabla = cuotas_prestamos.leer(os.path.join(drive, "Deuda bancaria", cuotas_prestamos.ARCHIVO))
+    for b in falta:
+        c = cuotas_prestamos.para_debito(tabla, b["cuenta"].split()[0], b["fecha"], b["c"] / 100.0) if b["c"] < 0 else None
+        b["desglose"] = cuotas_prestamos.desglose(c) if c else ""
     gastos = {}
     for inf in informes:
         for b in inf["gastos"]:
@@ -222,10 +229,11 @@ def escribir_excel(d, ruta):
     ws.append([])
     ws.append(["'Concilia' = parte de lo que se movió en esa cuenta que encontramos igual en el banco y en Tango."])
 
-    hoja("Falta cargar en Tango", ["Fecha", "Banco", "Concepto (como lo escribe el banco)", "Referencia", "CUIT", "Importe", "Nota"],
+    hoja("Falta cargar en Tango", ["Fecha", "Banco", "Concepto (como lo escribe el banco)", "Referencia", "CUIT", "Importe",
+                                   "Desglose (tabla del banco)", "Nota"],
          [[b["fecha"], _nombre_banco(b["cuenta"]), b["texto"], b.get("ref") or "", cz._cuit_lindo(b["cuit"]),
-           b["c"] / 100.0, b.get("pista", "")] for b in d["falta"]],
-         [12, 26, 50, 16, 16, 18, 50], {"Fecha": "dd/mm/yyyy", "Importe": "#,##0.00"})
+           b["c"] / 100.0, b.get("desglose", ""), b.get("pista", "")] for b in d["falta"]],
+         [12, 26, 50, 16, 16, 18, 70, 50], {"Fecha": "dd/mm/yyyy", "Importe": "#,##0.00"})
 
     hoja("Posibles errores", ["Qué vemos"], [[e["texto"]] for e in d["errores"]], [120])
 
@@ -251,7 +259,7 @@ def para_el_mail(d, archivo_excel):
         "bancos": d["bancos"],
         "falta_total": {"cantidad": len(falta), "importe": round(sum(abs(b["c"]) for b in falta) / 100.0, 2)},
         "falta": [{"fecha": b["fecha"].isoformat(), "banco": _nombre_banco(b["cuenta"]), "concepto": b["texto"][:70],
-                   "importe": b["c"] / 100.0} for b in falta[:CUANTOS_EN_EL_MAIL]],
+                   "importe": b["c"] / 100.0, "desglose": b.get("desglose", "")} for b in falta[:CUANTOS_EN_EL_MAIL]],
         "gastos": [{"banco": k, "cantidad": v[0], "importe": v[1] / 100.0} for k, v in sorted(d["gastos"].items())],
         "errores": [e["texto"] for e in d["errores"]],
         "archivo": os.path.basename(archivo_excel),

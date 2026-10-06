@@ -26,8 +26,9 @@ próxima (número, fecha, importe) y las impagas. Con eso:
     próxima) y Estado "Pendiente": son deuda vencida;
   - la próxima va con la fecha e importe que dice el banco;
   - las que siguen se ESTIMAN: misma cuota, mismo día de cada mes, hasta la última.
-    Quedan marcadas "estimada" en Observaciones. Cuando el banco mande la tabla de
-    amortización, se pisan.
+    Quedan marcadas "estimada" en Observaciones. Cuando el banco manda la tabla de
+    amortización, se carga en "Cuotas de prestamos.xlsx" (lector/cuotas_prestamos.py) y esos
+    préstamos usan las cuotas REALES: importe, fecha y desglose de cada una (tarea 50).
 Si se pasa `--bancos para_pegar_bancos_<fecha>.xlsx`, se cruza con los movimientos
 reales: una cuota "impaga" que aparece pagada en el extracto después de la fecha de
 la planilla se marca "Pagado" (pasó con el Nación el 14/09: pagaron la tarjeta y la
@@ -249,8 +250,13 @@ def _fechas_del_mapa(titulo):
     return out
 
 
-def armar(mapa, hoy, empresa="A", pagos_reales=None, excepciones_auto=None):
-    """-> {"lineas": [...], "cuotas": [...], "avisos": [...]}"""
+def armar(mapa, hoy, empresa="A", pagos_reales=None, excepciones_auto=None, cuotas_reales=None):
+    """-> {"lineas": [...], "cuotas": [...], "avisos": [...]}
+    cuotas_reales: las de "Cuotas de prestamos.xlsx"; los préstamos que aparecen ahí (por la columna
+    'Línea del mapa' = Producto del mapa) usan esas cuotas en lugar de estimarlas."""
+    reales = {}
+    for c in cuotas_reales or []:
+        reales.setdefault((c["banco"], _norm(c["linea"])), []).append(c)
     fechas = _fechas_del_mapa(mapa["titulo"])
     fecha_gral = max(fechas.values()) if fechas else None
     origen = "%s · %s%s" % (MARCA, mapa["archivo"], (" (datos al %s)" % fecha_gral.strftime("%d/%m/%Y")) if fecha_gral else "")
@@ -267,7 +273,10 @@ def armar(mapa, hoy, empresa="A", pagos_reales=None, excepciones_auto=None):
             nota.append("resumen de tarjeta: se paga al vencimiento")
         if p["falta_importe"]:
             nota.append("FALTA IMPORTE en el mapa")
-        if tipo == "prestamo" and not p["valor_cuota"] and p["saldo"] and p["cuotas"]:
+        tabla = reales.get((p["banco_corto"], _norm(p["producto"]))) if tipo == "prestamo" else None
+        if tabla:
+            nota.append("cuotas de la TABLA DEL BANCO (%s)" % (tabla[0].get("fuente") or "Cuotas de prestamos.xlsx"))
+        elif tipo == "prestamo" and not p["valor_cuota"] and p["saldo"] and p["cuotas"]:
             _estimar_cuota(p, avisos)
             nota.append("cuota ESTIMADA: el mapa no trae valor de cuota, se calculó con saldo y tasa")
         if p["atraso_dias"]:
@@ -284,7 +293,11 @@ def armar(mapa, hoy, empresa="A", pagos_reales=None, excepciones_auto=None):
         ]))
 
         # ---- cuotas
-        if tipo == "prestamo" and p["valor_cuota"] and p["cuotas"]:
+        if tabla:
+            cuotas += _cronograma_real(p, tabla, hoy, empresa, origen)
+            avisos.append("%s %s: cuotas de la tabla del banco (%d pendientes)" % (
+                p["banco_corto"], p["producto"], sum(1 for c in tabla if c["estado"] != "Pagada")))
+        elif tipo == "prestamo" and p["valor_cuota"] and p["cuotas"]:
             cuotas += _cronograma(p, hoy, empresa, origen, avisos)
         elif tipo == "tarjeta" and _diferidas(p):
             # [persona de NAVAR] (18/09): las "operaciones diferidas" de la AgroNación son pagos a
@@ -414,6 +427,34 @@ def _cronograma(p, hoy, empresa, origen, avisos):
     return out
 
 
+def _cronograma_real(p, tabla, hoy, empresa, origen):
+    """Las cuotas pendientes de un préstamo, tal cual la tabla del banco. 'Importe Capital' es el
+    capital; 'Importe Interes' es todo lo demás (interés, IVA, percepción, subsidio), así la columna
+    Total de la Sheet (capital + interés) da lo que el banco va a debitar."""
+    n = max(c["cuota"] for c in tabla)
+    out = []
+    for c in sorted(tabla, key=lambda c: c["cuota"]):
+        if c["estado"] == "Pagada":
+            continue
+        resto = round(c["total"] - c["capital"], 2)
+        partes = ["interés " + _m(c["interes"])]
+        if c["iva"]:
+            partes.append("IVA " + _m(c["iva"]))
+        if c["percepcion"]:
+            partes.append("percepción " + _m(c["percepcion"]))
+        if c["otros"]:
+            partes.append("subsidio/otros " + _m(c["otros"]))
+        obs = "%s · cuota %d de %d · tabla del banco: %s" % (origen, c["cuota"], n, ", ".join(partes))
+        if c["vto"] < hoy:
+            obs += " · VENCIDA" + (" (impaga según el banco)" if c["estado"] == "Impaga" else "")
+        out.append(OrderedDict([
+            ("Banco", p["banco_corto"]), ("Empresa", empresa), ("Linea / Producto", p["producto"]),
+            ("Nro Cuota", c["cuota"]), ("Fecha Vencimiento", c["vto"]), ("Importe Capital", round(c["capital"], 2)),
+            ("Importe Interes", resto), ("Importe Total Cuota", None), ("Estado", "Pendiente"), ("Observaciones", obs),
+        ]))
+    return out
+
+
 def _cruzar_con_pagos(cuotas, pagos, hoy, fechas, fecha_gral, avisos):
     """Una cuota vencida (o que vence esta semana) que aparece pagada en el extracto
     (mismo banco, importe ±3%) pasa a 'Pagado'. Solo se miran pagos POSTERIORES a la
@@ -535,6 +576,11 @@ def escribir_sheet_con_deuda(res, sheet_original, hoy):
     return ruta
 
 
+def _total(c):
+    """Lo que el banco debita en esa cuota: capital + el resto (interés, IVA, etc.)."""
+    return (c["Importe Capital"] or 0) + (c["Importe Interes"] or 0)
+
+
 def resumen(res, mapa, ruta_pegar, hoy):
     lineas, cuotas = res["lineas"], res["cuotas"]
     por_banco = defaultdict(float)
@@ -554,21 +600,21 @@ def resumen(res, mapa, ruta_pegar, hoy):
     L += ["Peor situación BCRA informada: **%d** (%s)." % (peor, ", ".join("%s %s" % (l["Banco"], l["Linea / Producto"]) for l in lineas if l["Situacion BCRA"] == peor)), ""]
     venc = [c for c in cuotas if c["Estado"] == "Pendiente" and c["Fecha Vencimiento"] < hoy]
     L += ["## Cuotas", "", "- %d cuotas pendientes armadas (%s)" % (len([c for c in cuotas if c["Estado"] == "Pendiente"]),
-                                                                   _m(sum(c["Importe Capital"] for c in cuotas if c["Estado"] == "Pendiente"))),
-          "- **Vencidas (impagas): %d por %s**" % (len(venc), _m(sum(c["Importe Capital"] for c in venc)))]
+                                                                   _m(sum(_total(c) for c in cuotas if c["Estado"] == "Pendiente"))),
+          "- **Vencidas (impagas): %d por %s**" % (len(venc), _m(sum(_total(c) for c in venc)))]
     for c in venc:
         L.append("  - %s · %s · cuota %s · vto %s · %s" % (c["Banco"], c["Linea / Producto"], c["Nro Cuota"],
-                                                            c["Fecha Vencimiento"].strftime("%d/%m"), _m(c["Importe Capital"])))
+                                                            c["Fecha Vencimiento"].strftime("%d/%m"), _m(_total(c))))
     for dias in (30, 90):
         prox = [c for c in cuotas if c["Estado"] == "Pendiente" and hoy <= c["Fecha Vencimiento"] < hoy + datetime.timedelta(days=dias)]
-        L.append("- Vencen en %d días: %d cuotas por %s" % (dias, len(prox), _m(sum(c["Importe Capital"] for c in prox))))
+        L.append("- Vencen en %d días: %d cuotas por %s" % (dias, len(prox), _m(sum(_total(c) for c in prox))))
     prox30 = [c for c in cuotas if c["Estado"] == "Pendiente" and hoy <= c["Fecha Vencimiento"] < hoy + datetime.timedelta(days=30)]
     for c in prox30:
         L.append("  - %s · %s · cuota %s · %s · %s" % (c["Fecha Vencimiento"].strftime("%d/%m"), c["Banco"], c["Nro Cuota"],
-                                                       c["Linea / Producto"], _m(c["Importe Capital"])))
+                                                       c["Linea / Producto"], _m(_total(c))))
     pag = [c for c in cuotas if c["Estado"] == "Pagado"]
     if pag:
-        L += ["", "Cuotas que el mapa daba impagas y el extracto muestra pagadas: %d (%s)." % (len(pag), _m(sum(c["Importe Capital"] for c in pag)))]
+        L += ["", "Cuotas que el mapa daba impagas y el extracto muestra pagadas: %d (%s)." % (len(pag), _m(sum(_total(c) for c in pag)))]
     if res["avisos"]:
         L += ["", "## Avisos", ""] + ["- " + a for a in res["avisos"]]
     L += ["", "## Archivo generado", "", "- `%s` → solapas Lineas y Cronograma, para la solapa Deuda Bancaria del Cashflow" % os.path.basename(ruta_pegar), ""]
@@ -594,11 +640,16 @@ def main():
     ap.add_argument("--empresa", default="A")
     ap.add_argument("--bancos", default=None, help="para_pegar_bancos_<fecha>.xlsx para cruzar cuotas pagadas")
     ap.add_argument("--sheet", default=None, help="copia del Cashflow (.xlsx) para cargar la solapa Deuda Bancaria")
+    ap.add_argument("--cuotas", default=None,
+                    help="tabla de cuotas reales (default: 'Cuotas de prestamos.xlsx' al lado del mapa, si existe)")
     a = ap.parse_args()
     hoy = datetime.date.fromisoformat(a.hoy) if a.hoy else datetime.date.today()
     mapa = leer_mapa(a.archivo)
     pagos = leer_pagos_reales(a.bancos) if a.bancos else None
-    res = armar(mapa, hoy, a.empresa, pagos, _excepciones_auto(a.cliente))
+    from lector import cuotas_prestamos
+    ruta_cuotas = a.cuotas or os.path.join(os.path.dirname(os.path.abspath(a.archivo)), cuotas_prestamos.ARCHIVO)
+    reales = cuotas_prestamos.leer(ruta_cuotas)
+    res = armar(mapa, hoy, a.empresa, pagos, _excepciones_auto(a.cliente), reales)
     carpeta = os.path.dirname(os.path.abspath(a.archivo))
     ruta = escribir_para_pegar(res, carpeta, hoy)
     md = resumen(res, mapa, ruta, hoy)

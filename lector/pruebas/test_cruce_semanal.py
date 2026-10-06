@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import openpyxl
 from lector import cruce_semanal as cs
+from lector import cuotas_prestamos as cp
 from lector.pruebas.test_cruce import CFG, ENC_MOV, ENC_TANGO
 
 D = dt.datetime
@@ -77,6 +78,20 @@ class CruceSemanal(unittest.TestCase):
         self.assertEqual(sum(1 for x in lados if x.startswith("En el banco, falta en Tango")), 3)
         refs = [r[3] for r in excel["Falta cargar en Tango"].iter_rows(min_row=2, values_only=True)]
         self.assertEqual(refs, ["REF0"])                                   # la referencia del banco, para buscarlo
+
+    def test_cuota_de_prestamo_con_su_desglose(self):
+        self.banco(D(2026, 9, 30), "GALICIA 111", -24000.0, "CUOTA DE PRESTAMO 6", "Prestamo")
+        (self.drive / "Deuda bancaria").mkdir(parents=True)
+        cp.escribir([{"banco": "GALICIA", "linea": "Préstamo X", "prestamo": "123", "cuota": 6,
+                      "vto": dt.date(2026, 9, 30), "estado": "A vencer", "pago": None, "capital": 17500.0,
+                      "interes": 5800.0, "iva": 610.0, "percepcion": 90.0, "otros": 0.0, "punitorios": 0.0,
+                      "total": 24000.0, "fuente": "inventada"}],
+                    str(self.drive / "Deuda bancaria" / cp.ARCHIVO))
+        _, d, excel = self.correr()
+        self.assertIn("cuota 6 de 123 (Préstamo X)", d["falta"][0]["desglose"])
+        self.assertIn("capital $17.500,00", d["falta"][0]["desglose"])
+        fila = next(excel["Falta cargar en Tango"].iter_rows(min_row=2, values_only=True))
+        self.assertIn("interés $5.800,00", fila[6])
 
     def test_error_de_tipeo_y_fecha_imposible(self):
         self.banco(D(2026, 9, 14), "MACRO 222", -12345678.0, "TARJETA", "Otros")
