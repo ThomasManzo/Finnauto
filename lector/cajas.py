@@ -37,6 +37,14 @@ CATEGORÍAS (mirando hacia dónde va la plata: las cuentas del lado contrario a 
     el resto (gastos varios, viáticos...)          → Otros
     Las reversiones (REV) quedan con su signo: restan.
 
+PASES ENTRE LAS CAJAS DE LAS DOS EMPRESAS (perfil → cajas.<empresa>.espejo)
+    En el Tango de AA, la caja de A tiene su propia cuenta ("CAJA BLANCO NAVAR S.A."): cuando la
+    caja de AA le pasa plata a la de A (por ejemplo para depositarla en un banco de A), AA lo anota
+    contra esa cuenta, pero A NO anota la entrada en su Tango: solo anota el depósito. Sin espejo, la
+    caja de A bajaría por el depósito sin haber subido nunca. Por eso cada renglón de esa cuenta en
+    AA genera también una fila en la Caja A, con el signo de A (si AA da 20, A recibe 20). Las dos
+    son Transferencia Interna: no son cobro ni pago.
+
 SALIDA
     para_pegar_cajas_<hoy>.xlsx   (solapa Movimientos, con "Cuenta Tango" y "Leyenda" al final)
     resumen_cajas_<hoy>.md
@@ -273,6 +281,37 @@ def movimientos(renglones, empresa, cfg, nombre_archivo):
                  (" · depósito: resta acá porque el banco ya lo suma como cobro" if deposito else "")),
                 ("Cuenta Tango", r["cuenta"]), ("Leyenda", r["leyenda"]),
             ]))
+        salida += _espejo(empresa, grupo, de_caja, cfg, nombre_archivo)
+    return salida
+
+
+def _espejo(empresa, grupo, de_caja, cfg, nombre_archivo):
+    """Las filas de la OTRA caja para los pases que solo anota esta empresa (ver arriba)."""
+    espejo = cfg[empresa].get("espejo")
+    if not espejo:
+        return []
+    otra = espejo["empresa"]
+    salida = []
+    for r in grupo:
+        if r in de_caja or not _es_de(r["cuenta"], espejo["cuentas"]):
+            continue
+        importe = round(r["debe"] - r["haber"], 2)      # lo que entra (o sale) de la otra caja
+        if not importe or not r["fecha"]:
+            continue
+        leyenda = r["leyenda"] or next((x["leyenda"] for x in grupo if x["leyenda"]), "")   # es del comprobante
+        detalle = "Pase desde la caja de %s" % empresa if importe > 0 else "Pase a la caja de %s" % empresa
+        salida.append(OrderedDict([
+            ("ID", None), ("Fecha", r["fecha"]), ("Empresa", otra),
+            ("Tipo", "Ingreso" if importe > 0 else "Egreso"), ("Categoria", "Transferencia Interna"),
+            ("Concepto / Detalle", (detalle + (" · " + leyenda if leyenda else ""))[:120]),
+            ("Importe", importe), ("Medio de Pago", "Efectivo"),
+            ("Banco / Cuenta", cfg[otra]["nombre_en_el_cash"]),
+            # Origen de la caja que RECIBE: así el cash lo suma en su saldo y el importador lo pisa junto.
+            ("Origen", MARCAS[otra] + " · cajas · " + nombre_archivo), ("Estado", "Real"),
+            ("Referencia", (r["tipo"] + " " + r["comprobante"]).strip()), ("Semana (lunes)", None),
+            ("Observaciones", "Tango de %s · %s no lo anota en su Tango: se refleja acá" % (empresa, otra)),
+            ("Cuenta Tango", r["cuenta"] + " (Tango de %s)" % empresa), ("Leyenda", leyenda),
+        ]))
     return salida
 
 

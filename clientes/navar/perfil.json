@@ -204,7 +204,9 @@
     "_ayuda": "Que cuentas de tesoreria de Tango son caja fisica de cada empresa. Se reconocen por el COMIENZO de 'Desc. cuenta' (sin importar mayusculas). Todas las cuentas de una empresa suman en UNA sola caja del cash (nombre_en_el_cash, que es el Banco / Cuenta de Movimientos y el Banco del arqueo en Saldos Bancarios). Lo lee lector/cajas.py (tarea 48).",
     "A": {"nombre_en_el_cash": "Caja A", "cuentas": ["CAJA CONTADO"],
           "_pendiente": "CAJA FACTURACION: ¿es efectivo fisico o una cuenta de paso de las facturas de contado? Si es efectivo, se agrega aca (preguntado a NAVAR el 06/10/2026)."},
-    "AA": {"nombre_en_el_cash": "Caja AA", "cuentas": ["CAJA DIRECTORIO", "CAJA CONTADO"]},
+    "AA": {"nombre_en_el_cash": "Caja AA", "cuentas": ["CAJA DIRECTORIO", "CAJA CONTADO"],
+           "espejo": {"empresa": "A", "cuentas": ["CAJA BLANCO"]},
+           "_espejo": "CAJA BLANCO NAVAR S.A. es, en el Tango de AA, la caja de A. A no anota en su Tango la plata que recibe de AA (solo el deposito en el banco): cada renglon de esa cuenta en AA se refleja en la Caja A (visto el 06/10/2026: depositos de junio en Banco de Corrientes). _pendiente: CAJA SEMANAL de AA, ¿es efectivo que entra en el arqueo?"},
     "cuentas_de_pase": ["MERCADO PAGO", "NAVAR"],
     "_cuentas_de_pase": "Cuentas propias que no son caja ni banco: si un comprobante de caja tambien toca una de estas, es un pase entre cuentas propias (Transferencia Interna), no un cobro ni un pago. Las otras cajas ya cuentan como pase sin listarlas aca. Los bancos (COD_TIPO_CUENTA = B) tampoco van aca: un deposito de la caja en el banco va como cobranza en negativo, porque el extracto lo trae como cobro (ver lector/cajas.py)."
   }
