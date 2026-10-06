@@ -23,8 +23,9 @@ Cada bot / persona deja su archivo en su carpeta y nada más; el vigilante sabe 
                              → lector/deuda_bancaria.py (cruza cuotas con el último extracto)
     Impuestos/               la planilla de vencimientos impositivos (el archivo más nuevo manda)
                              → lector/deuda_impositiva.py
-    Tesorería AA/            Tango: movimientos de tesorería de AA (la operación en efectivo), el más nuevo
-                             → lector/tesoreria_aa.py → Movimientos (Origen "Tango AA")
+    Tesoreria A detalle/ y Tesoreria AA detalle/   Tango: detalle de tesorería (un renglón por cuenta), el
+                             más nuevo de cada una → lector/cajas.py → Movimientos de las cajas de A y AA
+                             (Origen "Tango caja A" / "Tango AA"; tarea 48). Hace falta el de las dos.
     Tesoreria A/ y Tesoreria AA/  ambos exports (sin subcarpetas), último cobro/pago por relacionado
                              → lector/ultimos_pagos.py → Ultimos Pagos (no es caja AA)
     _para la Sheet/          lo que generan los lectores (para_pegar_*.xlsx y resumen_*.md).
@@ -40,7 +41,7 @@ CÓMO CORRE
     Cada 15 minutos: en la Mac por launchd (instalar_vigilante.sh); en la notebook de NAVAR por
     el Programador de tareas de Windows (instalar_vigilante.ps1). Una sola máquina a la vez lo
     tiene que correr: cuando pase a la notebook, en la Mac se desinstala. A mano:
-    python vigilante.py [--forzar bancos|tango|deuda|impuestos] [--simular]
+    python vigilante.py [--forzar bancos|tango|deuda|cajas|ultimos_pagos|impuestos] [--simular]
 """
 
 import os
@@ -77,6 +78,8 @@ EXTENSIONES = (".pdf", ".xls", ".xlsx", ".csv")                                 
 SALIDA = os.path.join(DRIVE or "", "_para la Sheet")
 CARPETAS_TANGO = ("Cuentas a cobrar", "Cuentas a pagar", "Cheques")
 STAGING_TANGO = os.path.join(BASE_REPO, "clientes", "navar", ".run", "tango_ultimo")
+# La salida de las cajas se arma acá y no en "Tesoreria A detalle" (esa carpeta la lee también el cruce).
+STAGING_CAJAS = os.path.join(BASE_REPO, "clientes", "navar", ".run", "cajas")
 
 from lector.tango import LISTAS as LISTAS_TANGO, _norm as _norm_tango      # las mismas reglas de nombre que el lector
 
@@ -335,11 +338,21 @@ def fuentes(hoy):
                              + (["--bancos", ultimo_con_prefijo("para_pegar_bancos_")] if ultimo_con_prefijo("para_pegar_bancos_") else []),
               "salidas": lambda: os.path.dirname(mapa)})
     tes = archivos_de(os.path.join(DRIVE, "Tesoreria AA"), recursivo=False) or archivos_de(os.path.join(DRIVE, "Tesorería AA"), recursivo=False)
-    tes_nuevo = max(tes, key=lambda x: x[1])[0] if tes else None
-    F.append({"nombre": "tesoreria_aa", "archivos": tes,
-              "cmd": lambda: [PYTHON, os.path.join(BASE_REPO, "lector", "tesoreria_aa.py"), "--archivo", tes_nuevo] + H,
-              "salidas": lambda: os.path.dirname(tes_nuevo)})
-    # A nunca entra en tesoreria_aa. Para la lista conjunta deben estar las dos empresas.
+    # Tarea 48: la caja de AA ya no sale de "Tesoreria AA" (lector/tesoreria_aa.py, un renglón por
+    # comprobante y sin decir de qué caja), sino del DETALLE de las dos empresas (lector/cajas.py).
+    # El lector viejo queda en el repo, pero no corre: si corrieran los dos, la caja de AA se contaría doble.
+    def detalle(empresa):
+        d = [x for x in archivos_de(os.path.join(DRIVE, "Tesoreria %s detalle" % empresa), recursivo=False)
+             if x[0].lower().endswith(".xlsx") and not x[0].lower().endswith(".parte.xlsx")]
+        return max(d, key=lambda x: x[1]) if d else None
+    det = [detalle("A"), detalle("AA")]
+    # Las dos o ninguna: el importador pisa las cajas de las dos empresas juntas.
+    det = det if all(det) else []
+    F.append({"nombre": "cajas", "archivos": det, "mirar_fecha": True,
+              "cmd": lambda: [PYTHON, os.path.join(BASE_REPO, "lector", "cajas.py"),
+                              "--a", det[0][0], "--aa", det[1][0], "--salidas", STAGING_CAJAS] + H,
+              "salidas": lambda: STAGING_CAJAS})
+    # Último cobro/pago por relacionado. Para la lista conjunta deben estar las dos empresas.
     tes_a = [x for x in archivos_de(os.path.join(DRIVE, "Tesoreria A"), recursivo=False)
              if x[0].lower().endswith(".xlsx") and not x[0].lower().endswith(".parte.xlsx")]
     tes_aa = [x for x in tes if x[0].lower().endswith(".xlsx") and not x[0].lower().endswith(".parte.xlsx")]

@@ -131,17 +131,18 @@
         "cobranzas": 14,
         "pagos": 15,
         "cheques_terceros": 16,
-        "movimientos_tesoreria": 17
+        "movimientos_tesoreria": 17,
+        "detalle_tesoreria": 22
       }
     },
     "dias_atras": {
       "cheques_propios": 60,
       "movimientos_tesoreria_A": 400,
-      "detalle_tesoreria": 120
+      "detalle_tesoreria": 180
     },
-    "_detalle_tesoreria": "12480 = Tesoreria > Consultas > Comprobantes > Detalle (un renglon por cuenta imputada: banco, caja, cartera de cheques...). Solo A (empresa 13), consulta personalizada 21 'Finauto A tesoreria detalle', creada el 05/10/2026. Ultimos 120 dias, carpeta 'Tesoreria A detalle'. La usa lector/cruce.py (cruce banco <-> Tango). NO borrarla ni editarla en Live.",
+    "_detalle_tesoreria": "12480 = Tesoreria > Consultas > Comprobantes > Detalle (un renglon por cuenta imputada: banco, caja, cartera de cheques...). A (empresa 13): consulta personalizada 21 'Finauto A tesoreria detalle' (05/10/2026), carpeta 'Tesoreria A detalle'; la usan lector/cruce.py (cruce banco <-> Tango) y lector/cajas.py. AA (empresa 56): consulta 22 'Finauto AA tesoreria detalle' (06/10/2026), carpeta 'Tesoreria AA detalle'; la usa lector/cajas.py. Ultimos 180 dias las dos. NO borrarlas ni editarlas en Live.",
     "_origen": "Procesos, empresas y consultas personalizadas comprobados contra Live el 25/09/2026. NAVAR SA = 13 y NAVAR SA Otros = 56. La API funciona con parametros despues de '?'; la ruta dibujada por la pantalla devuelve HTML.",
-    "_movimientos_tesoreria": "11591 = movimientos de tesorería (un renglón por comprobante: cobros, pagos y otros, con Desc. relacionado). A (empresa 13, consulta 19): últimos 400 días configurables, carpeta Tesoreria A. AA (empresa 56, consulta 17): historia completa, carpeta Tesoreria AA (tolera tilde), sigue como efectivo con lector/tesoreria_aa.py. Ambas alimentan lector/ultimos_pagos.py; nunca mezclar las carpetas.",
+    "_movimientos_tesoreria": "11591 = movimientos de tesorería (un renglón por comprobante: cobros, pagos y otros, con Desc. relacionado). A (empresa 13, consulta 19): últimos 400 días configurables, carpeta Tesoreria A. AA (empresa 56, consulta 17): historia completa, carpeta Tesoreria AA (tolera tilde). Ambas alimentan lector/ultimos_pagos.py (desde la tarea 48 la caja de AA sale del detalle, consulta 22, con lector/cajas.py); nunca mezclar las carpetas.",
     "_cheques_terceros": "Las consultas 18 (A) y 16 (AA) filtran Estado = En Cartera en Live (25/09/2026): sin ese filtro A bajaba 75 mil cheques de historia para quedarse con ~44. La bajada igual vuelve a filtrar por código C."
   },
   "cruce": {
@@ -198,5 +199,13 @@
       "fecha corrida": "Posible",
       "exacto CUIT distinto": "Posible"
     }
+  },
+  "cajas": {
+    "_ayuda": "Que cuentas de tesoreria de Tango son caja fisica de cada empresa. Se reconocen por el COMIENZO de 'Desc. cuenta' (sin importar mayusculas). Todas las cuentas de una empresa suman en UNA sola caja del cash (nombre_en_el_cash, que es el Banco / Cuenta de Movimientos y el Banco del arqueo en Saldos Bancarios). Lo lee lector/cajas.py (tarea 48).",
+    "A": {"nombre_en_el_cash": "Caja A", "cuentas": ["CAJA CONTADO"],
+          "_pendiente": "CAJA FACTURACION: ¿es efectivo fisico o una cuenta de paso de las facturas de contado? Si es efectivo, se agrega aca (preguntado a NAVAR el 06/10/2026)."},
+    "AA": {"nombre_en_el_cash": "Caja AA", "cuentas": ["CAJA DIRECTORIO", "CAJA CONTADO"]},
+    "cuentas_de_pase": ["MERCADO PAGO", "NAVAR"],
+    "_cuentas_de_pase": "Cuentas propias que no son caja ni banco: si un comprobante de caja tambien toca una de estas, es un pase entre cuentas propias (Transferencia Interna), no un cobro ni un pago. Las otras cajas ya cuentan como pase sin listarlas aca. Los bancos (COD_TIPO_CUENTA = B) tampoco van aca: un deposito de la caja en el banco va como cobranza en negativo, porque el extracto lo trae como cobro (ver lector/cajas.py)."
   }
 }

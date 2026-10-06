@@ -58,14 +58,15 @@ DESTINO = {
     # Carpeta propia: no se mezcla con "Tesoreria A", que es otra consulta (un renglón por comprobante).
     "detalle_tesoreria": ("Tesoreria A detalle", "%s tesoreria detalle %s.xlsx"),
 }
-# Consultas que existen solo para la empresa A (AA no tiene cheques propios ni bancos).
-SOLO_A = {"cheques_propios", "detalle_tesoreria"}
+# Consultas que existen solo para la empresa A (AA no tiene cheques propios). El detalle de
+# tesorería baja para las dos desde la tarea 48: de ahí salen los movimientos de las cajas.
+SOLO_A = {"cheques_propios"}
 PAGINA = 5000
 TIMEOUT_PAGINA = 300
-# El circuito diario tiene seis fotos de A y cuatro de AA. Si una configuración
+# El circuito diario tiene seis fotos de A y cinco de AA. Si una configuración
 # queda incompleta, el parte debe mostrar que faltó algo en vez de decir 6 de 6.
 # Tiene que coincidir con TANGO_BAJADAS de clientes/navar/herramientas/aviso_diario.gs.
-TOTAL_BAJADAS_DIARIAS = 10
+TOTAL_BAJADAS_DIARIAS = 11
 
 # Qué encabezado manual corresponde a cada campo comprobado de la API. El orden
 # es el orden útil del export manual; todo campo no listado se agrega después sin
@@ -468,6 +469,10 @@ def bajar_y_escribir(cfg, tok, empresa, consulta, proceso, ruta, desde, hasta):
 
 
 def carpeta_consulta(raiz, consulta, empresa="AA"):
+    if consulta == "detalle_tesoreria":
+        # Una carpeta por empresa: "Tesoreria A detalle" (la usa también el cruce) y
+        # "Tesoreria AA detalle". Nunca se mezclan, igual que las de comprobantes.
+        return os.path.join(raiz, "Tesoreria %s detalle" % empresa)
     if consulta != "movimientos_tesoreria":
         return os.path.join(raiz, DESTINO[consulta][0])
     if empresa == "A":
@@ -538,7 +543,7 @@ def _bajada_completa_hoy(raiz, hoy):
 
 
 def pendientes(cfg):
-    """Las diez fotos válidas: seis de A y cuatro de AA."""
+    """Las once fotos válidas: seis de A y cinco de AA."""
     return [(empresa, consulta, proceso)
             for empresa, empresa_id in cfg.get("empresas", {}).items() if empresa_id
             for consulta, proceso in cfg.get("consultas", {}).items() if proceso

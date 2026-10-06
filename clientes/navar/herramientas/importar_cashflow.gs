@@ -79,8 +79,20 @@ var IMPORTS = {
         fechas: ["Fecha"], texto: ["Referencia", "Concepto / Detalle"], colMarca: "Origen", marcas: ["Extracto", "Captura"], conId: true },
     ]
   },
-  // La operación en efectivo de AA (Tango → lector/tesoreria_aa.py): filas de Movimientos con
-  // Origen "Tango AA". Pisa solo esas; las del extracto ("Extracto") las maneja "bancos".
+  // Las cajas de A y de AA (Tango, detalle de tesorería → lector/cajas.py, tarea 48): filas de
+  // Movimientos con Origen "Tango caja A" o "Tango AA". Pisa solo esas (las dos juntas); las del
+  // extracto las maneja "bancos". Trae dos columnas más, "Cuenta Tango" y "Leyenda": si la solapa
+  // no las tiene, se agregan solas al final; las filas de los bancos las dejan vacías.
+  cajas: {
+    prefijo: "para_pegar_cajas_",
+    solapas: [
+      { xlsx: "Movimientos", sheet: "Movimientos", formulas: ["Semana (lunes)"],
+        fechas: ["Fecha"], texto: ["Referencia", "Concepto / Detalle", "Cuenta Tango", "Leyenda"],
+        colMarca: "Origen", marcas: ["Tango AA", "Tango caja A"], conId: true },
+    ]
+  },
+  // ANTERIOR a la tarea 48: la caja de AA salía de lector/tesoreria_aa.py. Ya no corre sola (no está
+  // en ORDEN_AUTO); queda solo para el menú, por si hay que volver atrás.
   tesoreria_aa: {
     prefijo: "para_pegar_tesoreria_aa_",
     solapas: [
@@ -120,7 +132,7 @@ function onOpen() {
     .addItem("Importar Bancos (saldos / movimientos)", "importarBancos")
     .addItem("Importar Deuda (deuda bancaria)", "importarDeuda")
     .addItem("Importar Impuestos (deuda impositiva)", "importarImpuestos")
-    .addItem("Importar Tesorería AA (efectivo)", "importarTesoreriaAA")
+    .addItem("Importar Cajas A y AA (efectivo)", "importarCajas")
     .addItem("Importar Últimos pagos (Tango)", "importarUltimosPagos")
     .addSeparator()
     .addItem("Importar lo nuevo ahora (lo que haría el disparador)", "importarLoNuevo")
@@ -149,7 +161,7 @@ function onOpen() {
 // ---- actualización automática ------------------------------------------------------
 // Orden: deuda e impuestos antes que bancos y Tango, porque las pantallas leen todo junto
 // y da igual; pero si un import falla, los demás siguen (cada uno con su try).
-var ORDEN_AUTO = ["deuda", "impuestos", "bancos", "tesoreria_aa", "tango", "ultimos_pagos"];
+var ORDEN_AUTO = ["deuda", "impuestos", "bancos", "cajas", "tango", "ultimos_pagos"];
 
 function importarLoNuevo() {
   var props = PropertiesService.getDocumentProperties();
@@ -211,6 +223,7 @@ function importarBancos()    { _importarManual_("bancos"); }
 function importarDeuda()     { _importarManual_("deuda"); }
 function importarImpuestos() { _importarManual_("impuestos"); }
 function importarTesoreriaAA() { _importarManual_("tesoreria_aa"); }
+function importarCajas()     { _importarManual_("cajas"); }
 function importarUltimosPagos() { _importarManual_("ultimos_pagos"); }
 
 

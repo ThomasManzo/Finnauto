@@ -38,16 +38,19 @@ const ahora = new Date('2026-09-28T10:30:00Z'); // lunes 07:30
 const fecha = (dia, hora='00:00') => new Date(`2026-09-${dia}T${hora}:00-03:00`);
 function foto() {
   const entradas = [];
-  for (const empresa of ['A','AA']) for (const lista of (empresa==='A'?['cobranzas','pagos','cheques terceros','cheques propios','movimientos tesoreria','tesoreria detalle']:['cobranzas','pagos','cheques terceros','movimientos tesoreria']))
+  for (const empresa of ['A','AA']) for (const lista of (empresa==='A'?['cobranzas','pagos','cheques terceros','cheques propios','movimientos tesoreria','tesoreria detalle']:['cobranzas','pagos','cheques terceros','movimientos tesoreria','tesoreria detalle']))
     entradas.push({nombre:`${empresa} ${lista} 2026-09-28.xlsx`,ruta:'Tango/inventado.xlsx',tipo:lista.includes('tesoreria')?(empresa==='A'?'tesoreria_a':'tesoreria_aa'):'tango',fecha:fecha('28','05:46')});
   entradas.push({nombre:'Movimientos Galicia 2026-09-28.xlsx',ruta:'Bancos/galicia/Movimientos Galicia 2026-09-28.xlsx',tipo:'bancos',fecha:fecha('28','05:48')});
   return {entradas, publicados:[],retenidos:[],log:[],errores:{},ultimaPasada:fecha('28','07:08'),
-    tangoParte:{fecha:fecha('28','05:46'),ok:10,total:10,fallas:[]},
+    tangoParte:{fecha:fecha('28','05:46'),ok:11,total:11,fallas:[]},
     galiciaParte:{fecha:fecha('28','05:48'),ok:true,detalle:''},
     registro:[{tipo:'tango',estado:'ok',fecha:fecha('28','06:33'),detalle:'listo'}],
     saldos:[{banco:'Galicia',origen:'Extracto Galicia',empresa:'A',fecha:fecha('24')},
       {banco:'Macro',origen:'Extracto Macro',empresa:'A',fecha:fecha('25')},
-      {banco:'(varios)',origen:'Manual',empresa:'AA',fecha:fecha('25')}]};
+      {banco:'(varios)',origen:'Manual',empresa:'AA',fecha:fecha('25')},
+      // Tarea 48: las cajas con arqueo a mano no son bancos (no piden extracto).
+      {banco:'Caja A',origen:'Manual',empresa:'A',fecha:fecha('20')},
+      {banco:'Caja AA',origen:'Manual',empresa:'AA',fecha:fecha('20')}]};
 }
 let casos=0;
 function probar(cambio, n, presentes=[], ausentes=[]) {
@@ -64,7 +67,7 @@ function probar(cambio, n, presentes=[], ausentes=[]) {
   casos++;return aviso;
 }
 probar(()=>{},0,['☑ Tango A: cobranzas, pagos, cheques terceros, cheques propios, tesorería, detalle de tesorería', '☑ Tango AA:','☑ Galicia: 05:48 · movimientos hasta 24/09','☑ Macro: al día, extracto hasta 25/09','☑ La Sheet se actualizó (06:33)'],['❌','⚠️','El vigilante procesó','Llegó a Drive']);
-probar(d=>{d.tangoParte.ok=7;d.tangoParte.fallas=['A pagos 2026-09-28.xlsx: timeout','AA cobranzas 2026-09-28.xlsx: HTTP 500'];},2,['☐ Tango A: pagos: timeout','☐ Tango AA: cobranzas: HTTP 500','último archivo: 28/09 05:46']);
+probar(d=>{d.tangoParte.ok=9;d.tangoParte.fallas=['A pagos 2026-09-28.xlsx: timeout','AA cobranzas 2026-09-28.xlsx: HTTP 500'];},2,['☐ Tango A: pagos: timeout','☐ Tango AA: cobranzas: HTTP 500','último archivo: 28/09 05:46']);
 probar(d=>{d.tangoParte.fecha=fecha('27','05:46');},2,['la bajada de Tango no corrió hoy · última: 27/09 05:46']);
 probar(d=>{d.tangoParte=null;},2,['última: no disponible']);
 probar(d=>{d.galiciaParte.ok=false;d.galiciaParte.detalle='se cerró el navegador al guardar';},1,['☐ Galicia: el bot falló a las 05:48 (se cerró el navegador al guardar)','Último extracto: 28/09 05:48']);
@@ -74,8 +77,8 @@ probar(d=>{d.saldos[1].fecha=fecha('24');},1,['☐ Macro: último extracto del 2
 probar(d=>{d.saldos[2].fecha=fecha('21');},0,[],['Arqueo','arqueo']);
 probar(d=>{d.registro[0].fecha=fecha('27','06:33');},1,['La Sheet no importó lo de hoy · última importación: 27/09 06:33']);
 probar(d=>{d.registro[0].fecha=fecha('28','05:47');},1,['La Sheet no importó lo de hoy']);
-probar(d=>{d.registro.push({tipo:'tesoreria_aa',estado:'ERROR',fecha:fecha('26','08:32'),detalle:'rate limit'}, {tipo:'tesoreria_aa',estado:'ok',fecha:fecha('26','09:33'),detalle:''});},0,[],['rate limit','⚠️']);
-probar(d=>{d.registro.push({tipo:'tesoreria_aa',estado:'ERROR',fecha:fecha('26','08:32'),detalle:'rate limit'});},0,['⚠️ REVISAR','Falló la importación de tesoreria_aa: rate limit']);
+probar(d=>{d.registro.push({tipo:'cajas',estado:'ERROR',fecha:fecha('26','08:32'),detalle:'rate limit'}, {tipo:'cajas',estado:'ok',fecha:fecha('26','09:33'),detalle:''});},0,[],['rate limit','⚠️']);
+probar(d=>{d.registro.push({tipo:'cajas',estado:'ERROR',fecha:fecha('26','08:32'),detalle:'rate limit'});},0,['⚠️ REVISAR','Falló la importación de cajas: rate limit']);
 probar(d=>{d.ultimaPasada=fecha('28','05:00');},0,['La notebook no está procesando']);
 probar(d=>{d.errores.Drive='sin acceso';},0,['No se pudo leer Drive']);
 probar(d=>{d.retenidos.push({nombre:'retenido.xlsx',tipo:'bancos',fecha:fecha('28','06:08')});},0,['Archivo retenido: retenido.xlsx']);
@@ -85,10 +88,10 @@ console.log(`OK: ${casos} casos de checklist y lectura de partes; sin Google ni 
 // Un ok de instalación no cuenta como importación; tampoco se acepta una fecha futura.
 probar(d=>{d.registro[0].tipo='sistema';},1,['La Sheet no importó lo de hoy']);
 probar(d=>{d.registro[0].fecha=fecha('28','08:00');},1,['La Sheet no importó lo de hoy']);
-probar(d=>{d.tangoParte.ok=9;d.tangoParte.fallas=['A cheques propios 2026-09-28.xlsx: timeout'];
+probar(d=>{d.tangoParte.ok=10;d.tangoParte.fallas=['A cheques propios 2026-09-28.xlsx: timeout'];
   const f=d.entradas.find(f=>f.nombre.startsWith('A cheques propios'));
   f.nombre='A cheques propios 2026-09-25.xlsx';f.fecha=fecha('25','05:46');
-},1,['☐ Tango A: cheques propios: timeout · último archivo: 25/09 05:46','☑ Tango AA: las 4 fotos llegaron']);
+},1,['☐ Tango A: cheques propios: timeout · último archivo: 25/09 05:46','☑ Tango AA: las 5 fotos llegaron']);
 contexto.FUENTES_AUTOMATICAS.push('macro');
 probar(d=>{d.bancosPartes={macro:{fecha:fecha('28','05:49'),ok:true}};},0,['☑ Macro: 05:49 · movimientos hasta 25/09']);
 contexto.FUENTES_AUTOMATICAS.pop();
@@ -137,17 +140,22 @@ assert.match(ajeno.errores.GaliciaParte,/no corresponde al banco/);
 console.log('OK: nombres en checklist y lectura de partes ausentes, duplicados, ilegibles y ajenos.');
 
 // Las nueve fotos incluyen tesorería de A; una falla suya no desmarca AA.
-probar(d=>{d.tangoParte.ok=9;d.tangoParte.fallas=['A movimientos tesoreria 2026-09-28.xlsx: timeout'];},1,
-  ['☐ Tango A: tesorería: timeout · último archivo: 28/09 05:46','☑ Tango AA: las 4 fotos llegaron']);
-probar(d=>{d.tangoParte.ok=9;d.tangoParte.fallas=['AA movimientos tesoreria 2026-09-28.xlsx: timeout'];},1,
+probar(d=>{d.tangoParte.ok=10;d.tangoParte.fallas=['A movimientos tesoreria 2026-09-28.xlsx: timeout'];},1,
+  ['☐ Tango A: tesorería: timeout · último archivo: 28/09 05:46','☑ Tango AA: las 5 fotos llegaron']);
+probar(d=>{d.tangoParte.ok=10;d.tangoParte.fallas=['AA movimientos tesoreria 2026-09-28.xlsx: timeout'];},1,
   ['☑ Tango A: las 6 fotos llegaron','☐ Tango AA: tesorería: timeout']);
 probar(d=>{d.tangoParte.ok=9;d.tangoParte.total=9;},2,
   ['☐ Tango A:', '☐ Tango AA:', 'parte incompleto (9 de 9)'], ['☑ Tango A:', '☑ Tango AA:']);
 assert.equal(contexto._parteTangoAviso_('2026-09-28T08:46:00+00:00\n9 de 9').total,9);
-assert.equal(contexto.TANGO_BAJADAS,10);
+assert.equal(contexto.TANGO_BAJADAS,11);
+// Un parte de antes de la tarea 48 (10 de 10) no alcanza: falta el detalle de AA.
+probar(d=>{d.tangoParte.ok=10;d.tangoParte.total=10;},2,['parte incompleto (10 de 10)']);
+probar(d=>{d.tangoParte.ok=10;d.tangoParte.fallas=['AA tesoreria detalle 2026-09-28.xlsx: timeout'];},1,
+  ['☑ Tango A: las 6 fotos llegaron','☐ Tango AA: detalle de tesorería: timeout']);
+probar(()=>{},0,['☑ Tango AA: cobranzas, pagos, cheques terceros, tesorería, detalle de tesorería'],['Caja A:','Caja AA:']);
 // Si falla solo el detalle de tesorería (tarea 44), se nombra con su nombre en castellano.
-probar(d=>{d.tangoParte.ok=9;d.tangoParte.fallas=['A tesoreria detalle 2026-09-28.xlsx: timeout'];},1,
-  ['☐ Tango A: detalle de tesorería: timeout','☑ Tango AA: las 4 fotos llegaron']);
+probar(d=>{d.tangoParte.ok=10;d.tangoParte.fallas=['A tesoreria detalle 2026-09-28.xlsx: timeout'];},1,
+  ['☐ Tango A: detalle de tesorería: timeout','☑ Tango AA: las 5 fotos llegaron']);
 
 // Lee la carpeta real del mapa con un doble de Drive: A no se etiqueta como caja AA.
 const exportA = {getName:()=> 'A movimientos tesoreria 2026-09-28.xlsx',
@@ -162,9 +170,9 @@ assert.equal(leidos.entradas.length,1);
 assert.equal(leidos.entradas[0].tipo,'tesoreria_a');
 assert.equal(leidos.entradas[0].nombre,exportA.getName());
 probar(d=>{d.entradas=d.entradas.filter(f=>f.tipo!=='tesoreria_a').concat(leidos.entradas);
-  d.tangoParte.ok=9;d.tangoParte.fallas=['A movimientos tesoreria 2026-09-28.xlsx: timeout'];},1,
+  d.tangoParte.ok=10;d.tangoParte.fallas=['A movimientos tesoreria 2026-09-28.xlsx: timeout'];},1,
   ['☐ Tango A: tesorería: timeout · último archivo: 28/09 05:46','☑ Tango AA:']);
-console.log('OK: diez bajadas, partes viejos incompletos y tesorería A separada de caja AA.');
+console.log('OK: once bajadas, partes viejos incompletos y tesorería A separada de caja AA.');
 
 // Tarea 39: un extracto que llegó y no se pudo leer se dice con su nombre, no como "subir a mano".
 assert.deepEqual(JSON.parse(JSON.stringify(contexto._ilegiblesAviso_(

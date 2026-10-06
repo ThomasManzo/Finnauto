@@ -136,25 +136,38 @@ function armarCash() {
 // Así una misma fórmula sirve para cualquier columna: en las pasadas la parte
 // estimada da 0, en las futuras la parte real da 0, y en la columna que tiene al
 // último extracto adentro suman las dos.
-var HASTA_REAL = "MIN({F},$B$3+1)", DESDE_EST = "MAX({D},$B$3+1)";
-// Los datos no llegan todos juntos: el extracto de un banco puede ser del 22 y la caja de AA
-// del 23. Si hubiera un solo corte para todo (el del banco), lo real de AA cargado después se
+var DESDE_EST = "MAX({D},$B$3+1)";
+// Los datos no llegan todos juntos: el extracto de un banco puede ser del 22 y las cajas del 23.
+// Si hubiera un solo corte para todo (el del banco), lo real de caja cargado después se
 // perdería. Por eso cada origen tiene su propia fecha de corte, y su propio arranque de lo
-// estimado: $B$3 = último extracto bancario · $B$5 = último día con caja de AA.
-var CORTE_REAL = { "Extracto*": "$B$3", "Tango AA*": "$B$5" };
+// estimado: $B$3 = último extracto bancario · $B$5 = último día con movimientos de caja.
+// Las dos cajas (A y AA) comparten el corte porque bajan juntas de Tango, a la misma hora
+// (tarea 48): si una caja no se movió ayer, igual está al día.
+var CORTE_REAL = { "Extracto*": "$B$3", "Tango AA*": "$B$5", "Tango caja A*": "$B$5" };
 var DESDE_EST_AA = "MAX({D},$B$5+1)";
 
-// Lo real viene de dos lados: el extracto de los bancos (Origen "Extracto…") y, para AA, la
-// tesorería de Tango en efectivo (Origen "Tango AA…"). Las filas migradas ("Manual") no cuentan.
-var ORIGENES_REALES = ["Extracto*", "Tango AA*"];
+// Lo real viene de dos lados: el extracto de los bancos (Origen "Extracto…") y las cajas en
+// efectivo de la tesorería de Tango (Origen "Tango AA…" y "Tango caja A…", tarea 48). El de A
+// NO empieza con "Tango A": ese patrón agarraría también AA. Las filas migradas ("Manual") no cuentan.
+var ORIGENES_REALES = ["Extracto*", "Tango AA*", "Tango caja A*"];
 // El nombre puede traer comillas o comodines: se busca el banco literal, no un patrón.
 function _criterioBanco_(banco) {
   return '"' + banco.replace(/~/g, "~~").replace(/\*/g, "~*").replace(/\?/g, "~?").replace(/"/g, '\"\"') + '"';
 }
+// Hasta dónde es real cada origen dentro de una columna ({F} = fin de la columna, exclusivo).
+function _hastaReal_(origen) {
+  return "MIN({F}," + (CORTE_REAL[origen] || "$B$3") + "+1)";
+}
+// Movimientos de UNA caja después de su arqueo: Banco / Cuenta = el nombre de la caja ("Caja A"
+// o "Caja AA") y Origen de Tango. Así la caja de A no suma lo de AA ni al revés.
+function _movCaja_(caja, desdeArqueo, corte) {
+  return "SUMIFS(" + R.movImp + "," + R.movBanco + "," + _criterioBanco_(caja) + "," + R.movOrigen + ",\"Tango*\"," +
+    R.movEstado + ",\"Real\"," + R.movFecha + ",\">\"&" + desdeArqueo + "," + R.movFecha + ",\"<=\"&" + corte + ")";
+}
 function _real_(tipo, cat, banco) {
   // entre paréntesis: los renglones de egreso le anteponen "-" y tiene que negar la suma entera
   return "(" + ORIGENES_REALES.map(function (origen) {
-    var hasta = "MIN({F}," + (CORTE_REAL[origen] || "$B$3") + "+1)";
+    var hasta = _hastaReal_(origen);
     return "SUMIFS(" + R.movImp + "," + R.movFecha + ",\">=\"&{D}," + R.movFecha + ",\"<\"&" + hasta + "," + R.movTipo + ",\"" + tipo + "\"," +
       R.movEstado + ",\"Real\"," + R.movOrigen + ",\"" + origen + "\"" + (cat ? "," + R.movCat + ",\"" + cat + "\"" : "") + (banco !== undefined ? "," + R.movBanco + "," + _criterioBanco_(banco) : "") + ")";
   }).join("+") + ")";
@@ -192,7 +205,7 @@ function _renglones_(periodo) {
 
   var ingresos = [
     { n: "Cobranza acreditada", real: _real_("Ingreso", "Cobranza Facturas"), est: mensual ? "" : cobA, como: "prom",
-      f: "real: transferencias y depósitos de clientes (extracto) · estimado: " + (mensual ? "promedio × inflación" : "facturas A que vencen en Tango") },
+      f: "real: transferencias y depósitos de clientes (extracto) + cobros en la caja de A (Tango); un depósito de la caja en el banco resta en la caja y suma en el banco: cuenta una vez · estimado: " + (mensual ? "promedio × inflación" : "facturas A que vencen en Tango") },
     { n: "Cobranza AA (efectivo)", real: _real_("Ingreso", "Cobranza AA"), est: cobAA, como: "lista", lista: cobAA,
       f: "real: recibos de AA en la tesorería de Tango (efectivo) · estimado: facturas AA que vencen en Tango" },
     { n: "Cheques de clientes (depositados y descontados)", real: _real_("Ingreso", "Cheques") + "+" + _real_("Ingreso", "Descuento de Cheques"), est: mensual ? "" : chqT, como: "prom",
@@ -201,10 +214,10 @@ function _renglones_(periodo) {
   ];
   var egresos = [
     { n: "Proveedores A", real: _real_("Egreso", "Proveedores MP y Logist."), est: mensual ? "" : pagA, como: "max", lista: pagA,
-      f: "real: pagos a proveedores (extracto) · estimado: " + (mensual ? "el mayor entre lo que vence en Tango y el promedio × inflación" : "facturas A que vencen en Tango") },
+      f: "real: pagos a proveedores (extracto y caja de A) · estimado: " + (mensual ? "el mayor entre lo que vence en Tango y el promedio × inflación" : "facturas A que vencen en Tango") },
     { n: "Proveedores AA", real: _real_("Egreso", "Proveedores AA"), est: pagAA, como: "lista", lista: pagAA, f: "real: órdenes de pago de AA en la tesorería de Tango (efectivo) · estimado: facturas AA que vencen en Tango" },
     { n: "Sueldos y cargas", real: _real_("Egreso", "Sueldos y Jornales"), est: mensual ? "" : "-" + _proy_("Sueldos y Jornales"), como: "prom",
-      f: "real: extracto (Macro) · estimado: " + (mensual ? "promedio × inflación" : "lo proyectado con fecha en Movimientos") },
+      f: "real: extracto (Macro) y cajas · estimado: " + (mensual ? "promedio × inflación" : "lo proyectado con fecha en Movimientos") },
     { n: "Impuestos corrientes", real: _real_("Egreso", "Impuestos"), est: "", como: "prom",
       f: "real: extracto · estimado: " + (mensual ? "promedio × inflación" : "no se estima día a día; ver Cash Mensual") },
     { n: "Cheques propios", real: _real_("Egreso", "Cheques"), est: chqP, como: "lista", lista: chqP, f: "real: debitados (extracto) · estimado: en cartera por fecha de pago" },
@@ -275,11 +288,12 @@ function _armarPeriodica_(ss, nombre, periodo) {
   h.getRange(2, 1).setValue("Hoy"); h.getRange(2, 2).setFormula("=TODAY()").setNumberFormat("dd/mm/yyyy");
   h.getRange(3, 1).setValue("Último día con extracto (real hasta acá)"); h.getRange(3, 2).setFormula("=MAXIFS(" + R.movFecha + "," + R.movOrigen + ",\"Extracto*\")").setNumberFormat("dd/mm/yyyy");
   h.getRange(3, 3).setValue("en $ · verde = real (extracto) · amarillo = estimado (listas con fecha) · qué es cada renglón y de dónde sale: solapa Instrucciones").setFontStyle("italic").setFontColor("#5f6368");
-  // La caja de AA no depende del banco: puede estar más al día que el extracto. Cada origen
+  // Las cajas no dependen del banco: pueden estar más al día que el extracto. Cada origen
   // corre hasta su propia fecha, así lo real de hoy suma aunque el banco venga atrasado.
-  h.getRange(5, 1).setValue("Último día con caja de AA (efectivo)");
-  h.getRange(5, 2).setFormula("=MAXIFS(" + R.movFecha + "," + R.movOrigen + ",\"Tango AA*\")").setNumberFormat("dd/mm/yyyy");
-  h.getRange(5, 3).setValue("la caja de AA sale de la tesorería de Tango; lo real de cada origen suma por su fecha, no por la del banco").setFontStyle("italic").setFontColor("#5f6368");
+  h.getRange(5, 1).setValue("Último día con caja (A y AA, efectivo)");
+  h.getRange(5, 2).setFormula("=MAX(" + ["Tango AA*", "Tango caja A*"].map(function (o) {
+    return "MAXIFS(" + R.movFecha + "," + R.movOrigen + ",\"" + o + "\")"; }).join(",") + ")").setNumberFormat("dd/mm/yyyy");
+  h.getRange(5, 3).setValue("las cajas de A y AA salen de la tesorería de Tango; lo real de cada origen suma por su fecha, no por la del banco").setFontStyle("italic").setFontColor("#5f6368");
   if (mensual) {
     h.getRange(4, 1).setValue("Inflación mensual (editable)"); h.getRange(4, 2).setValue(INFLACION_MENSUAL).setNumberFormat("0.0%").setBackground("#fff8e1");
     h.getRange(4, 3).setValue("← cambiá este número y se recalcula lo estimado. Base: promedio de los 3 meses cerrados × (1 + inflación)^n; lo que tiene fecha va por su fecha; las cuotas y planes salen de la solapa Plan.").setFontStyle("italic").setFontColor("#5f6368");
@@ -349,13 +363,11 @@ function _armarPeriodica_(ss, nombre, periodo) {
       var ult = "MAXIFS(" + R.salFecha + "," + cond + "," + R.salFecha + ",\"<=\"&" + corte + ")";
       var primero = "MINIFS(" + R.salFecha + "," + cond + ")";
       // si no hay saldo anterior al corte (la caja AA se cargó el 31/08), se toma el primero conocido
-      // La caja de AA se calcula sola: último arqueo cargado + los movimientos de caja
-      // posteriores (la tesorería de AA ya está en Movimientos con su fecha y su signo).
+      // Cada caja se calcula sola: último arqueo cargado de ESA caja + los movimientos posteriores
+      // de ESA caja (Movimientos, Banco / Cuenta = "Caja A" o "Caja AA", Origen de Tango).
       var base = "SUMIFS(" + R.salImp + "," + cond + "," + R.salFecha + ",IF(" + ult + "=0," + primero + "," + ult + "))";
       var desdeArqueo = "IF(" + ult + "=0," + primero + "," + ult + ")";
-      var movCaja = "SUMIFS(" + R.movImp + "," + R.movOrigen + ",\"Tango AA*\"," + R.movEstado + ",\"Real\"," +
-                    R.movFecha + ",\">\"&" + desdeArqueo + "," + R.movFecha + ",\"<=\"&" + corte + ")";
-      h.getRange(fila, 2 + c).setFormula("=IF(" + D(c) + ">$B$2,\"\"," + base + (b.manual ? "+" + movCaja : "") + ")");
+      h.getRange(fila, 2 + c).setFormula("=IF(" + D(c) + ">$B$2,\"\"," + base + (b.caja ? "+" + _movCaja_(b.caja, desdeArqueo, corte) : "") + ")");
     }
     fila++;
   });
@@ -475,7 +487,9 @@ function _armarPeriodica_(ss, nombre, periodo) {
   h.getRange(fila, 1).setValue("de lo cual ya pasó (real): ingresos").setFontSize(10).setFontColor("#9aa0a6");
   h.getRange(fila + 1, 1).setValue("de lo cual ya pasó (real): egresos").setFontSize(10).setFontColor("#9aa0a6");
   for (var c5 = 0; c5 < nCols; c5++) {
-    var base5 = function (origen) { return R.movFecha + ",\">=\"&" + D(c5) + "," + R.movFecha + ",\"<\"&" + fx(HASTA_REAL, c5) + "," + R.movEstado + ",\"Real\"," + R.movOrigen + ",\"" + origen + "\"," + R.movCat + ",\"<>Transferencia Interna\""; };
+    // Cada origen hasta su propio corte (igual que _real_): si no, lo real de caja posterior al
+    // último extracto quedaría en los renglones y también en el saldo real, contado dos veces.
+    var base5 = function (origen) { return R.movFecha + ",\">=\"&" + D(c5) + "," + R.movFecha + ",\"<\"&" + fx(_hastaReal_(origen), c5) + "," + R.movEstado + ",\"Real\"," + R.movOrigen + ",\"" + origen + "\"," + R.movCat + ",\"<>Transferencia Interna\""; };
     h.getRange(fila, 2 + c5).setFormula("=" + ORIGENES_REALES.map(function (o) { return "SUMIFS(" + R.movImp + "," + base5(o) + "," + R.movTipo + ",\"Ingreso\")"; }).join("+")).setFontSize(10).setFontColor("#9aa0a6");
     h.getRange(fila + 1, 2 + c5).setFormula("=-(" + ORIGENES_REALES.map(function (o) { return "SUMIFS(" + R.movImp + "," + base5(o) + "," + R.movTipo + ",\"Egreso\")"; }).join("+") + ")").setFontSize(10).setFontColor("#9aa0a6");
   }
@@ -758,8 +772,8 @@ function armarInstrucciones() {
     ["Cash Semanal", "Semana por semana, lunes a domingo: 4 cerradas (real) + la actual + 12 adelante", "fórmula sobre las listas", "nadie"],
     ["Cash Mensual", "Mes por mes: 3 cerrados (real) + el actual + 6 adelante, con inflación editable (B4)", "fórmula sobre las listas + solapa Plan", "solo la celda de inflación"],
     ["Plan", "Una fila por deuda: pagar como está / refinanciar / posponer. Cash Mensual toma las cuotas de acá", "Deuda Bancaria + Deuda Impositiva + lo vencido", "la dirección: Decisión, gracia, cuotas, tasa, prioridad"],
-    ["Movimientos", "LISTA: cada movimiento real, clasificado: los de banco (Origen Extracto) y los de la caja de AA (Origen Tango AA)", "extractos + tesorería de AA → lectores → importación automática", "el sistema"],
-    ["Saldos Bancarios", "LISTA: saldo al cierre de cada día, por cuenta. La caja en efectivo de AA se carga a mano (una fila por arqueo)", "extractos → lector → importación automática · caja AA: a mano", "el sistema · la caja AA: quien hace el arqueo"],
+    ["Movimientos", "LISTA: cada movimiento real, clasificado: los de banco (Origen Extracto) y los de las cajas en efectivo (Origen Tango caja A / Tango AA), con la cuenta de Tango de la que sale y la leyenda", "extractos + tesorería de Tango (detalle de A y AA) → lectores → importación automática", "el sistema"],
+    ["Saldos Bancarios", "LISTA: saldo al cierre de cada día, por cuenta. Las cajas en efectivo (Caja A y Caja AA) se cargan a mano, una fila por arqueo; el cash les suma solo los movimientos posteriores", "extractos → lector → importación automática · cajas: a mano", "el sistema · las cajas: quien hace el arqueo"],
     ["Cuentas a Cobrar", "LISTA: facturas pendientes de clientes, con vencimiento", "Tango → lector → importación automática", "el sistema"],
     ["Cuentas a Pagar", "LISTA: facturas pendientes de proveedores, con vencimiento", "Tango → lector → importación automática", "el sistema"],
     ["Cartera de Cheques", "LISTA: cheques de terceros en cartera y cheques propios entregados", "Tango → lector → importación automática", "el sistema"],
@@ -791,11 +805,11 @@ function armarInstrucciones() {
 
   seccion("3 · Cada renglón: qué es lo real y qué es lo estimado");
   tabla(["Renglón", "REAL (columnas pasadas)", "ESTIMADO (columnas futuras)"], [
-    ["Cobranza acreditada", "transferencias y depósitos de clientes (Movimientos · Cobranza Facturas)", "diario/semanal: facturas A que vencen (Cuentas a Cobrar) · mensual: promedio × inflación"],
+    ["Cobranza acreditada", "transferencias y depósitos de clientes + cobros en la caja de A (Movimientos · Cobranza Facturas). El depósito de la caja en el banco resta en la caja: el cobro cuenta una sola vez", "diario/semanal: facturas A que vencen (Cuentas a Cobrar) · mensual: promedio × inflación"],
     ["Cobranza AA (efectivo)", "recibos de AA en la tesorería de Tango (Movimientos · Cobranza AA, Origen Tango AA)", "facturas AA que vencen (Cuentas a Cobrar)"],
     ["Cheques de clientes", "cheques depositados + venta de valores / descuento (Movimientos · Cheques + Descuento de Cheques)", "diario/semanal: cheques en cartera por fecha de cobro · mensual: promedio × inflación"],
     ["Sin identificar", "lo que el banco acreditó sin decir qué es (Movimientos · Otros)", "tiene que ser 0"],
-    ["Proveedores A", "pagos a proveedores (Movimientos · Proveedores)", "diario/semanal: facturas A que vencen (Cuentas a Pagar) · mensual: el mayor entre eso y el promedio × inflación"],
+    ["Proveedores A", "pagos a proveedores, por banco y por la caja de A (Movimientos · Proveedores)", "diario/semanal: facturas A que vencen (Cuentas a Pagar) · mensual: el mayor entre eso y el promedio × inflación"],
     ["Proveedores AA", "órdenes de pago de AA en la tesorería de Tango (Movimientos · Proveedores AA, Origen Tango AA)", "facturas AA que vencen (Cuentas a Pagar)"],
     ["Sueldos y cargas", "Movimientos · Sueldos y Jornales", "diario/semanal: lo proyectado con fecha en Movimientos · mensual: promedio × inflación"],
     ["Impuestos corrientes", "Movimientos · Impuestos (IVA, cargas, retenciones pagadas)", "mensual: promedio × inflación · diario/semanal: no se estima"],
@@ -848,7 +862,8 @@ function armarInstrucciones() {
     ["Cheques", "Tango Live: cheques de terceros en cartera y cheques propios emitidos", "A cheques terceros AAAA-MM-DD.xlsx · A cheques propios AAAA-MM-DD.xlsx · AA cheques terceros ...", "Cartera de Cheques"],
     ["Deuda bancaria", "el mapa de deuda cuando cambie", "Bancos_Navar.xlsx", "Deuda Bancaria"],
     ["Impuestos", "la planilla de vencimientos impositivos cuando cambie", "Control Vencimiento Impuestos.xlsx", "Deuda Impositiva"],
-    ["Tesorería AA", "Tango Live: movimientos de tesorería de NAVAR SA Otros (recibos, órdenes de pago, otros), un archivo por día", "AA movimientos tesoreria AAAA-MM-DD.xlsx", "Movimientos (Origen Tango AA)"],
+    ["Tesoreria A detalle · Tesoreria AA detalle", "Tango Live: detalle de comprobantes de tesorería (un renglón por cuenta), de cada empresa, un archivo por día", "A tesoreria detalle AAAA-MM-DD.xlsx · AA tesoreria detalle AAAA-MM-DD.xlsx", "Movimientos (cajas: Origen Tango caja A / Tango AA)"],
+    ["Tesoreria A · Tesoreria AA", "Tango Live: movimientos de tesorería por comprobante, un archivo por día", "A movimientos tesoreria AAAA-MM-DD.xlsx · AA movimientos tesoreria ...", "Ultimos Pagos"],
     ["_para la Sheet", "NO TOCAR: lo que generan los lectores; de acá lo levanta el disparador", "para_pegar_*.xlsx", "—"],
   ]);
   parrafo("Cada export de Tango es la FOTO completa de ese día (no lo nuevo desde ayer): se carga el más nuevo de cada lista; los anteriores quedan como historia. El nombre importa: primera palabra = empresa (A / AA), después qué es (cobranzas / pagos / cheques terceros / cheques propios), después la fecha. Los filtros de cada consulta tienen que ser los mismos cada vez (vencimiento sin límite, pendientes): si cambian, el vigilante retiene el archivo y no se publica.");
@@ -946,8 +961,10 @@ function _bancos_(ss) {
     if (!banco || vistos[banco]) return;
     vistos[banco] = true;
     var manual = String(r[5] || "").toLowerCase().indexOf("manual") !== -1;
-    var esCaja = /vario|caja aa/i.test(banco);
-    out.push({ nombre: banco, manual: manual || esCaja, etiqueta: esCaja ? "Caja AA (efectivo)" : banco,
+    // Las cajas en efectivo (tarea 48): "Caja A" y "Caja AA" (el viejo "(varios)" es la de AA).
+    // caja = el nombre con que sus movimientos están en Movimientos (Banco / Cuenta).
+    var caja = /^caja a$/i.test(banco) ? "Caja A" : /vario|caja aa/i.test(banco) ? "Caja AA" : "";
+    out.push({ nombre: banco, manual: manual || !!caja, caja: caja, etiqueta: caja ? caja + " (efectivo)" : banco,
                fuente: manual ? "Saldos Bancarios · carga manual: se arrastra hasta que se cargue otro" : "Saldos Bancarios · extracto · se arrastra el último saldo conocido" });
   });
   return out;
