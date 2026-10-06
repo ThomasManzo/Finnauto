@@ -1,5 +1,5 @@
 # Tarea 46 — Cruce banco ↔ Tango: cheques propios, neto con cargos y otras mejoras
-Estado: lista para revisión
+Estado: aprobada
 Rama: tarea/cruce-mejoras
 
 ## Objetivo
@@ -54,3 +54,4 @@ los tres. Limitación: la foto de cheques propios trae solo los últimos 60 día
 los cheques cobrados antes no se pueden emparejar.
 
 ## Revisión
+06/10/2026: mergeada con el OK de Thomas. Julio 95 %, agosto 97 %, septiembre 76 % conciliado; control OK; pares nuevos revisados a mano.
