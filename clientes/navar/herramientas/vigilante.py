@@ -330,7 +330,10 @@ def fuentes(hoy):
               "cmd": lambda: [PYTHON, os.path.join(BASE_REPO, "lector", "tango.py"), "--carpeta", preparar_staging_tango(tango)] + H,
               "salidas": lambda: STAGING_TANGO})
     mapa = os.path.join(DRIVE, "Deuda bancaria", "Bancos_Navar.xlsx")
-    F.append({"nombre": "deuda", "archivos": [(mapa, os.path.getmtime(mapa))] if os.path.exists(mapa) else [],
+    # la tabla de cuotas reales (tarea 50) también dispara la deuda: si cambia, se rearma el cronograma
+    cuotas = os.path.join(DRIVE, "Deuda bancaria", "Cuotas de prestamos.xlsx")
+    F.append({"nombre": "deuda", "archivos": ([(mapa, os.path.getmtime(mapa))] if os.path.exists(mapa) else [])
+                                            + ([(cuotas, os.path.getmtime(cuotas))] if os.path.exists(mapa) and os.path.exists(cuotas) else []),
               "cmd": lambda: [PYTHON, os.path.join(BASE_REPO, "lector", "deuda_bancaria.py"), "--archivo", mapa] + H
                              + (["--bancos", ultimo_con_prefijo("para_pegar_bancos_")] if ultimo_con_prefijo("para_pegar_bancos_") else []),
               "salidas": lambda: os.path.dirname(mapa)})
