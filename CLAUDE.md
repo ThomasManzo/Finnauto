@@ -96,8 +96,8 @@ la sección "Dónde estamos" más nueva. Ahí está el estado real; esta secció
 - ⬜ Planes de ARCA: la planilla trae solo la próxima cuota de cada plan; faltan las siguientes
   (se pidió a NAVAR cuántas cuotas quedan). ⬜ Reintentos solos todo el día + mails en criollo.
   ⬜ Tablero web con los bloques del Cash nuevo.
-- ⬜ Producto general (fuera de NAVAR): piezas 2-6 del README. El refactor de Galicia para MAGA
-  sigue sin corrida en producción (la variante de NAVAR sí corre).
+- ⬜ Producto general (fuera de NAVAR): piezas 2-6 del README. **MAGA descartado (07/10/2026)**: no
+  se avanza con ellos; su código queda en el repo pero no se mantiene.
 
 ## Preferencia de Thomas
 Consultarle antes de cambios grandes; dejar todo lo más limpio y comentado posible. Thomas no
