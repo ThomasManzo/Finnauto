@@ -113,3 +113,51 @@ function _pagina_(titulo, texto) {
     '<div style="max-width:520px;margin:15vh auto;padding:0 20px"><h1 style="font-size:22px;margin:0 0 8px">' + titulo +
     '</h1><p style="color:#5E6C66;margin:0">' + texto + '</p></div></body></html>';
 }
+
+
+// ==================================================================================
+// EL TABLERO SE REARMA SOLO (tarea 52, 07/10/2026)
+// ----------------------------------------------------------------------------------
+// El tablero lo arma la notebook con el programa de siempre (armar_tablero.py), a partir de una copia
+// en Excel de la Sheet. Esta parte deja esa copia en "NAVAR - Datos / Tablero / fuente": la llama la
+// importación horaria (importar_cashflow.gs) cada vez que entra algo nuevo, y también se puede correr
+// desde el menú finauto. El vigilante de la notebook ve la copia y rearma finauto.html.
+// Se guardan las últimas 3 copias (con fecha y hora en el nombre); las más viejas van a la papelera.
+// La primera vez Google pide permiso para "conectarse a un servicio externo": es para bajar la copia
+// de la propia Sheet.
+var CARPETA_FUENTE = "fuente";
+var COPIAS_FUENTE = 3;
+
+function exportarParaTablero() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var url = "https://docs.google.com/spreadsheets/d/" + ss.getId() + "/export?format=xlsx";
+  var resp = UrlFetchApp.fetch(url, {headers: {Authorization: "Bearer " + ScriptApp.getOAuthToken()}, muteHttpExceptions: true});
+  if (resp.getResponseCode() !== 200) throw new Error("Google no devolvió la copia de la Sheet (código " + resp.getResponseCode() + ")");
+  var carpeta = _carpetaFuente_();
+  var nombre = "NAVAR - Cash Flow " + Utilities.formatDate(new Date(), "America/Argentina/Buenos_Aires", "yyyy-MM-dd HHmm") + ".xlsx";
+  var nuevo = carpeta.createFile(resp.getBlob().setName(nombre));
+  // Las más viejas a la papelera (no se borran del todo: se pueden recuperar).
+  var copias = [], archivos = carpeta.getFiles();
+  while (archivos.hasNext()) { var f = archivos.next(); if (/\.xlsx$/i.test(f.getName())) copias.push(f); }
+  copias.sort(function (a, b) { return b.getDateCreated() - a.getDateCreated(); });
+  copias.slice(COPIAS_FUENTE).forEach(function (f) { f.setTrashed(true); });
+  return nuevo.getName();
+}
+
+// Desde el menú: deja la copia y avisa. La notebook rearma el tablero en su próxima pasada (≤ 15 min).
+function rearmarTableroAhora() {
+  var nombre = exportarParaTablero();
+  try {
+    SpreadsheetApp.getActiveSpreadsheet().toast("Copia lista (" + nombre + "). La notebook rearma el tablero en los próximos 15 minutos.", "finauto", 10);
+  } catch (e) {}
+}
+
+function _carpetaFuente_() {
+  var raices = DriveApp.getFoldersByName(CARPETA_RAIZ);
+  if (!raices.hasNext()) throw new Error("No encontré la carpeta " + CARPETA_RAIZ);
+  var raiz = raices.next();
+  var tableros = raiz.getFoldersByName(CARPETA_TABLERO);
+  var tablero = tableros.hasNext() ? tableros.next() : raiz.createFolder(CARPETA_TABLERO);
+  var fuentes = tablero.getFoldersByName(CARPETA_FUENTE);
+  return fuentes.hasNext() ? fuentes.next() : tablero.createFolder(CARPETA_FUENTE);
+}

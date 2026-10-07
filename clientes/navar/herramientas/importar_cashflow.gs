@@ -136,6 +136,7 @@ function onOpen() {
     .addItem("Importar Últimos pagos (Tango)", "importarUltimosPagos")
     .addSeparator()
     .addItem("Importar lo nuevo ahora (lo que haría el disparador)", "importarLoNuevo")
+    .addItem("Rearmar el tablero ahora", "rearmarTableroAhora")                  // tablero_web.gs (tarea 52)
     .addItem("Instalar actualización automática (cada hora)", "instalarDisparador")
     .addItem("Quitar actualización automática", "quitarDisparador")
     .addSeparator()
@@ -185,6 +186,11 @@ function importarLoNuevo() {
     }
   });
   if (!hubo) Logger.log("importarLoNuevo: nada nuevo");
+  // Tarea 52: si entró algo, copia en Excel para que la notebook rearme el tablero. Si falla, la
+  // importación ya quedó hecha: el tablero se rearma con la próxima (y la página avisa si queda viejo).
+  if (hubo && typeof exportarParaTablero === "function") {
+    try { exportarParaTablero(); } catch (e) { Logger.log("copia para el tablero: " + (e && e.message || e)); }
+  }
   return hubo;
 }
 

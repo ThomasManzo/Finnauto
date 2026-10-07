@@ -26,6 +26,8 @@ Cada bot / persona deja su archivo en su carpeta y nada más; el vigilante sabe 
     Tesoreria A detalle/ y Tesoreria AA detalle/   Tango: detalle de tesorería (un renglón por cuenta), el
                              más nuevo de cada una → lector/cajas.py → Movimientos de las cajas de A y AA
                              (Origen "Tango caja A" / "Tango AA"; tarea 48). Hace falta el de las dos.
+    Tablero/fuente/          la copia en Excel de la Sheet que deja Apps Script (tarea 52), la más nueva
+                             → herramientas/armar_tablero.py → Tablero/finauto.html (el tablero de siempre)
     Tesoreria A/ y Tesoreria AA/  ambos exports (sin subcarpetas), último cobro/pago por relacionado
                              → lector/ultimos_pagos.py → Ultimos Pagos (no es caja AA)
     _para la Sheet/          lo que generan los lectores (para_pegar_*.xlsx y resumen_*.md).
@@ -361,6 +363,16 @@ def fuentes(hoy):
               "cmd": lambda: [PYTHON, os.path.join(BASE_REPO, "lector", "ultimos_pagos.py"),
                               "--a", ultimos[0][0], "--aa", ultimos[1][0]] + H,
               "salidas": lambda: os.path.dirname(ultimos[0][0])})
+    # Tarea 52: el tablero de siempre se rearma solo. La Sheet deja una copia en Excel en
+    # Tablero/fuente/ cuando importa algo; se arma con la más nueva. También una vez por día aunque
+    # la copia no cambie, porque lo vencido y lo que viene dependen de la fecha de hoy.
+    fuente = [x for x in archivos_de(os.path.join(DRIVE, "Tablero", "fuente"), recursivo=False)
+              if x[0].lower().endswith(".xlsx")]
+    fuente = [max(fuente, key=lambda x: x[1])] if fuente else []
+    F.append({"nombre": "tablero", "archivos": fuente, "mirar_dia": True,
+              "cmd": lambda: [PYTHON, os.path.join(AQUI, "armar_tablero.py"), "--archivo", fuente[0][0],
+                              "--hoy", hoy.isoformat()],
+              "salidas": lambda: os.path.join(BASE_REPO, "clientes", "navar", ".run", "tablero")})
     imp = archivos_de(os.path.join(DRIVE, "Impuestos"), recursivo=False)
     imp_nuevo = max(imp, key=lambda x: x[1])[0] if imp else None
     F.append({"nombre": "impuestos", "archivos": imp,
@@ -391,6 +403,8 @@ def main():
         if not f["archivos"]:
             continue
         fa = firma(f["archivos"])
+        if f.get("mirar_dia"):
+            fa += "|" + hoy.isoformat()       # se vuelve a correr al cambiar el día
         if f.get("mirar_fecha"):
             # Una nueva fecha de pago puede ocupar los mismos bytes que la anterior.
             fa += "|" + "|".join(str(os.stat(r).st_mtime_ns) for r, _ in f["archivos"])
