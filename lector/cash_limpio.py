@@ -417,10 +417,12 @@ def leer(archivo, cliente, hoy=None):
             ignorados["Cartera de Cheques"][1] += abs(importe)
             continue
         motivo = _revisar(d)
-        if motivo:
-            lista = "Cheques propios" if _norm(tipo).startswith("propio") else "Cheques de terceros"
-            revisar[(lista, motivo)][0] += 1
-            revisar[(lista, motivo)][1] += abs(importe)
+        # Un cheque PROPIO con fecha pasada y sin debitar es plata que se debe hoy: va al vencido
+        # (igual que en el Cash: "Cheques propios vencidos sin debitar"). Tarea 54, Thomas 07/10/2026.
+        # Los de terceros con fecha pasada siguen en Hallazgos: no son deuda, son cobros dudosos.
+        if motivo and not _norm(tipo).startswith("propio"):
+            revisar[("Cheques de terceros", motivo)][0] += 1
+            revisar[("Cheques de terceros", motivo)][1] += abs(importe)
             continue
         item = {"fecha": fecha, "importe": abs(importe), "estado": est.upper(),
                 "librador": _txt(_col(d, "beneficiario", "librador")),

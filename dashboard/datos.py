@@ -880,7 +880,8 @@ def proyeccion(contrato, unidad, hoy, dias=45, con_intercompany=False, modo=DIA_
     for x in stock:
         por_tipo["proveedores" if x["tipo"] == "PROVEEDOR" else
                  "impuestos" if x["tipo"] == "IMPUESTO" else
-                 "bancos" if x["tipo"] == "PRESTAMO" else "otros"] += x["monto"]
+                 "bancos" if x["tipo"] == "PRESTAMO" else
+                 "cheques" if x["tipo"] == "CHEQUE" else "otros"] += x["monto"]
     return {"desde": hoy, "hasta": hasta, "caja_inicial": caja, "dias": out,
             "modo": modo,
             "vencido_stock": {"total": sum(x["monto"] for x in stock),
@@ -1332,7 +1333,9 @@ def armar(contrato, cliente="maga"):
         for tipo, nombre, riesgo in (
             ("IMPUESTO", "ARCA / impuestos", "Riesgo de embargo de cuentas."),
             ("PRESTAMO", "Bancos", "Riesgo de corte de las líneas que financian la caja."),
-            ("PROVEEDOR", "Proveedores", "Riesgo de corte de entregas.")):
+            ("PROVEEDOR", "Proveedores", "Riesgo de corte de entregas."),
+            # Tarea 54: los cheques propios con fecha pasada y sin debitar, como en el Cash.
+            ("CHEQUE", "Cheques propios sin debitar", "Riesgo de rechazo: multa y cuenta inhabilitada.")):
             items = [x for x in stock["items"] if x["tipo"] == tipo]
             filas.append({"nombre": nombre, "monto": sum(x["monto"] for x in items),
                           "desde": min((x["fecha"] for x in items), default=None),
