@@ -87,14 +87,15 @@ la sección "Dónde estamos" más nueva. Ahí está el estado real; esta secció
   `tareas/` y tomar el número libre siguiente. Al terminar, borrar el worktree y la rama mergeada.
 - Nada sale a NAVAR sin validar los números antes (ver memoria del proyecto).
 
-## Estado / pendiente (28/09/2026)
-- ✅ Tango por API, automático de punta a punta (tareas 18, 20, 22).
+## Estado / pendiente (06/10/2026)
+- ✅ Tango por API, automático de punta a punta (tareas 18, 20, 22); 11 bajadas diarias desde la 48.
 - ✅ Galicia: bot en la notebook, baja solo (tareas 17, 19, 23-26). Pendientes finos en el LEEME.
-- ⬜ Macro (usuario bloqueado, se pide desbloqueo), BBVA (login en loop), Nación (escaneado: la
-  notebook no tiene OCR; tarea 21 para la cuenta de 13/14 dígitos), Corrientes.
-- ⬜ Cruce banco ↔ Tango (chat propio). ⬜ Aviso de las 9:00 adaptado a la bajada automática.
-  ⬜ Cuotas bancarias que se den de baja solas. ⬜ Tablero web con los bloques del Cash nuevo
-  (después de los bancos).
+- ✅ Cruce banco ↔ Tango (tareas 40, 45-47) y mail semanal del cruce (49). ✅ Cuotas reales de
+  préstamos (50). ✅ Cajas de A y AA en el cash, con cuenta de Tango y leyenda (48).
+- ⬜ Macro (usuario bloqueado), BBVA (Akamai: manual), Nación (escaneado; tarea 21), Corrientes.
+- ⬜ Planes de ARCA: la planilla trae solo la próxima cuota de cada plan; faltan las siguientes
+  (se pidió a NAVAR cuántas cuotas quedan). ⬜ Reintentos solos todo el día + mails en criollo.
+  ⬜ Tablero web con los bloques del Cash nuevo.
 - ⬜ Producto general (fuera de NAVAR): piezas 2-6 del README. El refactor de Galicia para MAGA
   sigue sin corrida en producción (la variante de NAVAR sí corre).
 
