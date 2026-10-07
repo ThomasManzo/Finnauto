@@ -1085,6 +1085,50 @@ def deuda_bancaria(contrato, unidad, hoy):
     }
 
 
+def cuentas_de_hoy(contrato, unidad):
+    """La caja de hoy, cuenta por cuenta: cada banco (último extracto) y cada caja (arqueo + Tango).
+
+    Suma lo mismo que «Caja de hoy»: son los mismos saldos. Sirve para ver dónde está la plata y de
+    cuándo es cada dato (tarea 53).
+    """
+    out = []
+    for s in contrato.get("saldos") or []:
+        if unidad != GRUPO and _unidad_real(s.get("unidad")) != unidad:
+            continue
+        if s.get("es_caja"):
+            nota = "arqueo del %s%s" % (_dd(s.get("fecha_arqueo")),
+                    " + %d movimientos de Tango" % s["movimientos_desde_arqueo"] if s.get("movimientos_desde_arqueo") else "")
+            nombre = s.get("nombre_caja") or s.get("banco")
+        else:
+            nota = "extracto al %s" % _dd(s.get("fecha"))
+            nombre = _NOMBRES_BANCO.get(_norm_banco(s.get("banco")), str(s.get("banco") or "Sin banco").title())
+        out.append({"nombre": nombre, "unidad": s.get("unidad") or "", "saldo": float(s.get("saldo") or 0),
+                    "es_caja": bool(s.get("es_caja")), "nota": nota, "cuenta": str(s.get("cuenta") or "")})
+    # Un banco con dos cuentas: se agregan los últimos números de cada una para distinguirlas.
+    repetidos = {n for n in [x["nombre"] for x in out if not x["es_caja"]]
+                 if sum(1 for y in out if y["nombre"] == n) > 1}
+    for x in out:
+        if x["nombre"] in repetidos and x["cuenta"]:
+            x["nombre"] += " · cta. …" + x["cuenta"].replace(" ", "")[-4:]
+        del x["cuenta"]
+    # Primero las cajas (la plata física), después los bancos por saldo.
+    out.sort(key=lambda x: (not x["es_caja"], x["unidad"], -x["saldo"]))
+    return out
+
+
+_NOMBRES_BANCO = {"BBVA": "BBVA", "NACION": "Nación", "CORRIENTES": "Corrientes", "GALICIA": "Galicia",
+                  "MACRO": "Macro", "ITAU": "Itaú", "SANTANDER": "Santander"}
+
+
+def _norm_banco(b):
+    return str(b or "").strip().upper().replace("Ó", "O")
+
+
+def _dd(iso):
+    iso = str(iso or "")
+    return iso[8:10] + "/" + iso[5:7] if len(iso) >= 10 else "—"
+
+
 def faltantes(contrato):
     """Lo que el tablero no tiene cargado y tendria que tener. Se dice, no se disimula."""
     out = []
@@ -1233,8 +1277,8 @@ def armar(contrato, cliente="maga"):
     # La estimación por kg fue dada de baja en NAVAR. Filtramos una copia
     # antes de TODOS los cálculos del tablero; el contrato original no se toca.
     if cliente == "navar":
-        from lector.cash_limpio import actualizar_caja_aa
-        contrato = actualizar_caja_aa(contrato, D.hoy_de(contrato))
+        from lector.cash_limpio import actualizar_cajas
+        contrato = actualizar_cajas(contrato, D.hoy_de(contrato))
         contrato["cobros_previstos"] = [x for x in contrato.get("cobros_previstos", [])
             if x.get("fuente") != "COBRANZA_PROYECTADA"]
     hoy = D.hoy_de(contrato)
@@ -1258,6 +1302,7 @@ def armar(contrato, cliente="maga"):
     for u in unidades:
         datos[u] = {
             "kpis": kpis(contrato, u),
+            "cuentas": cuentas_de_hoy(contrato, u),
             "puente": puente(contrato, u, 45, modo),
             "proveedores": proveedores(contrato, u, cliente, hoy),
             "salidas": salidas(contrato, u, hoy),

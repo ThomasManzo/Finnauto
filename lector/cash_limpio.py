@@ -55,6 +55,7 @@ import io
 import os
 import sys
 import json
+import re
 import argparse
 import datetime
 from collections import OrderedDict, defaultdict
@@ -163,51 +164,83 @@ def _col(d, *nombres):
     return None
 
 
-def actualizar_caja_aa(contrato, hoy):
-    """Una sola cuenta para la caja: arqueo más lo real posterior, hasta hoy."""
+# Las cajas en efectivo (tarea 53): cada una arranca de su último arqueo (Saldos Bancarios, carga
+# manual) y suma los movimientos de Tango posteriores de ESA caja (Movimientos, Banco / Cuenta =
+# nombre de la caja, Origen "Tango…"). Es la misma cuenta que hace la solapa Cash de la Sheet.
+#   bancos: cómo puede figurar el arqueo en Saldos Bancarios ("Varios" es el nombre viejo de la de AA)
+#   mov:    cómo figura la caja en Movimientos
+CAJAS = OrderedDict([
+    ("AA", {"bancos": ("varios", "(varios)", "caja", "caja aa"), "mov": "caja aa", "nombre": "Caja AA"}),
+    ("A", {"bancos": ("caja a",), "mov": "caja a", "nombre": "Caja A"}),
+])
+
+
+def _es_arqueo(s, unidad, contrato):
+    """¿Esta fila de Saldos Bancarios es un arqueo de la caja de esa empresa?"""
+    if s.get("unidad") != unidad or _norm(s.get("banco")) not in CAJAS[unidad]["bancos"]:
+        return False
+    if _norm(s.get("origen")) == "manual":
+        return True
+    # Los contratos viejos no guardaban Origen: sólo se reconoce la caja AA por su nombre.
+    return ("origen" not in s and unidad == "AA"
+            and contrato.get("_origen", {}).get("lector") == "lector/cash_limpio.py")
+
+
+def actualizar_cajas(contrato, hoy):
+    """Cada caja: su último arqueo más los movimientos de Tango posteriores, hasta hoy.
+
+    Se puede llamar más de una vez sobre el mismo contrato (el lector y el tablero lo hacen):
+    las fotos originales de los arqueos se guardan en contrato["cajas"] y se parte siempre de ellas.
+    """
     from copy import deepcopy
     c = deepcopy(contrato)
-    # Guardamos la foto original: abrir otra vez el tablero no debe sumar dos veces.
-    anteriores = c.get("caja_aa") or {}
-    fotos = anteriores.get("arqueos")
-    if fotos is None:
-        fotos = [dict(s) for s in c.get("saldos", [])
-                 if s.get("unidad") == "AA" and (
-                     _norm(s.get("origen")) == "manual" or (
-                         "origen" not in s
-                         and c.get("_origen", {}).get("lector") == "lector/cash_limpio.py"
-                         and _norm(s.get("banco")) in ("varios", "(varios)", "caja")))]
-        # Los contratos viejos no guardaban Origen: sólo su caja AA conocida
-        # se reconoce por Varios/Caja. Un saldo de banco no se convierte en arqueo.
-    validas = [s for s in fotos if s.get("fecha") and s["fecha"] <= hoy
-               and s.get("saldo") is not None]
-    arqueo = max(validas, key=lambda s: s["fecha"], default=None)
-    monto = None
-    if arqueo is not None:
-        monto = float(arqueo["saldo"])
-        for lista, signo in (("movimientos", -1), ("cobros_previstos", 1)):
-            for m in c.get(lista, []):
-                if (_norm(m.get("origen")).startswith("tango aa")
-                        and _norm(m.get("estado_caja", m.get("estado"))) == "real"
-                        and arqueo["fecha"] < (m.get("fecha") or "") <= hoy):
-                    # En el contrato viejo los egresos están en positivo; el nuevo
-                    # conserva también el importe tal como vino de la planilla.
-                    monto += m.get("importe_caja", signo * float(m.get("importe") or 0))
-    claves = {(s.get("banco"), s.get("unidad"), s.get("cuenta")) for s in fotos}
-    saldos = c.get("saldos", [])
-    anteriores_saldos = [s for s in saldos
-                         if (s.get("banco"), s.get("unidad"), s.get("cuenta")) in claves]
-    c["saldos"] = [s for s in saldos if s not in anteriores_saldos]
-    if arqueo is not None:
-        c["saldos"].append(dict(arqueo, saldo=monto, fecha=hoy,
-                                 fecha_arqueo=arqueo["fecha"]))
-    diferencia = (monto or 0) - sum(float(s["saldo"]) for s in anteriores_saldos)
-    c["caja_hoy"] = float(c.get("caja_hoy") or 0) + diferencia
-    por_unidad = c.setdefault("caja_por_unidad", {})
-    por_unidad["AA"] = float(por_unidad.get("AA") or 0) + diferencia
-    c["caja_aa"] = {"saldo": monto, "estado": "sin arqueo" if monto is None else "calculada",
-                    "fecha_arqueo": arqueo["fecha"] if arqueo else None, "arqueos": fotos}
+    previas = c.get("cajas") or {}
+    if not previas and c.get("caja_aa"):
+        previas = {"AA": c["caja_aa"]}            # contratos de antes de la tarea 53
+    resultado = OrderedDict()
+    for u, defin in CAJAS.items():
+        fotos = (previas.get(u) or {}).get("arqueos")
+        if fotos is None:
+            fotos = [dict(s) for s in c.get("saldos", []) if _es_arqueo(s, u, c)]
+        validas = [s for s in fotos if s.get("fecha") and s["fecha"] <= hoy and s.get("saldo") is not None]
+        arqueo = max(validas, key=lambda s: s["fecha"], default=None)
+        monto, n_mov = None, 0
+        if arqueo is not None:
+            monto = float(arqueo["saldo"])
+            for lista, signo in (("movimientos", -1), ("cobros_previstos", 1)):
+                for m in c.get(lista, []):
+                    origen = _norm(m.get("origen"))
+                    # La caja de AA vieja (antes de la tarea 48) no tenía Banco: se reconoce por el Origen.
+                    de_esta = (_norm(m.get("banco")) == defin["mov"]
+                               or (u == "AA" and not m.get("banco") and origen.startswith("tango aa")))
+                    if (de_esta and origen.startswith("tango")
+                            and _norm(m.get("estado_caja", m.get("estado"))) == "real"
+                            and arqueo["fecha"] < (m.get("fecha") or "") <= hoy):
+                        # En el contrato viejo los egresos están en positivo; el nuevo
+                        # conserva también el importe tal como vino de la planilla.
+                        monto += m.get("importe_caja", signo * float(m.get("importe") or 0))
+                        n_mov += 1
+        claves = {(s.get("banco"), s.get("unidad"), s.get("cuenta")) for s in fotos}
+        saldos = c.get("saldos", [])
+        anteriores = [s for s in saldos if (s.get("banco"), s.get("unidad"), s.get("cuenta")) in claves]
+        c["saldos"] = [s for s in saldos if s not in anteriores]
+        if arqueo is not None:
+            c["saldos"].append(dict(arqueo, saldo=monto, fecha=hoy, fecha_arqueo=arqueo["fecha"],
+                                     es_caja=True, nombre_caja=defin["nombre"], movimientos_desde_arqueo=n_mov))
+        diferencia = (monto or 0) - sum(float(s["saldo"]) for s in anteriores)
+        c["caja_hoy"] = float(c.get("caja_hoy") or 0) + diferencia
+        por_unidad = c.setdefault("caja_por_unidad", {})
+        por_unidad[u] = float(por_unidad.get(u) or 0) + diferencia
+        resultado[u] = {"saldo": monto, "estado": "sin arqueo" if monto is None else "calculada",
+                        "fecha_arqueo": arqueo["fecha"] if arqueo else None, "arqueos": fotos,
+                        "movimientos": n_mov}
+    c["cajas"] = resultado
+    c["caja_aa"] = resultado["AA"]                # lo sigue leyendo el tablero ("sin arqueo")
     return c
+
+
+# El nombre de antes (tarea 14): lo usaban el lector y el tablero.
+actualizar_caja_aa = actualizar_cajas
 
 
 # ------------------------------------------------------------------ lectura
@@ -423,6 +456,8 @@ def leer(archivo, cliente, hoy=None):
              "importe": abs(importe), "estado": est, "intercompany": False,
              # Con fecha pasada y sin pagar: es deuda vencida, entra hoy en la curva.
              "vencido_pendiente": venc < hoy,
+             # "Si" = lo debita solo ARCA (plan con CBU) · "No" = VEP por decisión (tarea 53)
+             "debito_automatico": _txt(_col(d, "debito")),
              "agregado": MARCA_AGREGADO in _txt(_col(d, "observ")).upper(),
              "origen": "Deuda Impositiva"}
         impositiva.append(x)
@@ -442,7 +477,8 @@ def leer(archivo, cliente, hoy=None):
                 if not f or not any(v not in (None, "") for v in f):
                     continue
                 d = OrderedDict((k, v) for k, v in zip(enc, f) if k)
-                if not _txt(_col(d, "banco")):
+                # El título del bloque de abajo ("B) Cronograma de Vencimientos (cuotas)") no es un banco.
+                if not _txt(_col(d, "banco")) or re.match(r"^[A-Z]\)\s", _txt(_col(d, "banco"))):
                     continue
                 if es_cronograma:
                     venc = _iso(_col(d, "vencimiento"))
@@ -459,6 +495,7 @@ def leer(archivo, cliente, hoy=None):
                                                               _txt(_col(d, "nro cuota"))),
                          "importe": abs(tot), "intercompany": False,
                          "vencido_pendiente": venc < hoy,
+                         "debito_automatico": _txt(_col(d, "debito")),
                          "agregado": MARCA_AGREGADO in _txt(_col(d, "observ")).upper(),
                          "origen": "Deuda Bancaria (cronograma)"}
                     cuotas.append(x)
@@ -482,6 +519,7 @@ def leer(archivo, cliente, hoy=None):
                                    "capital_vigente": _num(_col(d, "capital vigente")),
                                    "situacion_bcra": _num(_col(d, "situacion")) or None,
                                    "vence": _iso(_col(d, "vto")),
+                                   "debito_automatico": _txt(_col(d, "debito")),
                                    "en_caja": tipo_l == "descubierto" or "YA ESTA EN LA CAJA" in obs_l,
                                    "falta_importe": "FALTA IMPORTE" in obs_l or "FALTA SALDO" in obs_l,
                                    "estimado": "ESTIMAD" in obs_l and "NO TRAE" in obs_l})
@@ -501,9 +539,9 @@ def leer(archivo, cliente, hoy=None):
             continue
         clave = (_u(_col(d, "banco")), _u(_col(d, "empresa")), _txt(_col(d, "cuenta")))
         # Un arqueo de mañana no sirve como punto de partida para la caja de hoy.
-        if (cliente == "navar" and clave[1] == "AA"
-                and _norm(_col(d, "origen")) == "manual"
-                and (fecha > hoy or _col(d, "saldo") in (None, ""))):
+        es_caja = (clave[1] in CAJAS and _norm(clave[0]) in CAJAS[clave[1]]["bancos"]
+                   and _norm(_col(d, "origen")) == "manual")
+        if cliente == "navar" and es_caja and (fecha > hoy or _col(d, "saldo") in (None, "")):
             continue
         if clave not in ultimo or fecha > ultimo[clave][0]:
             ultimo[clave] = (fecha, d)
@@ -515,8 +553,9 @@ def leer(archivo, cliente, hoy=None):
                            "origen": _txt(_col(d, "origen"))})
             caja_por_unidad[u] += v
             caja_hoy += v
-            if f < hoy and not (cliente == "navar" and u == "AA"
-                                 and _norm(_col(d, "origen")) == "manual"):
+            es_caja = (u in CAJAS and _norm(banco) in CAJAS[u]["bancos"]
+                       and _norm(_col(d, "origen")) == "manual")
+            if f < hoy and not (cliente == "navar" and es_caja):
                 viejas.append("%s %s (%s)" % (banco, cuenta, f[8:10] + "/" + f[5:7]))
         fecha_saldos = min(f for f, _ in ultimo.values())
         if viejas:
@@ -570,7 +609,7 @@ def leer(archivo, cliente, hoy=None):
         ("avisos", avisos),
     ])
     wb.close()
-    return actualizar_caja_aa(contrato, hoy) if cliente == "navar" else contrato
+    return actualizar_cajas(contrato, hoy) if cliente == "navar" else contrato
 
 
 def _tipo_meta(cat, tipo):

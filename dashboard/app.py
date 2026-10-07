@@ -543,6 +543,30 @@ function verPosicion(){
   });
   out.push(c);
 
+  // DONDE ESTA LA PLATA HOY (tarea 53): la caja de hoy, cuenta por cuenta. Primero las dos cajas
+  // en efectivo (último arqueo + lo que movió Tango después), después cada banco con la fecha de su
+  // último extracto. Suma lo mismo que «Caja de hoy».
+  if (d.cuentas && d.cuentas.length){
+    out.push(el('h2', null, 'Dónde está la plata hoy'));
+    var cc = el('div', 'card'), tc = el('table');
+    tc.innerHTML = '<thead><tr><th>Cuenta</th><th>Empresa</th><th>Saldo</th><th>De cuándo es el dato</th></tr></thead>';
+    var bc = el('tbody'), efectivo = 0, bancos = 0;
+    d.cuentas.forEach(function(x){
+      if (x.es_caja) efectivo += x.saldo; else bancos += x.saldo;
+      var tr = el('tr');
+      [x.nombre + (x.es_caja ? ' (efectivo)' : ''), x.unidad, pesos(x.saldo), x.nota].forEach(function(t, i){
+        var td = el('td'); td.textContent = t;
+        if (i === 2 && x.saldo < 0) td.style.color = 'var(--rojo)';
+        tr.appendChild(td);
+      });
+      bc.appendChild(tr);
+    });
+    tc.appendChild(bc); cc.appendChild(tc);
+    cc.appendChild(el('p', 'nota', 'En efectivo: <b>' + pesos(efectivo) + '</b> · en bancos: <b>' +
+      pesos(bancos) + '</b>. Un saldo de banco en negativo es descubierto en uso. Las cajas se cargan con cada arqueo.'));
+    out.push(cc);
+  }
+
   if (d.vencidos_resumen){
     var vr = d.vencidos_resumen, cv = el('div', 'card');
     out.push(el('h2', null, 'Vencido e impago · las tres puntas'));
