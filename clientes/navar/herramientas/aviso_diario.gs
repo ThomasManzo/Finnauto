@@ -5,6 +5,10 @@
  * .addItem("Ver el aviso de hoy (sin mandar)", "avisoDiarioPrueba")
  * .addItem("Instalar aviso diario 07:30", "instalarAvisoDiario")
  * .addItem("Quitar aviso diario", "quitarAvisoDiario")
+ * Tarea 51, el seguimiento de la tarde:
+ * .addItem("Ver el seguimiento (sin mandar)", "seguimientoPrueba")
+ * .addItem("Instalar seguimiento (12:30 y 17:30)", "instalarSeguimiento")
+ * .addItem("Quitar seguimiento", "quitarSeguimiento")
  * Google ejecuta cerca de las 07:30: entre 07:15 y 07:45 (nearMinute tiene ±15 min).
  * Para probar sin Google, _armarAviso_(ahora, datos) acepta una foto inventada:
  * { entradas: [], publicados: [], retenidos: [], registro: [], log: [],
@@ -25,12 +29,58 @@ var TANGO_BAJADAS = 11;
 // Estas fuentes ya llegan solas. Al automatizar otro banco, se lo agrega acá para
 // que el aviso deje de pedir una carga manual y pase a revisar la notebook.
 var FUENTES_AUTOMATICAS = ["tango", "cajas", "galicia"];
+// Hasta qué hora reintenta sola cada bajada en la notebook (tarea 51). Tienen que coincidir con
+// los horarios de instalar_tango.ps1 (último 20:00) e instalar_galicia.ps1 (último 16:00).
+var TANGO_REINTENTA_HASTA = 20;
+var GALICIA_REINTENTA_HASTA = 16;
+
+// Traduce el error técnico a algo que entienda cualquiera (tarea 51). fuente: "tango", "banco" o
+// "sheet". Si no lo reconoce, deja el texto original recortado: mejor eso que inventar un motivo.
+function _enCriolloAviso_(texto, fuente) {
+  var t = _textoAviso_(texto);
+  // El importador relee lo que pegó; si no coincide con el archivo, dice qué lista (la dejamos).
+  var verificacion = t.match(/VERIFICACION_NO_CUADRA:?\s*([^.;]*)/);
+  if (verificacion) return "lo que quedó en la Sheet no coincide con el archivo" +
+    (verificacion[1].trim() ? " (" + _textoAviso_(verificacion[1], 60) + ")" : "");
+  var reglas = [
+    [/NO SE REINTENTA/i, "el banco no confirmó la clave dos veces hoy: no se reintenta para no bloquear el usuario"],
+    [/CLAVE ENVIADA SIN CONFIRMAR/i, "el banco recibió la clave y no confirmó la entrada (puede ser la clave o un aviso del banco)"],
+    [/getaddrinfo|11001|name or service not known|nodename nor servname/i,
+      fuente === "tango" ? "no se pudo conectar con el servidor de Tango (¿está prendido y en la red?)"
+                         : "no se pudo conectar (¿hay internet en la notebook?)"],
+    [/refused|10061|ECONNREFUSED/i,
+      fuente === "tango" ? "el servidor de Tango no aceptó la conexión (¿está prendido el servicio de Tango?)"
+                         : "no se pudo conectar"],
+    [/HTTP (401|403)/i, "Tango rechazó el usuario o la clave de finauto"],
+    [/HTTP 5\d\d/i, "el servidor de Tango respondió con un error (suele ser momentáneo)"],
+    [/faltan columnas|sin columnas|no trae las columnas/i, "la consulta de Tango cambió (faltan columnas): no editar las consultas «Finauto» en Live"],
+    [/LOGIN FALLIDO/i, "no pudo entrar al home banking"],
+    [/browser has been closed|descarga interrumpida|se cerró el navegador/i, "se cortó la descarga del banco a mitad de camino"],
+    [/timed? ?out|timeout|tardó/i,
+      fuente === "tango" ? "el servidor de Tango no respondió a tiempo"
+                         : fuente === "banco" ? "la página del banco tardó demasiado en responder"
+                         : "Google tardó demasiado en responder"],
+    [/rate limit|too many|invoked too many|límite/i, "Google estaba saturado un momento"],
+    [/carga parcial|no hay lugar|encabezado repetido/i, "la Sheet no pudo terminar de cargar"],
+  ];
+  for (var i = 0; i < reglas.length; i++) if (reglas[i][0].test(t)) return reglas[i][1];
+  return _textoAviso_(t, 100) || "sin motivo disponible";
+}
+
+// Qué pasa ahora con algo que falló: se reintenta solo o hay que mirarlo.
+function _quePasaAhoraAviso_(ahora, hasta, freno) {
+  if (freno) return "revisar la clave antes de volver a probar";
+  var hora = Number(_fechaAviso_(ahora, "HH"));
+  return hora < hasta ? "se reintenta solo hasta las " + hasta + ":00"
+                      : "ya no quedan reintentos hoy: hay que revisar la notebook";
+}
 
 // Manda exactamente el texto que también permite revisar el botón de prueba.
 function avisoDiario() {
   if (!DESTINATARIOS) throw new Error("Falta la propiedad DESTINATARIOS en Configuración del proyecto; no se mandó el aviso.");
-  var aviso = _armarAviso_(new Date());
+  var ahora = new Date(), aviso = _armarAviso_(ahora);
   MailApp.sendEmail(DESTINATARIOS, aviso.asunto, aviso.cuerpo);
+  _guardarMananaAviso_(ahora, aviso);
 }
 
 // Muestra el aviso completo sin mandar ningún mail ni escribir en Registro.
@@ -60,6 +110,101 @@ function _borrarDisparadoresAviso_() {
   ScriptApp.getProjectTriggers().forEach(function (t) {
     if (t.getHandlerFunction() === "avisoDiario") ScriptApp.deleteTrigger(t);
   });
+}
+
+// ==================================================================================
+// SEGUIMIENTO DE LA TARDE (tarea 51). Si a la mañana faltaba algo AUTOMÁTICO (Tango, Galicia, la
+// importación de la Sheet, la notebook), a las 12:30 y a las 17:30 se mira de nuevo:
+//   - si algo se arregló solo (por los reintentos), se avisa "✅ se arregló solo";
+//   - a las 12:30, si sigue faltando lo mismo, se avisa igual una vez: a esa altura hay que mirarlo;
+//   - si no cambió nada desde el último mail, no se manda nada (no llenar la casilla).
+// Lo que se sube a mano (extractos de bancos sin bot) no entra: eso no se arregla solo.
+// Lo que faltaba a la mañana y lo último avisado se guardan en las propiedades del script.
+function avisoSeguimiento() {
+  var ahora = new Date(), props = PropertiesService.getScriptProperties(), hoy = _diaAviso_(ahora);
+  var seg = _seguimientoAviso_(ahora, _armarAviso_(ahora),
+    _leerJsonAviso_(props, "aviso_manana_" + hoy), _leerJsonAviso_(props, "aviso_ultimo_" + hoy));
+  if (!seg) return;
+  if (!DESTINATARIOS) throw new Error("Falta la propiedad DESTINATARIOS; no se mandó el seguimiento.");
+  MailApp.sendEmail(DESTINATARIOS, seg.asunto, seg.cuerpo);
+  props.setProperty("aviso_ultimo_" + hoy, JSON.stringify(seg.estado));
+}
+
+// Muestra qué mandaría el seguimiento ahora, sin mandar ni guardar nada.
+function seguimientoPrueba() {
+  var ahora = new Date(), props = PropertiesService.getScriptProperties(), hoy = _diaAviso_(ahora);
+  var manana = _leerJsonAviso_(props, "aviso_manana_" + hoy);
+  var seg = _seguimientoAviso_(ahora, _armarAviso_(ahora), manana, _leerJsonAviso_(props, "aviso_ultimo_" + hoy));
+  var texto = seg ? seg.asunto + "\n\n" + seg.cuerpo :
+    "No se mandaría nada: " + (!manana ? "hoy todavía no salió el mail de la mañana (o salió antes de esta versión)." :
+      !manana.faltan.length ? "a la mañana lo automático estaba todo bien." : "no cambió nada desde el último mail.");
+  Logger.log(texto);
+  try { SpreadsheetApp.getUi().alert(texto); } catch (e) {}
+}
+
+function instalarSeguimiento() {
+  _borrarDisparadoresSeguimiento_();
+  [12, 17].forEach(function (hora) {
+    ScriptApp.newTrigger("avisoSeguimiento").timeBased().atHour(hora).nearMinute(30)
+      .everyDays(1).inTimezone(AVISO_ZONA).create();
+  });
+  _registrar_("sistema", "", "ok", "seguimiento instalado: cerca de las 12:30 y las 17:30 de Buenos Aires");
+}
+
+function quitarSeguimiento() {
+  _borrarDisparadoresSeguimiento_();
+  _registrar_("sistema", "", "ok", "seguimiento quitado");
+}
+
+// Solo los del seguimiento: el aviso de la mañana y la importación horaria quedan como están.
+function _borrarDisparadoresSeguimiento_() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === "avisoSeguimiento") ScriptApp.deleteTrigger(t);
+  });
+}
+
+function _leerJsonAviso_(props, clave) {
+  try { return JSON.parse(props.getProperty(clave) || "null"); } catch (e) { return null; }
+}
+
+// Guarda qué faltaba de lo automático en el mail de la mañana y borra lo de días anteriores.
+function _guardarMananaAviso_(ahora, aviso) {
+  var props = PropertiesService.getScriptProperties(), hoy = _diaAviso_(ahora);
+  Object.keys(props.getProperties()).forEach(function (k) {
+    var m = k.match(/^aviso_(manana|ultimo)_(\d{4}-\d{2}-\d{2})$/);
+    if (m && m[2] !== hoy) props.deleteProperty(k);
+  });
+  props.setProperty("aviso_manana_" + hoy, JSON.stringify(_estadoAutomaticoAviso_(aviso)));
+}
+
+function _estadoAutomaticoAviso_(aviso) {
+  return {faltan: (aviso.automaticos || []).filter(function (a) { return !a.ok; })
+    .map(function (a) { return a.clave; })};
+}
+
+// Arma el seguimiento (o null si no hay que mandar nada). Es puro: se prueba sin Google.
+// manana / ultimo: {faltan: [claves]} guardados por el mail de la mañana y el último seguimiento.
+function _seguimientoAviso_(ahora, aviso, manana, ultimo) {
+  if (!manana || !manana.faltan || !manana.faltan.length) return null;
+  var antes = ultimo ? ultimo.faltan : manana.faltan;
+  var estado = _estadoAutomaticoAviso_(aviso), faltan = estado.faltan;
+  var arreglados = antes.filter(function (c) { return faltan.indexOf(c) < 0; });
+  var nuevos = faltan.filter(function (c) { return antes.indexOf(c) < 0; });
+  var mediodia = Number(_fechaAviso_(ahora, "HH")) < 15;
+  if (!arreglados.length && !nuevos.length && !(mediodia && !ultimo && faltan.length)) return null;
+  var autos = aviso.automaticos || [];
+  var cuerpo = ["Seguimiento del mail de la mañana: lo automático, de nuevo a las " + _fechaAviso_(ahora, "HH:mm") + "."];
+  if (arreglados.length) cuerpo.push("✅ SE ARREGLÓ SOLO\n" + arreglados.map(function (c) {
+    var ok = autos.filter(function (a) { return a.ok && a.clave === c; })[0];
+    return ok ? ok.texto : "☑ " + c + ": ya está bien";
+  }).join("\n"));
+  if (faltan.length) cuerpo.push("❌ SIGUE FALTANDO\n" + autos.filter(function (a) { return !a.ok; })
+    .map(function (a) { return a.texto; }).join("\n"));
+  else cuerpo.push("Todo lo automático quedó al día.");
+  return {
+    asunto: "NAVAR · " + _fechaAviso_(ahora, "dd/MM") + " · seguimiento · " +
+      (faltan.length ? (faltan.length === 1 ? "sigue faltando 1 cosa" : "siguen faltando " + faltan.length + " cosas") : "se arregló todo"),
+    cuerpo: cuerpo.join("\n\n"), estado: estado};
 }
 
 // Todas las fechas visibles usan Buenos Aires aunque la Sheet esté en otra zona.
@@ -338,7 +483,13 @@ function _armarAviso_(ahora, datos) {
   function deHoy(f) { return valida(f) && _diaAviso_(f) === hoy; }
   function fecha(f) { return valida(f) ? _fechaAviso_(f, "dd/MM HH:mm") : "no disponible"; }
   function dia(d) { return d ? d.slice(8, 10) + "/" + d.slice(5, 7) : "no disponible"; }
-  function poner(ok, texto) { (ok ? llego : faltantes).push((ok ? "☑ " : "☐ ") + texto); }
+  // automaticos: lo que llega solo (Tango, bancos con bot, la Sheet, la notebook). El seguimiento
+  // de la tarde (tarea 51) mira solo esto: lo que se sube a mano no se arregla solo.
+  var automaticos = [];
+  function poner(ok, texto, auto) {
+    (ok ? llego : faltantes).push((ok ? "☑ " : "☐ ") + texto);
+    if (auto) automaticos.push({clave: texto.split(":")[0].replace(/ se actualizó.*| no importó.*/, ""), ok: ok, texto: (ok ? "☑ " : "☐ ") + texto});
+  }
   function ultimo(lista) {
     return lista.filter(function (f) { return valida(f.fecha); })
       .sort(function (a, b) { return b.fecha - a.fecha; })[0];
@@ -354,13 +505,13 @@ function _armarAviso_(ahora, datos) {
   var fallas = parte && parte.fallas || [];
   ["A", "AA"].forEach(function (empresa) {
     if (errores.TangoParte || !parte || !deHoy(parte.fecha)) {
-      poner(false, "Tango " + empresa + ": la bajada de Tango no corrió hoy · última: " +
-        fecha(parte && parte.fecha) + " · revisar la notebook");
+      poner(false, "Tango " + empresa + ": la bajada de Tango no corrió hoy (¿está prendida la notebook?) · última: " +
+        fecha(parte && parte.fecha) + " · " + _quePasaAhoraAviso_(ahora, TANGO_REINTENTA_HASTA), true);
       return;
     }
     if (parte.ok === parte.total && parte.total === TANGO_BAJADAS && !fallas.length) {
       poner(true, "Tango " + empresa + ": " + fotos[empresa].map(nombreFoto).join(", ") +
-        " (" + _fechaAviso_(parte.fecha, "HH:mm") + ")");
+        " (" + _fechaAviso_(parte.fecha, "HH:mm") + ")", true);
       return;
     }
     var faltan = [];
@@ -372,15 +523,16 @@ function _armarAviso_(ahora, datos) {
       var falla = fallas.filter(function (f) { return f.toLowerCase().indexOf(prefijo) === 0; })[0];
       if (falla || errores.Drive || !archivo || _fechaNombreAviso_(archivo.nombre) !== hoy) {
         faltan.push(nombreFoto(foto) + ": " +
-          (falla ? _textoAviso_(falla.replace(/^[^:]+:\s*/, ""), 100) : "no llegó la foto de hoy") +
+          (falla ? _enCriolloAviso_(falla.replace(/^[^:]+:\s*/, ""), "tango") : "no llegó la foto de hoy") +
           " · último archivo: " + fecha(archivo && archivo.fecha));
       }
     });
     // Si el conteo no cierra y el parte no identifica las fallas, no inventamos éxito.
     if (!faltan.length && (!fallas.length || fallas.some(function (f) { return !/^(A|AA)\s/i.test(f); })))
-      faltan.push("parte incompleto (" + parte.ok + " de " + parte.total + "); revisar la notebook");
-    poner(!faltan.length, "Tango " + empresa + ": " + (faltan.length ? faltan.join("; ") :
-      "las " + fotos[empresa].length + " fotos llegaron (" + _fechaAviso_(parte.fecha, "HH:mm") + ")"));
+      faltan.push("parte incompleto (" + parte.ok + " de " + parte.total + ")");
+    poner(!faltan.length, "Tango " + empresa + ": " + (faltan.length ? faltan.join("; ") + " · " +
+      _quePasaAhoraAviso_(ahora, TANGO_REINTENTA_HASTA) :
+      "las " + fotos[empresa].length + " fotos llegaron (" + _fechaAviso_(parte.fecha, "HH:mm") + ")"), true);
   });
   var bancos = {}, arqueo = "";
   (datos.saldos || []).forEach(function (r) {
@@ -453,10 +605,13 @@ function _armarAviso_(ahora, datos) {
         f.nombre.toLowerCase().indexOf("movimientos " + clave + " ") === 0 && /\.xlsx$/i.test(f.nombre);
     }));
     var ok = p && deHoy(p.fecha) && p.ok && !errores[clave === "galicia" ? "GaliciaParte" : clave + "Parte"];
+    var freno = p && deHoy(p.fecha) && /NO SE REINTENTA/i.test(p.detalle || "");
+    var hasta = clave === "galicia" ? GALICIA_REINTENTA_HASTA : TANGO_REINTENTA_HASTA;
     poner(ok, _nombreBancoAviso_(banco.nombre) + ": " + (ok ? _fechaAviso_(p.fecha, "HH:mm") + " · movimientos hasta " + dia(banco.dia) :
       (p && deHoy(p.fecha) ? "el bot falló a las " + _fechaAviso_(p.fecha, "HH:mm") + " (" +
-        _textoAviso_(p.detalle || "sin motivo disponible", 140) + ")" : "el bot no corrió hoy · revisar la notebook") +
-      " · Último extracto: " + (errores.Drive ? "no se pudo verificar" : fecha(archivo && archivo.fecha))));
+        _enCriolloAviso_(p.detalle, "banco") + ")" : "el bot no corrió hoy (¿está prendida la notebook?)") +
+      " · " + _quePasaAhoraAviso_(ahora, hasta, freno) +
+      " · Último extracto: " + (errores.Drive ? "no se pudo verificar" : fecha(archivo && archivo.fecha))), true);
   });
   if (!Object.keys(bancos).length) alertas.push("No se pudieron identificar bancos en Saldos Bancarios.");
   // Un ilegible de un banco que todavía no está en Saldos Bancarios (banco nuevo, carpeta mal nombrada).
@@ -473,14 +628,17 @@ function _armarAviso_(ahora, datos) {
     .filter(function (p) { return p && deHoy(p.fecha); });
   var importado = !errores.Registro && ultima && deHoy(ultima.fecha) && bajadas.every(function (p) { return ultima.fecha > p.fecha; });
   poner(importado, importado ? "La Sheet se actualizó (" + _fechaAviso_(ultima.fecha, "HH:mm") + ")" :
-    "La Sheet no importó lo de hoy · última importación: " + fecha(ultima && ultima.fecha));
+    "La Sheet no importó lo de hoy · última importación: " + fecha(ultima && ultima.fecha) +
+    " · se reintenta sola cada hora", true);
   if (!valida(datos.ultimaPasada)) alertas.push("No se pudo verificar si la notebook está procesando.");
-  else if (ahora - datos.ultimaPasada > 60 * 60 * 1000)
-    alertas.push("La notebook no está procesando · última pasada: " + fecha(datos.ultimaPasada));
+  else if (ahora - datos.ultimaPasada > 60 * 60 * 1000) {
+    alertas.push("La notebook no está procesando (¿está prendida y con Drive abierto?) · última pasada: " + fecha(datos.ultimaPasada));
+    automaticos.push({clave: "La notebook", ok: false, texto: "☐ La notebook no está procesando · última pasada: " + fecha(datos.ultimaPasada)});
+  }
   registros.forEach(function (r) {
     if (!/^error$/i.test(_textoAviso_(r.estado)) && !/VERIFICACION_NO_CUADRA/.test(r.detalle || "")) return;
     if (oks.some(function (ok) { return ok.tipo === r.tipo && ok.fecha > r.fecha; })) return;
-    var texto = "Falló la importación de " + r.tipo + ": " + _textoAviso_(r.detalle, 140);
+    var texto = "La Sheet no pudo cargar " + r.tipo + " (" + _enCriolloAviso_(r.detalle, "sheet") + ") · se reintenta sola cada hora";
     if (alertas.indexOf(texto) < 0) alertas.push(texto);
   });
   (datos.retenidos || []).forEach(function (f) {
@@ -494,5 +652,5 @@ function _armarAviso_(ahora, datos) {
   if (alertas.length) cuerpo.push("⚠️ REVISAR\n" + alertas.map(function (a) { return "- " + a; }).join("\n"));
   return {asunto: "NAVAR · " + _fechaAviso_(ahora, "dd/MM") + " · " +
     (faltantes.length === 1 ? "falta 1 cosa" : faltantes.length ? "faltan " + faltantes.length + " cosas" : "todo al día"),
-    cuerpo: cuerpo.join("\n\n"), alertas: alertas, faltantes: faltantes};
+    cuerpo: cuerpo.join("\n\n"), alertas: alertas, faltantes: faltantes, automaticos: automaticos};
 }

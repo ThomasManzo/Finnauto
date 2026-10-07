@@ -67,10 +67,10 @@ function probar(cambio, n, presentes=[], ausentes=[]) {
   casos++;return aviso;
 }
 probar(()=>{},0,['☑ Tango A: cobranzas, pagos, cheques terceros, cheques propios, tesorería, detalle de tesorería', '☑ Tango AA:','☑ Galicia: 05:48 · movimientos hasta 24/09','☑ Macro: al día, extracto hasta 25/09','☑ La Sheet se actualizó (06:33)'],['❌','⚠️','El vigilante procesó','Llegó a Drive']);
-probar(d=>{d.tangoParte.ok=9;d.tangoParte.fallas=['A pagos 2026-09-28.xlsx: timeout','AA cobranzas 2026-09-28.xlsx: HTTP 500'];},2,['☐ Tango A: pagos: timeout','☐ Tango AA: cobranzas: HTTP 500','último archivo: 28/09 05:46']);
-probar(d=>{d.tangoParte.fecha=fecha('27','05:46');},2,['la bajada de Tango no corrió hoy · última: 27/09 05:46']);
+probar(d=>{d.tangoParte.ok=9;d.tangoParte.fallas=['A pagos 2026-09-28.xlsx: timeout','AA cobranzas 2026-09-28.xlsx: HTTP 500'];},2,['☐ Tango A: pagos: el servidor de Tango no respondió a tiempo','☐ Tango AA: cobranzas: el servidor de Tango respondió con un error','último archivo: 28/09 05:46']);
+probar(d=>{d.tangoParte.fecha=fecha('27','05:46');},2,['la bajada de Tango no corrió hoy (¿está prendida la notebook?) · última: 27/09 05:46']);
 probar(d=>{d.tangoParte=null;},2,['última: no disponible']);
-probar(d=>{d.galiciaParte.ok=false;d.galiciaParte.detalle='se cerró el navegador al guardar';},1,['☐ Galicia: el bot falló a las 05:48 (se cerró el navegador al guardar)','Último extracto: 28/09 05:48']);
+probar(d=>{d.galiciaParte.ok=false;d.galiciaParte.detalle='se cerró el navegador al guardar';},1,['☐ Galicia: el bot falló a las 05:48 (se cortó la descarga del banco a mitad de camino) · se reintenta solo hasta las 16:00','Último extracto: 28/09 05:48']);
 probar(d=>{d.galiciaParte=null;},1,['el bot no corrió hoy']);
 probar(d=>{d.galiciaParte.ok=false;d.entradas.push({nombre:'Movimientos GALICIA 2026-09-28_062000.xlsx',ruta:'Bancos/galicia/viejo.xlsx',tipo:'bancos',fecha:fecha('28','06:20')});},1,['Último extracto: 28/09 06:20']);
 probar(d=>{d.saldos[1].fecha=fecha('24');},1,['☐ Macro: último extracto del 24/09 (hace 4 días) · subir a mano']);
@@ -78,7 +78,7 @@ probar(d=>{d.saldos[2].fecha=fecha('21');},0,[],['Arqueo','arqueo']);
 probar(d=>{d.registro[0].fecha=fecha('27','06:33');},1,['La Sheet no importó lo de hoy · última importación: 27/09 06:33']);
 probar(d=>{d.registro[0].fecha=fecha('28','05:47');},1,['La Sheet no importó lo de hoy']);
 probar(d=>{d.registro.push({tipo:'cajas',estado:'ERROR',fecha:fecha('26','08:32'),detalle:'rate limit'}, {tipo:'cajas',estado:'ok',fecha:fecha('26','09:33'),detalle:''});},0,[],['rate limit','⚠️']);
-probar(d=>{d.registro.push({tipo:'cajas',estado:'ERROR',fecha:fecha('26','08:32'),detalle:'rate limit'});},0,['⚠️ REVISAR','Falló la importación de cajas: rate limit']);
+probar(d=>{d.registro.push({tipo:'cajas',estado:'ERROR',fecha:fecha('26','08:32'),detalle:'rate limit'});},0,['⚠️ REVISAR','La Sheet no pudo cargar cajas (Google estaba saturado un momento) · se reintenta sola cada hora']);
 probar(d=>{d.ultimaPasada=fecha('28','05:00');},0,['La notebook no está procesando']);
 probar(d=>{d.errores.Drive='sin acceso';},0,['No se pudo leer Drive']);
 probar(d=>{d.retenidos.push({nombre:'retenido.xlsx',tipo:'bancos',fecha:fecha('28','06:08')});},0,['Archivo retenido: retenido.xlsx']);
@@ -91,7 +91,7 @@ probar(d=>{d.registro[0].fecha=fecha('28','08:00');},1,['La Sheet no importó lo
 probar(d=>{d.tangoParte.ok=10;d.tangoParte.fallas=['A cheques propios 2026-09-28.xlsx: timeout'];
   const f=d.entradas.find(f=>f.nombre.startsWith('A cheques propios'));
   f.nombre='A cheques propios 2026-09-25.xlsx';f.fecha=fecha('25','05:46');
-},1,['☐ Tango A: cheques propios: timeout · último archivo: 25/09 05:46','☑ Tango AA: las 5 fotos llegaron']);
+},1,['☐ Tango A: cheques propios: el servidor de Tango no respondió a tiempo · último archivo: 25/09 05:46','☑ Tango AA: las 5 fotos llegaron']);
 contexto.FUENTES_AUTOMATICAS.push('macro');
 probar(d=>{d.bancosPartes={macro:{fecha:fecha('28','05:49'),ok:true}};},0,['☑ Macro: 05:49 · movimientos hasta 25/09']);
 contexto.FUENTES_AUTOMATICAS.pop();
@@ -141,9 +141,9 @@ console.log('OK: nombres en checklist y lectura de partes ausentes, duplicados, 
 
 // Las nueve fotos incluyen tesorería de A; una falla suya no desmarca AA.
 probar(d=>{d.tangoParte.ok=10;d.tangoParte.fallas=['A movimientos tesoreria 2026-09-28.xlsx: timeout'];},1,
-  ['☐ Tango A: tesorería: timeout · último archivo: 28/09 05:46','☑ Tango AA: las 5 fotos llegaron']);
+  ['☐ Tango A: tesorería: el servidor de Tango no respondió a tiempo · último archivo: 28/09 05:46','☑ Tango AA: las 5 fotos llegaron']);
 probar(d=>{d.tangoParte.ok=10;d.tangoParte.fallas=['AA movimientos tesoreria 2026-09-28.xlsx: timeout'];},1,
-  ['☑ Tango A: las 6 fotos llegaron','☐ Tango AA: tesorería: timeout']);
+  ['☑ Tango A: las 6 fotos llegaron','☐ Tango AA: tesorería: el servidor de Tango no respondió a tiempo']);
 probar(d=>{d.tangoParte.ok=9;d.tangoParte.total=9;},2,
   ['☐ Tango A:', '☐ Tango AA:', 'parte incompleto (9 de 9)'], ['☑ Tango A:', '☑ Tango AA:']);
 assert.equal(contexto._parteTangoAviso_('2026-09-28T08:46:00+00:00\n9 de 9').total,9);
@@ -151,11 +151,11 @@ assert.equal(contexto.TANGO_BAJADAS,11);
 // Un parte de antes de la tarea 48 (10 de 10) no alcanza: falta el detalle de AA.
 probar(d=>{d.tangoParte.ok=10;d.tangoParte.total=10;},2,['parte incompleto (10 de 10)']);
 probar(d=>{d.tangoParte.ok=10;d.tangoParte.fallas=['AA tesoreria detalle 2026-09-28.xlsx: timeout'];},1,
-  ['☑ Tango A: las 6 fotos llegaron','☐ Tango AA: detalle de tesorería: timeout']);
+  ['☑ Tango A: las 6 fotos llegaron','☐ Tango AA: detalle de tesorería: el servidor de Tango no respondió a tiempo']);
 probar(()=>{},0,['☑ Tango AA: cobranzas, pagos, cheques terceros, tesorería, detalle de tesorería'],['Caja A:','Caja AA:']);
 // Si falla solo el detalle de tesorería (tarea 44), se nombra con su nombre en castellano.
 probar(d=>{d.tangoParte.ok=10;d.tangoParte.fallas=['A tesoreria detalle 2026-09-28.xlsx: timeout'];},1,
-  ['☐ Tango A: detalle de tesorería: timeout','☑ Tango AA: las 5 fotos llegaron']);
+  ['☐ Tango A: detalle de tesorería: el servidor de Tango no respondió a tiempo','☑ Tango AA: las 5 fotos llegaron']);
 
 // Lee la carpeta real del mapa con un doble de Drive: A no se etiqueta como caja AA.
 const exportA = {getName:()=> 'A movimientos tesoreria 2026-09-28.xlsx',
@@ -171,7 +171,7 @@ assert.equal(leidos.entradas[0].tipo,'tesoreria_a');
 assert.equal(leidos.entradas[0].nombre,exportA.getName());
 probar(d=>{d.entradas=d.entradas.filter(f=>f.tipo!=='tesoreria_a').concat(leidos.entradas);
   d.tangoParte.ok=10;d.tangoParte.fallas=['A movimientos tesoreria 2026-09-28.xlsx: timeout'];},1,
-  ['☐ Tango A: tesorería: timeout · último archivo: 28/09 05:46','☑ Tango AA:']);
+  ['☐ Tango A: tesorería: el servidor de Tango no respondió a tiempo · último archivo: 28/09 05:46','☑ Tango AA:']);
 console.log('OK: once bajadas, partes viejos incompletos y tesorería A separada de caja AA.');
 
 // Tarea 39: un extracto que llegó y no se pudo leer se dice con su nombre, no como "subir a mano".

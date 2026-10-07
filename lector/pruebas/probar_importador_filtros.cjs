@@ -151,8 +151,8 @@ contexto._fechaAviso_ = () => '2026-09-22';
 const ahora = new Date('2026-09-22T12:00:00Z');
 const aviso = contexto._armarAviso_(ahora, {entradas: [], publicados: [], retenidos: [], log: [],
   extracto: ahora, errores: {}, registro: [{fecha: ahora, tipo: 'tango', estado: 'ERROR', detalle: 'VERIFICACION_NO_CUADRA: Cartera de Cheques'}]});
-// Desde el aviso como checklist (ff2e4ca) la alerta ya no dice "NO CUADRÓ": dice "Falló la
-// importación de <tipo>" y copia el motivo, que nombra la lista que no cuadró.
-assert.ok(aviso.alertas.some(a => a.includes('Falló la importación de tango') &&
-  a.includes('VERIFICACION_NO_CUADRA: Cartera de Cheques')));
+// Desde la tarea 51 la alerta va en criollo: "La Sheet no pudo cargar <tipo>" y nombra la lista
+// que no coincidió, sin el código técnico.
+assert.ok(aviso.alertas.some(a => a.includes('La Sheet no pudo cargar tango') &&
+  a.includes('no coincide con el archivo (Cartera de Cheques)') && !a.includes('VERIFICACION_NO_CUADRA')));
 console.log('OK: alerta explícita del aviso diario, sin enviar mails.');

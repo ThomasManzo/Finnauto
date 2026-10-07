@@ -142,6 +142,9 @@ function onOpen() {
     .addItem("Ver el aviso de hoy (sin mandar)", "avisoDiarioPrueba")          // aviso_diario.gs
     .addItem("Instalar aviso diario 07:30", "instalarAvisoDiario")
     .addItem("Quitar aviso diario", "quitarAvisoDiario")
+    .addItem("Ver el seguimiento (sin mandar)", "seguimientoPrueba")             // aviso_diario.gs (tarea 51)
+    .addItem("Instalar seguimiento (12:30 y 17:30)", "instalarSeguimiento")
+    .addItem("Quitar seguimiento", "quitarSeguimiento")
     .addSeparator()
     .addItem("Ver el resumen semanal (sin mandar)", "resumenSemanalPrueba")    // resumen_semanal.gs
     .addItem("Guardar foto semanal ahora", "guardarFotoSemanal")
