@@ -1,5 +1,5 @@
 # Tarea 51 — Reintentos todo el día y mails en criollo
-Estado: lista para revisión
+Estado: aprobada (falta instalar en la notebook)
 Rama: tarea/reintentos-y-mails
 
 ## Objetivo
