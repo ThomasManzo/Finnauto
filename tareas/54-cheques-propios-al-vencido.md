@@ -1,5 +1,5 @@
 # Tarea 54 — Los cheques propios vencidos suman al vencido del tablero
-Estado: aprobada (falta actualizar la notebook)
+Estado: aprobada e instalada (07/10/2026 02:01: el link muestra el tablero nuevo)
 Rama: tarea/cheques-propios-al-vencido
 
 ## Objetivo

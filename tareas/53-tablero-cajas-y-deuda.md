@@ -1,5 +1,5 @@
 # Tarea 53 — El tablero de siempre con las dos cajas y la deuda en dos bloques
-Estado: aprobada (falta actualizar la notebook)
+Estado: aprobada e instalada (07/10/2026 02:01: el link muestra el tablero nuevo)
 Rama: tarea/tablero-cajas-y-deuda
 
 ## Objetivo
