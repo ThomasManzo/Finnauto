@@ -1,5 +1,5 @@
 # Tarea 52 — El tablero de siempre se rearma solo
-Estado: lista para revisión
+Estado: aprobada e instalada (07/10/2026: el link muestra el tablero rearmado solo por la notebook)
 Rama: tarea/tablero-se-arma-solo
 
 ## Objetivo
@@ -64,3 +64,6 @@ quiero el mismo diseño que el que está armado, nada más que se actualice solo
   para bajar la copia de la propia Sheet y lo acepta Thomas.
 
 ## Revisión
+07/10/2026: la copia por `docs.google.com/.../export` daba 403 con el token del script; se cambió a
+`www.googleapis.com/drive/v3/files/<id>/export` y anduvo. La notebook rearmó el tablero sola en su
+siguiente pasada y el link lo sirve.
