@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from openpyxl import Workbook, load_workbook
 
-from bots.galicia.navar import BotGaliciaNavar, URL_LOGIN
+from bots.galicia.navar import BotGaliciaNavar, URL_LOGIN, CLAVE_ENVIADA_SIN_CONFIRMAR
 
 
 BASE = Path(__file__).resolve().parents[2]
@@ -283,6 +283,21 @@ class PruebaNavar(unittest.TestCase):
         self.assertEqual(pagina.clave.llenados, 1)
         self.assertEqual(pagina.consultas_por_etiqueta, 0)
         self.assertEqual(pagina.ingresar.clics, 1)
+
+    def test_login_que_el_banco_no_confirma_queda_marcado(self):
+        # Tarea 51: si la clave llegó y el banco no la confirmó, el error lo dice (cuenta para el freno).
+        pagina = PaginaLoginFalsa()
+        pagina.ingresar.al_click = lambda: None          # el banco no deja entrar
+        with self.assertRaisesRegex(RuntimeError, CLAVE_ENVIADA_SIN_CONFIRMAR):
+            self.bot.hacer_login(pagina, "usuario inventado", "clave inventada", 0)
+        self.assertEqual(pagina.ingresar.clics, 1)
+
+    def test_login_que_no_llega_a_enviar_la_clave_no_se_marca(self):
+        pagina = PaginaLoginFalsa()
+        pagina.ingresar.click = lambda timeout=None: (_ for _ in ()).throw(TimeoutError("botón tapado"))
+        with self.assertRaises(TimeoutError) as ctx:
+            self.bot.hacer_login(pagina, "usuario inventado", "clave inventada", 0)
+        self.assertNotIn(CLAVE_ENVIADA_SIN_CONFIRMAR, str(ctx.exception))
 
     def test_cuenta_abierta_con_titulo_completo(self):
         pagina = PaginaConTextos(

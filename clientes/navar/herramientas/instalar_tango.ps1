@@ -9,8 +9,11 @@
 
 param([string]$accion = "instalar")
 
-# La primera hora baja; las demás sólo reintentan si todavía falta completar el día.
-$horas = @("05:45", "06:15", "06:45", "07:15", "09:00", "12:00")
+# La primera hora baja; las demás sólo reintentan si todavía falta completar el día
+# (--si-falta: si el parte de hoy ya está completo, no hace nada y no toca Tango).
+# Tarea 51: reintenta hasta la noche, así un servidor que se prende tarde no deja el día
+# sin Tango. Si cambian estos horarios, cambiar también TANGO_REINTENTA_HASTA en aviso_diario.gs.
+$horas = @("05:45", "06:15", "06:45", "07:15") + @(8..20 | ForEach-Object { "{0:D2}:00" -f $_ })
 
 $repo = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
 $nombre = "finauto NAVAR Tango"
@@ -40,6 +43,6 @@ $opciones = New-ScheduledTaskSettingsSet -StartWhenAvailable `
 
 Unregister-ScheduledTask -TaskName $nombre -Confirm:$false -ErrorAction SilentlyContinue
 Register-ScheduledTask -TaskName $nombre -Action $accionTarea -Trigger $disparadores `
-    -Settings $opciones -Description "finauto: baja las nueve fotos diarias de Tango Live" | Out-Null
+    -Settings $opciones -Description "finauto: baja las fotos diarias de Tango Live (reintenta hasta las 20:00)" | Out-Null
 
 Write-Host "Tango instalado: corre todos los días a las $($horas -join ", "). Log: clientes\navar\privado\tango_live.log"

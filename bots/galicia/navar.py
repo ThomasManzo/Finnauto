@@ -14,6 +14,8 @@ from nucleo.utilidades import _parse_monto
 
 
 URL_LOGIN = "https://empresas.bancogalicia.com.ar/login"
+# Marca que queda en el estado del día cuando el banco recibió la clave pero no confirmó la entrada.
+CLAVE_ENVIADA_SIN_CONFIRMAR = "CLAVE ENVIADA SIN CONFIRMAR"
 PATRON_EMPRESA = re.compile(
     r"NAVAR\s+(?:S\.?\s*A\.?|SOCIEDAD\s+AN[OÓ]NIMA)", re.I)
 
@@ -107,14 +109,21 @@ class BotGaliciaNavar(BotGalicia):
 
         try:
             ingresar.click(timeout=timeout)
-            captura(page, "login_enviado")
+        except Exception:
+            # El clic no salió: el banco no recibió la clave, reintentar más tarde no arriesga nada.
+            captura(page, "ERROR_login_no_enviado")
+            raise
+        captura(page, "login_enviado")
+        try:
             campo_usuario.wait_for(state="hidden", timeout=timeout)
             self._esperar_alguno_visible(
                 page, lambda: page.get_by_text(PATRON_EMPRESA),
                 "el nombre de la empresa después del login", timeout)
-        except Exception:
+        except Exception as e:
+            # La clave SÍ llegó al banco y no confirmó la entrada: puede ser la clave. Esta marca la
+            # cuenta el orquestador para no insistir y bloquear el usuario (tarea 51).
             captura(page, "ERROR_login_no_confirmado")
-            raise
+            raise RuntimeError("%s: %s" % (CLAVE_ENVIADA_SIN_CONFIRMAR, e)) from e
         captura(page, "post_login")
         log("Login confirmado.")
 

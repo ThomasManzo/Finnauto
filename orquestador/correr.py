@@ -15,6 +15,7 @@ Uso:
 import os
 import sys
 import argparse
+import datetime
 import traceback
 
 # Hacer importable el repo (nucleo, bots) tanto con 'python -m' como script suelto.
@@ -44,7 +45,58 @@ REGISTRO_BANCOS = {
 VARIANTES_NAVAR = ("galicia", "bbva")
 
 
-def correr_banco(cliente, banco, modo_forzado=None, navegador=None):
+# ---- reintentos (tarea 51) -------------------------------------------------------------
+# Con --si-falta la corrida es un REINTENTO: si hoy ya bajó bien no hace nada, y si el banco ya
+# recibió la clave y no confirmó la entrada MAX_CLAVES_SIN_CONFIRMAR veces hoy, no insiste (puede
+# ser la clave, y seguir probando bloquearía el usuario). Las fallas antes de mandar la clave
+# (página que no carga, sin internet) no cuentan: reintentar ahí no arriesga nada.
+MAX_CLAVES_SIN_CONFIRMAR = 2
+MARCA_CLAVE = "CLAVE ENVIADA SIN CONFIRMAR"      # la escribe el bot (bots/galicia/navar.py)
+MARCA_FRENO = "NO SE REINTENTA"
+
+
+def _estado_hoy(carpeta_drive, banco_nombre, hoy):
+    """Texto del _ESTADO_ de hoy de ese banco ("" si todavía no hay)."""
+    ruta = os.path.join(carpeta_drive or "", "_ESTADO_%s_%s.txt" % (banco_nombre, hoy.strftime("%d-%m")))
+    try:
+        with open(ruta, encoding="utf-8") as f:
+            return f.read()
+    except OSError:
+        return ""
+
+
+def _ruta_contador(base_repo, cliente, banco, hoy):
+    return os.path.join(base_repo, "clientes", cliente, ".run", banco,
+                        "clave_sin_confirmar_%s.txt" % hoy.isoformat())
+
+
+def _leer_contador(ruta):
+    try:
+        with open(ruta, encoding="utf-8") as f:
+            return int(f.read().strip() or 0)
+    except (OSError, ValueError):
+        return 0
+
+
+def _sumar_contador(ruta):
+    n = _leer_contador(ruta) + 1
+    os.makedirs(os.path.dirname(ruta), exist_ok=True)
+    with open(ruta, "w", encoding="utf-8") as f:
+        f.write(str(n))
+    return n
+
+
+def decidir_reintento(estado_txt, claves_sin_confirmar):
+    """¿Corre este reintento? Devuelve (correr, motivo, freno). freno = se paró por la clave."""
+    if "OK: no fallo ninguna empresa" in estado_txt:
+        return False, "ya bajó bien hoy; no hace falta reintentar", False
+    if claves_sin_confirmar >= MAX_CLAVES_SIN_CONFIRMAR:
+        return False, ("el banco recibió la clave y no confirmó la entrada %d veces hoy; "
+                       "no se reintenta para no bloquear el usuario" % claves_sin_confirmar), True
+    return True, "", False
+
+
+def correr_banco(cliente, banco, modo_forzado=None, navegador=None, si_falta=False):
     banco = banco.lower()
     variante_navar = cliente == "navar" and banco in VARIANTES_NAVAR
     if banco not in REGISTRO_BANCOS and not variante_navar:
@@ -90,6 +142,17 @@ def correr_banco(cliente, banco, modo_forzado=None, navegador=None):
                              "Revisar que Drive esté montado o fijar carpeta_drive_destino."
                              % (bot.nombre, buscada))
 
+    hoy = datetime.date.today()
+    contador = _ruta_contador(BASE_REPO, cliente, banco, hoy)
+    if si_falta:
+        correr, motivo, freno = decidir_reintento(_estado_hoy(ctx.carpeta_drive, ctx.banco_nombre, hoy),
+                                                  _leer_contador(contador))
+        if not correr:
+            log("%s: %s." % (bot.nombre, motivo))
+            if freno:
+                _anotar_freno(ctx, hoy, motivo)
+            return None
+
     usuario, clave = _cred.cargar(BASE_REPO, cliente, banco)
     if variante_navar and banco == "bbva":
         # BBVA pide un tercer dato para entrar; vive en el llavero junto con usuario y clave.
@@ -97,13 +160,31 @@ def correr_banco(cliente, banco, modo_forzado=None, navegador=None):
 
     log("=== finauto :: cliente=%s banco=%s modo=%s ===" % (
         ctx.cliente_nombre, bot.nombre, "visible" if ctx.modo_visible else "invisible"))
-    resultado = _loop.correr(bot, ctx, usuario, clave)
+    try:
+        resultado = _loop.correr(bot, ctx, usuario, clave)
+    except SystemExit:
+        # El loop corta con SystemExit cuando falla el login y deja el motivo en el estado del día.
+        if MARCA_CLAVE in _estado_hoy(ctx.carpeta_drive, ctx.banco_nombre, hoy):
+            n = _sumar_contador(contador)
+            log("%s: el banco recibió la clave y no confirmó la entrada (%d de %d hoy)."
+                % (bot.nombre, n, MAX_CLAVES_SIN_CONFIRMAR))
+        raise
     if variante_navar:
         if resultado["fallaron"] or not (resultado["ok"] or resultado["sin_novedades"]):
             raise RuntimeError("%s NAVAR no terminó bien; revisar log y capturas." % bot.nombre)
     return resultado
 
 
+
+
+def _anotar_freno(ctx, hoy, motivo):
+    """Deja en el estado de hoy, una sola vez, que no se reintenta y qué hacer (lo lee el mail)."""
+    if MARCA_FRENO in _estado_hoy(ctx.carpeta_drive, ctx.banco_nombre, hoy):
+        return
+    from nucleo.salidas import escribir_estado_drive
+    escribir_estado_drive(ctx.carpeta_drive, ctx.banco_nombre, hoy, {
+        "ok": [], "sin_novedades": [],
+        "fallaron": ["%s - %s: revisar la clave antes de volver a probar" % (MARCA_FRENO, motivo)]})
 
 
 def _bancos_de(cliente, modo):
@@ -209,6 +290,8 @@ def main():
     ap.add_argument("--banco", help="banco a correr (galicia/bbva/comafi/santander)")
     ap.add_argument("--todos", action="store_true", help="correr todos los bancos activos del perfil")
     ap.add_argument("--modo", choices=["prueba", "produccion"], help="visible / invisible")
+    ap.add_argument("--si-falta", action="store_true",
+                    help="reintento: no hace nada si hoy ya bajó bien o si el banco ya rechazó la clave")
     ap.add_argument("--navegador", choices=["chromium", "msedge", "chrome"],
                     help="con qué navegador entrar (por defecto, el del perfil o Chromium)")
     args = ap.parse_args()
@@ -222,7 +305,7 @@ def main():
 
     if not args.banco:
         raise SystemExit("Falta --banco (o usá --todos).")
-    correr_banco(args.cliente, args.banco, args.modo, args.navegador)
+    correr_banco(args.cliente, args.banco, args.modo, args.navegador, si_falta=args.si_falta)
 
 
 if __name__ == "__main__":
