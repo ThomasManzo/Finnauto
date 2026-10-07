@@ -130,9 +130,13 @@ var COPIAS_FUENTE = 3;
 
 function exportarParaTablero() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var url = "https://docs.google.com/spreadsheets/d/" + ss.getId() + "/export?format=xlsx";
+  // La API de Drive es la puerta para programas (la de "Descargar" de Sheets rechaza este acceso: 403).
+  var url = "https://www.googleapis.com/drive/v3/files/" + ss.getId() +
+    "/export?mimeType=" + encodeURIComponent("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   var resp = UrlFetchApp.fetch(url, {headers: {Authorization: "Bearer " + ScriptApp.getOAuthToken()}, muteHttpExceptions: true});
-  if (resp.getResponseCode() !== 200) throw new Error("Google no devolvió la copia de la Sheet (código " + resp.getResponseCode() + ")");
+  if (resp.getResponseCode() !== 200)
+    throw new Error("Google no devolvió la copia de la Sheet (código " + resp.getResponseCode() + "): " +
+      String(resp.getContentText()).replace(/\s+/g, " ").slice(0, 300));
   var carpeta = _carpetaFuente_();
   var nombre = "NAVAR - Cash Flow " + Utilities.formatDate(new Date(), "America/Argentina/Buenos_Aires", "yyyy-MM-dd HHmm") + ".xlsx";
   var nuevo = carpeta.createFile(resp.getBlob().setName(nombre));
