@@ -569,7 +569,7 @@ function verPosicion(){
 
   if (d.vencidos_resumen){
     var vr = d.vencidos_resumen, cv = el('div', 'card');
-    out.push(el('h2', null, 'Vencido e impago · las tres puntas'));
+    out.push(el('h2', null, 'Vencido e impago'));
     var tv = el('table');
     tv.innerHTML = '<thead><tr><th>Obligación</th><th>Cuánto</th><th>Desde cuándo</th><th>Qué pasa si no se paga</th></tr></thead>';
     var bv = el('tbody');
@@ -583,7 +583,7 @@ function verPosicion(){
     tv.appendChild(bv); cv.appendChild(tv);
     cv.appendChild(el('p', 'nota', 'Total vencido: <b>' + pesos(vr.total) +
       '</b>. Es deuda acumulada; no se vuelve a sumar a las salidas futuras.' +
-      (vr.otros ? ' Incluye otros vencidos fuera de las tres puntas: ' + pesos(vr.otros) + '.' : '')));
+      (vr.otros ? ' Incluye otros vencidos fuera de esta tabla: ' + pesos(vr.otros) + '.' : '')));
     out.push(cv);
   }
 
@@ -1152,6 +1152,7 @@ function verProyeccion(){
       pesos(cap.vencido_total) + ' (' + V.proveedores + ' ' + pesos(vt.proveedores || 0) +
       (vt.impuestos ? ' · ARCA ' + pesos(vt.impuestos) : '') +
       (vt.bancos ? ' · bancos ' + pesos(vt.bancos) : '') +
+      (vt.cheques ? ' · cheques propios ' + pesos(vt.cheques) : '') +
       '). Se paga con la caja libre, en orden de atraso; lo que no se paga sigue atrasado.'));
     out.push(cc0);
 

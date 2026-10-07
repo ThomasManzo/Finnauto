@@ -102,6 +102,13 @@ def _libro(ruta):
     i.append(["Impuesto", "Empresa", "Periodo", "Fecha Vencimiento", "Importe", "Estado", "Debito Automatico"])
     i.append(["PLAN INVENTADO", "A", "cuota 1", datetime.datetime(2026, 10, 16), 70, "Pendiente", "Si"])
     i.append(["IMPUESTO INVENTADO", "A", "2026", datetime.datetime(2026, 10, 20), 30, "Pendiente", "No"])
+    ch = wb.create_sheet("Cartera de Cheques")
+    ch.append(["Tipo", "Empresa", "Nro Cheque", "Beneficiario / Librador", "Banco", "Fecha Pago / Cobro",
+               "Importe", "Estado", "Observaciones"])
+    ch.append(["Propio", "A", "0001", "PROVEEDOR INVENTADO", "BANCO X", datetime.datetime(2026, 10, 1), 40,
+               "En Cartera", "REVISAR: fecha de pago pasada · inventado"])
+    ch.append(["Terceros", "A", "0002", "CLIENTE INVENTADO", "BANCO Y", datetime.datetime(2026, 10, 1), 15,
+               "En Cartera", "REVISAR: fecha de cobro pasada · inventado"])
     wb.save(ruta)
 
 
@@ -127,6 +134,15 @@ class Lector(unittest.TestCase):
         self.assertEqual({"automatico": 800.0, "decision": 0.0, "sin_definir": 200.0}, grupos)
         imp = {g["id"]: g["en_30"] for g in DATOS.deuda_impositiva_por_debito(self.c, DATOS.GRUPO, HOY)}
         self.assertEqual({"automatico": 70.0, "decision": 30.0, "sin_definir": 0.0}, imp)
+
+    def test_cheque_propio_vencido_va_al_vencido_y_el_de_terceros_a_hallazgos(self):
+        # Tarea 54: como en el Cash ("Cheques propios vencidos sin debitar").
+        vencidos = [x for x in self.c["egresos_cashflow"] if x["tipo"] == "CHEQUE"]
+        self.assertEqual([(40.0, True)], [(x["importe"], x["vencido_pendiente"]) for x in vencidos])
+        self.assertEqual(["Cheques de terceros: fecha de cobro pasada"],
+                         [h["titulo"] for h in self.c["hallazgos_del_lector"]])
+        stock = DATOS.proyeccion(self.c, DATOS.GRUPO, HOY, modo=DATOS.modo_vencido("navar"))["vencido_stock"]
+        self.assertEqual(40.0, stock["por_tipo"]["cheques"])
 
     def test_la_caja_a_arranca_del_arqueo_de_hoy_y_no_del_de_manana(self):
         self.assertEqual(50.0, self.c["cajas"]["A"]["saldo"])
