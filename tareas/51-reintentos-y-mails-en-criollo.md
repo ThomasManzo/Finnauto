@@ -1,5 +1,5 @@
 # Tarea 51 — Reintentos todo el día y mails en criollo
-Estado: aprobada (falta instalar en la notebook)
+Estado: aprobada e instalada (07/10 00:15: notebook con los horarios nuevos; Apps Script con el seguimiento)
 Rama: tarea/reintentos-y-mails
 
 ## Objetivo
