@@ -1,5 +1,5 @@
 # Tarea 59 — Saldos de bancos netos y "al día" aunque no haya movimientos
-Estado: aprobada; instalada en Apps Script (falta rearmar el Cash y actualizar la notebook)
+Estado: aprobada (sin el cambio del Cash, que se volvió atrás); falta actualizar la notebook
 Rama: tarea/saldos-netos
 
 ## Objetivo
@@ -60,3 +60,9 @@ tarea 48 con montos reales en las propuestas del Plan (en el repo van como "$X M
 solo este cambio sobre lo instalado y se verificó por huella después de recargar; la copia de Drive
 `Scripts/crear_cash.gs.txt` quedó igual. Falta: que Thomas rearme el Cash desde el menú finauto, y
 actualizar la notebook (lector y tablero corren allá).
+
+**Claude, 08/10/2026 — corrección.** Thomas: el formato del **Cash** está bien como estaba; lo que
+quería cambiar es el **tablero**. Se volvió atrás `crear_cash.gs` (repo, Apps Script y la copia de Drive
+quedaron como antes, verificado por huella). Se mantienen: el saldo de pantalla en el lector (solo
+agrega un saldo cuando no hubo movimientos) y el "al DD/MM" del tablero. El formato de bancos del
+tablero (saldo real / descubierto usado / neto) va aparte, después de confirmarlo con Thomas.
