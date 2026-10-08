@@ -1,5 +1,5 @@
 # Tarea 59 — Saldos de bancos netos y "al día" aunque no haya movimientos
-Estado: en curso
+Estado: lista para revisión
 Rama: tarea/saldos-netos
 
 ## Objetivo
@@ -37,5 +37,20 @@ Pedido de Thomas (08/10/2026), mirando el tablero y el Cash:
 4. Pruebas con datos inventados.
 
 ## Qué hice
+
+Lo escribió Claude.
+
+- `lector/extractos.py`: `saldos_de_pantalla` (el `_SALDOS_` más nuevo de la carpeta del banco) y
+  `completar_con_pantalla`. La pantalla de una bajada de madrugada es el cierre del día anterior: si
+  coincide con el último saldo de esa cuenta (±$0,50), se repite en ese día con la observación "saldo
+  de la pantalla del banco al bajar: sin movimientos desde el DD/MM". Si no coincide, nada, y el
+  resumen lo anota. Bancos sin bot (sin `_SALDOS_`) no cambian.
+- `dashboard/datos.py`: "De cuándo es el dato" dice solo "al DD/MM" (bancos y cajas).
+- `crear_cash.gs`: la sección 1 muestra el saldo real (neto); el acuerdo ya no se suma, solo decide el
+  color (rojo = saldo + acuerdo < 0, ámbar = saldo < 0). Título, nota e Instrucciones acordes.
+- Pruebas: 6 nuevas (saldo de pantalla), la del tablero actualizada; lectores 137 OK, bots 75 OK,
+  pruebas de Node OK. `tests/test_motor.py` tiene 2 fallas que ya estaban en `main` (no son de esto).
+- Con los extractos reales (en la Mac, sin publicar nada): Galicia pasa a tener saldo al día anterior
+  a la bajada, con la observación de "sin movimientos"; los demás bancos no cambian.
 
 ## Revisión

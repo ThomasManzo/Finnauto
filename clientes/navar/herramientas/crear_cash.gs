@@ -338,8 +338,9 @@ function _armarPeriodica_(ss, nombre, periodo) {
   h.setRowGroupControlPosition(SpreadsheetApp.GroupControlTogglePosition.BEFORE);
   var fila = filaFechas + 2;
 
-  // ---- 1. margen por banco. El saldo real queda aparte: el acuerdo no es plata ingresada.
-  _seccion_(h, fila++, "1 · Bancos (saldo real + descubierto acordado)", "#e8f0fe", "#174ea6", colFuente);
+  // ---- 1. saldo real (neto) por banco. Pedido de Thomas (08/10/2026): mostrar lo que el banco dice,
+  // sin sumarle el acuerdo; en negativo es el descubierto usado. El acuerdo solo decide el color.
+  _seccion_(h, fila++, "1 · Bancos (saldo real · en negativo, descubierto usado)", "#e8f0fe", "#174ea6", colFuente);
   var bancos = _bancos_(ss), primeraMargen = fila;
   fila += bancos.length;
   var primeraBanco = fila;
@@ -349,10 +350,9 @@ function _armarPeriodica_(ss, nombre, periodo) {
   var colAcuerdo = colFuente + 1;            // auxiliar oculta: acuerdo de descubierto de cada banco
   bancos.forEach(function (b, indice) {
     var filaMargen = primeraMargen + indice;
-    // Una sola fila por banco: el margen (saldo + descubierto acordado), con color.
-    // Es lo que se quiere leer de un vistazo: cuánto aire le queda a esa cuenta.
+    // Una sola fila por banco: su saldo real, con color según el descubierto acordado.
     h.getRange(filaMargen, 1).setValue(b.etiqueta);
-    h.getRange(filaMargen, 1).setNote("Saldo del banco más su descubierto acordado: cuánto aire le queda. Verde si le queda margen, ámbar si lo usó todo, rojo si está excedido. Sin acuerdo informado se suma cero. El saldo del día que el banco no mandó extracto es el último conocido. No modifica los cierres.");
+    h.getRange(filaMargen, 1).setNote("Saldo real del banco (neto): en negativo es el descubierto usado. Negro si es positivo, ámbar si usa descubierto dentro del acuerdo, rojo si se pasó del acuerdo. El día que el banco no tuvo movimientos o no mandó extracto, se repite el último saldo conocido.");
     h.getRange(fila, 1).setValue(b.etiqueta + " · saldo real (auxiliar)");
     h.getRange(fila, colAcuerdo).setFormula("=SUMIFS(" + R.dbOrig + "," + R.dbBanco + ",\"" + b.nombre + "\"," + R.dbLinea + ",\"*escubierto*\")");
     for (var c = 0; c < nCols; c++) {
@@ -785,7 +785,7 @@ function armarInstrucciones() {
   seccion("2 · Cómo se lee una pantalla (las tres tienen la misma estructura)");
   tabla(["Parte", "Qué muestra"], [
     ["Hoy / Último extracto", "B2 es hoy; B3 el último día con extracto. Hasta B3 todo es REAL; desde el día siguiente, ESTIMADO. La fila bajo las fechas lo dice por columna (real · estimado · real + est.)."],
-    ["1 · Bancos", "Una fila por banco con el margen: saldo más descubierto acordado. Verde si le queda aire, ámbar si lo usó todo, rojo si está excedido (ej.: saldo -101,7 M con acuerdo de 100 M muestra -1,7 M en rojo). El día que un banco no manda extracto se arrastra su último saldo conocido. El total y los cierres van sobre el saldo real, sin el acuerdo. Vacío en períodos futuros: no se inventa saldo."],
+    ["1 · Bancos", "Una fila por banco con su saldo real (neto): en negativo es el descubierto usado. Negro si es positivo, ámbar si usa descubierto dentro del acuerdo, rojo si se pasó del acuerdo. El día que un banco no tuvo movimientos o no mandó extracto se repite su último saldo conocido. Vacío en períodos futuros: no se inventa saldo."],
     ["Saldo inicial", "El cierre del período anterior. Es el 'saldo inicio' de un cash hecho a mano: de acá se parte cada día / semana / mes."],
     ["2 · Ingresos", "Un renglón por concepto. Real atrás (extracto), estimado adelante (listas). Sin préstamos: los préstamos no son operación."],
     ["3 · Egresos de la operación", "Ídem: proveedores, sueldos, impuestos corrientes, cheques propios, banco, otros."],
@@ -923,30 +923,30 @@ function _cuentasVistaBancos_(ss) {
 }
 
 function _colorearBancos_(h, bancos, margen, auxiliares, colAcuerdo, nCols, D, L) {
-  // Una fila por banco con el margen: saldo (arrastrado si el banco no mandó extracto ese día)
-  // más el descubierto acordado. Sin filas de texto: el número y el color dicen todo.
+  // Una fila por banco con su saldo real (arrastrado si el banco no mandó extracto ese día).
+  // El acuerdo de descubierto no se suma: solo decide el color.
   var reglas = [], sep = _separadorDeEstaPlanilla_(h);
   bancos.forEach(function (b, i) {
     var r = margen + i, aux = auxiliares + i;
     for (var c = 0; c < nCols; c++) {
-      h.getRange(r, 2 + c).setFormula('=IF(' + D(c) + '>$B$2,"",' + L(c) + aux + '+N($' + _colLetra_(colAcuerdo) + aux + '))');
+      h.getRange(r, 2 + c).setFormula('=IF(' + D(c) + '>$B$2,"",' + L(c) + aux + ')');
     }
     // El color va en el FORMATO DE NÚMERO, no en formato condicional: las reglas condicionales
     // no pintaban (el rango arranca en la columna separadora) y esto además viaja al exportar.
-    // Verde = le queda aire · rojo = excedido · ámbar = usó justo todo el acuerdo.
     h.getRange(r, 2, 1, nCols).setNumberFormat("#,##0;-#,##0;0");
     // El semáforo mira DOS cosas, así que va por formato condicional y no por formato de número:
-    //   rojo    = el margen quedó negativo → se pasó del acuerdo
-    //   ámbar   = el saldo del banco es negativo pero el acuerdo lo cubre → está usando el descubierto
+    //   rojo    = saldo + acuerdo < 0 → se pasó del acuerdo
+    //   ámbar   = el saldo es negativo pero el acuerdo lo cubre → está usando el descubierto
     //   negro   = no toca el descubierto (es el formato de base, sin regla)
     // Ojo: las reglas se escriben con el separador de ESTA planilla (en español es ";"),
     // porque _separadorLocal_ arregla las fórmulas de las celdas pero no las de las reglas.
-    var y = _colLetra_(2), margen1 = y + r, saldo1 = y + aux, rango = h.getRange(r, 2, 1, nCols);
+    var y = _colLetra_(2), saldo1 = y + r, acuerdo = "N($" + _colLetra_(colAcuerdo) + "$" + aux + ")";
+    var rango = h.getRange(r, 2, 1, nCols);
     reglas.push(SpreadsheetApp.newConditionalFormatRule()
-      .whenFormulaSatisfied("=AND(ISNUMBER(" + margen1 + ")" + sep + margen1 + "<0)")
+      .whenFormulaSatisfied("=AND(ISNUMBER(" + saldo1 + ")" + sep + saldo1 + "+" + acuerdo + "<0)")
       .setFontColor("#b3261e").setRanges([rango]).build());
     reglas.push(SpreadsheetApp.newConditionalFormatRule()
-      .whenFormulaSatisfied("=AND(ISNUMBER(" + margen1 + ")" + sep + saldo1 + "<0)")
+      .whenFormulaSatisfied("=AND(ISNUMBER(" + saldo1 + ")" + sep + saldo1 + "<0)")
       .setFontColor("#b06000").setRanges([rango]).build());
   });
   h.setConditionalFormatRules(reglas);

@@ -993,6 +993,62 @@ def _ordenar_cronologico(movs):
         movs.reverse()
 
 
+def _digitos(cuenta):
+    return re.sub(r"\D", "", str(cuenta or ""))
+
+
+def saldos_de_pantalla(carpeta_banco):
+    """Lo que el bot leyó en la pantalla del banco al bajar: [(cuenta, fecha de la bajada, saldo)].
+
+    Sale del `_SALDOS_<Banco>_DD-MM.json` más nuevo de la carpeta del banco (lo escribe el núcleo de
+    los bots). Bancos sin bot no tienen ese archivo: lista vacía.
+    """
+    import json
+    mejor, fecha_mejor = None, None
+    for ruta in glob.glob(os.path.join(carpeta_banco or "", "_SALDOS_*.json")):
+        try:
+            with io.open(ruta, encoding="utf-8") as f:
+                datos = json.load(f)
+            fecha = datetime.date.fromisoformat(str(datos.get("fecha"))[:10])
+        except Exception:
+            continue
+        if fecha_mejor is None or fecha > fecha_mejor:
+            mejor, fecha_mejor = datos, fecha
+    if not mejor:
+        return []
+    return [(e.get("cuenta"), fecha_mejor, float(e["saldo_actual"])) for e in mejor.get("empresas") or []
+            if isinstance(e.get("saldo_actual"), (int, float))]
+
+
+def completar_con_pantalla(por_dia, pantallas):
+    """Agrega a por_dia {(cuenta, fecha): saldo} el saldo de la pantalla del banco, si corresponde.
+
+    El bot baja de madrugada: lo que muestra la pantalla es el cierre del día ANTERIOR a la bajada.
+    Si coincide con el último saldo de los extractos (no hubo movimientos), ese saldo se repite en ese
+    día. Si no coincide, no se agrega nada: faltan movimientos y sería un saldo sin respaldo.
+    Devuelve ({(cuenta, fecha): observación}, [avisos para el resumen]).
+    """
+    obs, avisos = {}, []
+    for cuenta_p, fecha_bajada, saldo_p in pantallas:
+        claves = [k for k in por_dia if _digitos(k[0]) == _digitos(cuenta_p)]
+        if not claves:
+            continue
+        cuenta, ultimo = max(claves, key=lambda k: k[1])
+        cierre = fecha_bajada - datetime.timedelta(days=1)
+        if cierre <= ultimo:
+            continue
+        if abs(saldo_p - por_dia[(cuenta, ultimo)]) < 0.5:
+            por_dia[(cuenta, cierre)] = por_dia[(cuenta, ultimo)]
+            obs[(cuenta, cierre)] = ("saldo de la pantalla del banco al bajar: sin movimientos desde el %s"
+                                     % ultimo.strftime("%d/%m"))
+        else:
+            avisos.append("la pantalla del banco del %s dice %s y el último movimiento leído (%s) da %s: "
+                          "puede faltar algún movimiento; no se usa el saldo de pantalla"
+                          % (fecha_bajada.strftime("%d/%m"), _m(saldo_p), ultimo.strftime("%d/%m"),
+                             _m(por_dia[(cuenta, ultimo)])))
+    return obs, avisos
+
+
 def procesar(carpeta, empresa="A"):
     bancos, cuit = [], None
     errores = []
@@ -1026,7 +1082,7 @@ def procesar(carpeta, empresa="A"):
                     lecturas.append(lectura)
         for l in lecturas:
             cuit = cuit or l.get("cuit")
-        bancos.append({"clave": clave, "nombre": cfg["nombre"], "lecturas": lecturas})
+        bancos.append({"clave": clave, "nombre": cfg["nombre"], "lecturas": lecturas, "carpeta": sub})
 
     saldos, movs, resumen_bancos = [], [], []
     for b in bancos:
@@ -1061,11 +1117,16 @@ def procesar(carpeta, empresa="A"):
         for l in b["lecturas"]:
             for f, s in (l.get("saldos_por_dia") or {}).items():
                 por_dia[(l["cuenta"], f)] = s
+        # 3. Una cuenta sin movimientos no tiene que parecer atrasada (tarea 59): si el saldo que el
+        # bot leyó en la pantalla del banco al bajar coincide con el último saldo de los extractos,
+        # ese saldo vale también para el cierre del día anterior a la bajada.
+        obs_pantalla, avisos = completar_con_pantalla(por_dia, saldos_de_pantalla(b.get("carpeta")))
         for (cta, f), s in sorted(por_dia.items()):
             saldos.append({"banco": b["nombre"], "cuenta": cta, "fecha": f, "saldo": s,
-                           "origen": "Extracto %s" % b["nombre"], "obs": "saldo contable al cierre del día"})
+                           "origen": "Extracto %s" % b["nombre"],
+                           "obs": obs_pantalla.get((cta, f), "saldo contable al cierre del día")})
         movs += propios
-        resumen_bancos.append({"banco": b["nombre"], "lecturas": b["lecturas"], "n": len(propios),
+        resumen_bancos.append({"banco": b["nombre"], "lecturas": b["lecturas"], "n": len(propios), "avisos": avisos,
                                "ultimos": {cta: (f, s) for (cta, f), s in sorted(por_dia.items())}})
     for s in SALDOS_MANUALES:
         saldos.append(dict(s))
@@ -1191,6 +1252,8 @@ def resumen(res, ruta_pegar, hoy):
             L.append("- `%s` · cuenta %s · %d movimientos (%d nuevos)%s"
                      % (l["archivo"], l["cuenta"], len(l["movimientos"]), l.get("nuevos", 0),
                         (" · " + l["nota"]) if l.get("nota") else ""))
+        for aviso in b.get("avisos") or []:
+            L.append("- " + aviso)
         for cta, (f, s) in b["ultimos"].items():
             L.append("- **último saldo %s: %s** (%s)" % (cta, _m(s), f.strftime("%d/%m/%Y")))
             total_hoy += s

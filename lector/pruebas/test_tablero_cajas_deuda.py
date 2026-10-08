@@ -73,7 +73,9 @@ class Cajas(unittest.TestCase):
         self.assertAlmostEqual(c["caja_hoy"], sum(x["saldo"] for x in cuentas))
         bancos = [x["nombre"] for x in cuentas if not x["es_caja"]]
         self.assertEqual(2, len(set(bancos)))                    # dos cuentas del mismo banco, distinguidas
-        self.assertIn("arqueo del 01/10 + 2 movimientos de Tango", [x["nota"] for x in cuentas if x["nombre"] == "Caja A"][0])
+        # Solo la fecha del dato (tarea 59): la caja es el arqueo más Tango, hasta hoy.
+        self.assertEqual("al 07/10", [x["nota"] for x in cuentas if x["nombre"] == "Caja A"][0])
+        self.assertEqual("al 16/09", [x["nota"] for x in cuentas if x["nombre"] == "Banco X · cta. …2333"][0])
         # En la empresa A: primero la caja, después los bancos de mayor a menor saldo.
         self.assertEqual(["Caja A", "Banco X · cta. …2333", "Banco X · cta. …111"],
                          [x["nombre"] for x in DATOS.cuentas_de_hoy(c, "A")])
