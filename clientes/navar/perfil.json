@@ -38,11 +38,19 @@
     "nacion": {
       "activo": false,
       "empresas_excluir": [],
-      "solo_estas_empresas": [],
-      "solo_empresa_activa": false,
-      "nombre_archivo": "empresa",
-      "prefijo_archivo": "Nacion",
-      "_nota": "Sin ficha todavia (bots/nacion/selectores.json no existe). Situacion 2 BCRA en este banco."
+      "solo_estas_empresas": [
+        "NAVAR SA"
+      ],
+      "solo_empresa_activa": true,
+      "nombre_archivo": "excel_navar",
+      "prefijo_archivo": "Movimientos Nacion",
+      "modo_visible": true,
+      "_nota": "BNA+ Empresas. Login en dos pasos (DNI + usuario, despues contrasena); los tres datos viven en el llavero (setup_credenciales.py --banco nacion). El banco no baja el Excel en el momento: lo deja en las notificaciones y el bot lo va a buscar. Se piden los ultimos dias_a_bajar dias (si un dia falla, el siguiente lo recupera). Si aparece el 'No soy un robot' el bot para. activo=false hasta que la prueba a mano salga bien.",
+      "cuenta": "19477890007728",
+      "dias_a_bajar": 5,
+      "carpeta_drive_destino": "",
+      "carpeta_drive_relativa": "Bancos/nacion",
+      "incluir_hoy": false
     },
     "corrientes": {
       "activo": false,

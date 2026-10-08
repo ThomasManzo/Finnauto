@@ -726,13 +726,79 @@ def _leer_pantalla_nacion(ruta, paginas):
                 len(movs), ", ".join("%s %s" % (f.strftime("%d/%m"), _m(s)) for f, s in sorted(saldos_por_dia.items())))}
 
 
+def _monto_nacion(v):
+    """'$ -1.234,56' -> -1234.56 (el Excel de BNA+ trae los importes como texto)."""
+    if isinstance(v, (int, float)):
+        return float(v)
+    t = str(v or "").replace("$", "").replace(" ", "").strip()
+    neg = t.startswith("-")
+    return _ar(t.lstrip("-")) * (-1 if neg else 1)
+
+
+def leer_planilla_nacion(ruta):
+    """Excel de BNA+ Empresas ("Últimos movimientos"): Fecha · Comprobante · Concepto · Monto · Saldo.
+
+    - Viene del más nuevo al más viejo.
+    - NO trae el número de cuenta: lo pone el bot en el nombre del archivo
+      ("Movimientos Nacion <cuenta> AAAA-MM-DD.xls"). Sin número, no se lee: una cuenta "?"
+      aparecería en el cash como una cuenta aparte y sumaría el saldo dos veces.
+    - El Saldo de cada renglón resultó ser el de ANTES del movimiento (07/10/2026: Saldo + Monto
+      del renglón más nuevo da el saldo de la pantalla). Igual no se da por sentado: se prueba la
+      cadena entera con las dos lecturas (antes / después) y se usa la que cierra. Si no cierra
+      ninguna, el archivo no se lee.
+    """
+    m = re.search(r'(\d{13,14})', os.path.basename(ruta))
+    if not m:
+        raise ValueError("el Excel de Nación no trae la cuenta: el nombre del archivo tiene que llevar "
+                         "el número (lo pone el bot; si se baja a mano, renombrarlo igual)")
+    cuenta = m.group(1)
+    filas = _filas_planilla(ruta)
+    n, ix = _columnas(filas, {
+        "Fecha": ("Fecha",), "Comprobante": ("Comprobante",), "Concepto": ("Concepto",),
+        "Monto": ("Monto", "Importe"), "Saldo": ("Saldo",),
+    }, ("Fecha", "Concepto", "Monto", "Saldo"))
+    renglones = []   # del más nuevo al más viejo, como viene
+    for r in filas[n + 1:]:
+        if _celda(r, ix, "Fecha") in (None, ""):
+            continue
+        renglones.append((_fecha_planilla(_celda(r, ix, "Fecha")), str(_celda(r, ix, "Concepto") or ""),
+                          _monto_nacion(_celda(r, ix, "Monto")), _monto_nacion(_celda(r, ix, "Saldo")),
+                          str(_celda(r, ix, "Comprobante") or "").strip() or None))
+    if not renglones:
+        return {"cuenta": cuenta, "movimientos": [], "saldos_por_dia": {}, "archivo": os.path.basename(ruta),
+                "nota": "sin movimientos en el período"}
+
+    def cierra(saldo_es_antes):
+        # par (más nuevo, el anterior a él): el saldo tiene que encadenar al centavo
+        for nuevo, viejo in zip(renglones, renglones[1:]):
+            esperado = viejo[3] + viejo[2] if saldo_es_antes else viejo[3] + nuevo[2]
+            if abs(nuevo[3] - esperado) > 0.01:
+                return False
+        return True
+
+    if cierra(True):
+        antes, forma = True, "saldo de antes del movimiento"
+    elif cierra(False):
+        antes, forma = False, "saldo de después del movimiento"
+    else:
+        raise ValueError("la cadena de saldos del Excel de Nación no cierra; no se publica nada")
+
+    movs = []
+    for fecha, concepto, monto, saldo, comp in renglones:
+        despues = round(saldo + monto, 2) if antes else saldo
+        movs.append(_mov(fecha, concepto, monto, despues, cuenta, "xls", ref=comp))
+    final = movs[0]["saldo"]
+    return {"cuenta": cuenta, "movimientos": movs, "archivo": os.path.basename(ruta),
+            "nota": "cadena de saldos OK (%s): %d movimientos, saldo final %s" % (forma, len(movs), _m(final))}
+
+
 # ================================================================== registro de bancos
 BANCOS = OrderedDict([
     ("bbva", {"nombre": "BBVA", "pdf": leer_pdf_bbva, "planilla": leer_planilla_bbva}),
     ("galicia", {"nombre": "GALICIA", "pdf": leer_pdf_galicia, "planilla": leer_planilla_galicia}),
     ("macro", {"nombre": "MACRO", "pdf": leer_pdf_macro, "planilla": leer_planilla_macro}),
     ("corrientes", {"nombre": "CORRIENTES", "pdf": leer_pdf_corrientes, "planilla": None}),
-    ("nacion", {"nombre": "NACION", "pdf": leer_pdf_nacion, "planilla": None}),
+    ("nacion", {"nombre": "NACION", "pdf": leer_pdf_nacion, "planilla": leer_planilla_nacion}),
 ])
 
 
