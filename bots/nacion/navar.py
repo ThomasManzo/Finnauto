@@ -267,18 +267,38 @@ class BotNacionNavar(BotBanco):
 
     @staticmethod
     def _campos_fecha(page):
-        """Los dos campos de fecha del panel de filtros, ordenados de arriba a abajo (Desde, Hasta).
-        Se reconocen por tener una fecha dd/mm/aaaa adentro."""
-        campos = []
-        for marco in page.frames:
-            try:
-                for el in _visibles(marco.locator("input")):
-                    if re.fullmatch(r"\d\d/\d\d/\d{4}", (el.input_value() or "").strip()):
-                        caja = el.bounding_box()
-                        campos.append((caja["y"] if caja else 0, el))
-            except Exception:
-                pass
-        return [el for _, el in sorted(campos, key=lambda c: c[0])]
+        """Los dos campos de fecha del panel de filtros, de arriba a abajo (Desde, Hasta).
+
+        En una sesión nueva vienen VACÍOS (07/10: el bot los buscaba por la fecha de adentro y no
+        encontró ninguno). Se prueban tres formas, en orden:
+          1. los campos del calendario de la página (react-datepicker);
+          2. el primer campo que sigue a los títulos "Desde" y "Hasta";
+          3. los campos que ya tienen una fecha dd/mm/aaaa.
+        """
+        def ordenar(campos):
+            con_y = []
+            for el in campos:
+                caja = el.bounding_box()
+                con_y.append((caja["y"] if caja else 0, el))
+            return [el for _, el in sorted(con_y, key=lambda c: c[0])]
+
+        formas = [
+            lambda m: _visibles(m.locator(".react-datepicker__input-container input")),
+            lambda m: [el for titulo in ("Desde", "Hasta") for el in _visibles(m.locator(
+                "xpath=//*[normalize-space(text())='%s']/following::input[1]" % titulo))],
+            lambda m: [el for el in _visibles(m.locator("input"))
+                       if re.fullmatch(r"\d\d/\d\d/\d{4}", (el.input_value() or "").strip())],
+        ]
+        for forma in formas:
+            campos = []
+            for marco in page.frames:
+                try:
+                    campos += forma(marco)
+                except Exception:
+                    pass
+            if len(campos) == 2:
+                return ordenar(campos)
+        return []
 
     def aplicar_filtro_fechas(self, page, desde, hasta, timeout):
         # El rango lo decide el bot (no el del núcleo): siempre los últimos días, para recuperar
