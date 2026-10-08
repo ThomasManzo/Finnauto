@@ -29,6 +29,7 @@ import uuid
 from pathlib import Path
 
 from bots.base import BotBanco
+from bots.galicia.navar import CLAVE_ENVIADA_SIN_CONFIRMAR
 from bots.bbva.navar import (BotBbvaNavar, PATRON_NAVAR, _esperar_unico, _esperar_visible,
                              _hay_visible, _visibles)
 from nucleo.log import log, captura
@@ -179,9 +180,13 @@ class BotNacionNavar(BotBanco):
         try:
             continuar.click(timeout=timeout)
             self._esperar_inicio(page)
-        except Exception:
+        except Exception as e:
             captura(page, "ERROR_login_no_confirmado")
-            raise
+            if "No soy un robot" in str(e):
+                raise
+            # La contraseña SÍ llegó al banco y no confirmó la entrada: puede ser la clave. Con esta
+            # marca el orquestador cuenta los intentos y no insiste (tarea 51), igual que Galicia.
+            raise RuntimeError("%s: %s" % (CLAVE_ENVIADA_SIN_CONFIRMAR, e)) from e
         captura(page, "post_login")
         log("Login confirmado.")
 
