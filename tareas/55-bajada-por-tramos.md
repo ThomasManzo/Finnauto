@@ -1,5 +1,5 @@
 # Tarea 55 — La bajada de Tango por tramos de fechas (las páginas de Live vienen desordenadas)
-Estado: escrita por Claude, falta el OK de Thomas para mergear
+Estado: aprobada (OK de Thomas 07/10/2026), falta instalar en la notebook
 Rama: tarea/55-bajada-por-tramos
 
 ## Qué pasó
