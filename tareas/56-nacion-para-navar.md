@@ -1,5 +1,5 @@
 # Tarea 56 — Nación para NAVAR: bot de BNA+ Empresas y lector de su Excel
-Estado: lista para revisión
+Estado: aprobada (probada en la notebook el 07/10/2026); falta instalar el horario
 Rama: tarea/nacion-navar
 
 ## Objetivo
@@ -96,3 +96,15 @@ Comprobaciones:
   la notebook mirando las capturas.
 
 ## Revisión
+
+**Claude, 07/10/2026 — prueba en la notebook.** Tres ajustes en la misma noche: (1) en una sesión
+nueva los campos de fecha vienen vacíos → se buscan por el calendario de la página
+(`.react-datepicker__input-container input`), por los títulos Desde/Hasta o por la fecha; (2) el
+calendario de "Desde" quedaba abierto tapando "Hasta" → se escribe sin clic en el campo y se cierra
+con un clic en el título del panel; (3) "Buscar" no salía por nombre accesible → se busca también por
+texto. La campanita no se reconoció y el bot fue directo a `/communications`: **esa ruta funciona**.
+Cuarta corrida: OK de punta a punta (login, saldos, filtro de 5 días, notificación en segundos,
+adjunto validado con la cadena de saldos, publicado en Drive). Para cubrir el hueco desde el último
+escaneado se copió a la carpeta el Excel completo que Thomas bajó a mano, con la cuenta en el nombre.
+Falta: instalar el horario (confirmar desde qué hora deja entrar BNA+) y sumar Nación a las
+fuentes automáticas del mail diario.
