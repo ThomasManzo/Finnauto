@@ -150,9 +150,15 @@ def leer_detalle(ruta):
             return r[i] if i is not None and i < len(r) else None
 
         salida = []
+        # Tarea 57: cada renglón del detalle es único. Si aparece uno repetido entero, la bajada vino
+        # mal (el 07/10/2026 la API repitió 829 y se perdió otros tantos): no se publica ninguna caja.
+        vistos, repetidos = set(), 0
         for r in filas:
             if not r or all(v in (None, "") for v in r):
                 continue
+            if r in vistos:
+                repetidos += 1
+            vistos.add(r)
             salida.append({
                 "fecha": _fecha(col(r, "Fecha")) or _fecha(col(r, "Fecha de emisión")),
                 "tipo": str(col(r, "Cód. comprobante") or "").strip().upper(),
@@ -165,6 +171,9 @@ def leer_detalle(ruta):
                 "razon": str(col(r, "Razón social (encab.)") or col(r, "Proveedor (encab.)") or "").strip(),
                 "leyenda": str(col(r, "Leyenda") or "").strip(),
             })
+        if repetidos:
+            raise ValueError("%s trae %d renglones repetidos: la bajada vino mal (volver a bajarlo); "
+                             "no se publica ninguna caja" % (os.path.basename(ruta), repetidos))
         return salida
     finally:
         wb.close()
