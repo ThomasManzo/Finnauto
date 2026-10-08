@@ -360,10 +360,17 @@ def leer_tango(ruta, cfg):
         return r[ix[k]] if ix[k] is not None and ix[k] < len(r) else None
 
     renglones = []
+    # Cada renglón del detalle es único (comprobante + renglón + cuenta). Si aparece uno repetido
+    # entero, la bajada vino mal (el 07/10/2026 la API repitió 829 y se perdió otros tantos) y el
+    # cruce daría todo "falta cargar": mejor frenar que mandar números falsos.
+    vistos, repetidos = set(), 0
     for n, r in enumerate(filas, start=2):
         f = _fecha(val(r, "fecha")) or _fecha(val(r, "fecha_emision"))
         if not f:
             continue                            # la fila casi vacía del final
+        if r in vistos:
+            repetidos += 1
+        vistos.add(r)
         cod = val(r, "cod")
         try:
             cod = int(cod) if cod not in (None, "") else None
@@ -385,6 +392,9 @@ def leer_tango(ruta, cfg):
             "texto": str(val(r, "leyenda") or "").strip(),
         })
     wb.close()
+    if repetidos:
+        sys.exit("el detalle de Tango %s trae %d renglones repetidos: la bajada vino mal "
+                 "(volver a bajarlo); no se cruza" % (os.path.basename(ruta), repetidos))
     return renglones, ruta
 
 
