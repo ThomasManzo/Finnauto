@@ -543,27 +543,42 @@ function verPosicion(){
   });
   out.push(c);
 
-  // DONDE ESTA LA PLATA HOY (tarea 53): la caja de hoy, cuenta por cuenta. Primero las dos cajas
-  // en efectivo (último arqueo + lo que movió Tango después), después cada banco con la fecha de su
-  // último extracto. Suma lo mismo que «Caja de hoy».
+  // DONDE ESTA LA PLATA HOY (tarea 53; columnas de la tarea 60, pedido de Thomas 08/10/2026):
+  // por cuenta, la plata que hay (saldo real), lo que se debe al banco por tenerla en negativo
+  // (descubierto usado) y el neto = saldo real − descubierto usado. Abajo, los totales.
   if (d.cuentas && d.cuentas.length){
     out.push(el('h2', null, 'Dónde está la plata hoy'));
     var cc = el('div', 'card'), tc = el('table');
-    tc.innerHTML = '<thead><tr><th>Cuenta</th><th>Empresa</th><th>Saldo</th><th>De cuándo es el dato</th></tr></thead>';
-    var bc = el('tbody'), efectivo = 0, bancos = 0;
-    d.cuentas.forEach(function(x){
-      if (x.es_caja) efectivo += x.saldo; else bancos += x.saldo;
+    tc.innerHTML = '<thead><tr><th>Cuenta</th><th>Empresa</th><th>Saldo real</th><th>Descubierto usado</th>' +
+      '<th>Neto</th><th>Dato al</th></tr></thead>';
+    var bc = el('tbody'), totReal = 0, totDesc = 0;
+    function filaCuenta(celdas, negrita){
       var tr = el('tr');
-      [x.nombre + (x.es_caja ? ' (efectivo)' : ''), x.unidad, pesos(x.saldo), x.nota].forEach(function(t, i){
-        var td = el('td'); td.textContent = t;
-        if (i === 2 && x.saldo < 0) td.style.color = 'var(--rojo)';
+      celdas.forEach(function(c){
+        var td = el('td'); td.textContent = c.t;
+        if (c.rojo) td.style.color = 'var(--rojo)';
+        if (negrita) td.style.fontWeight = '600';
         tr.appendChild(td);
       });
-      bc.appendChild(tr);
+      return tr;
+    }
+    d.cuentas.forEach(function(x){
+      // Una caja en efectivo no tiene descubierto: su saldo va entero a "saldo real".
+      var real = x.es_caja ? x.saldo : Math.max(x.saldo, 0), desc = x.es_caja ? 0 : Math.max(-x.saldo, 0);
+      totReal += real; totDesc += desc;
+      bc.appendChild(filaCuenta([
+        {t: x.nombre + (x.es_caja ? ' (efectivo)' : '')}, {t: x.unidad},
+        {t: pesos(real), rojo: real < 0}, {t: desc ? pesos(desc) : '—', rojo: desc > 0},
+        {t: pesos(x.saldo), rojo: x.saldo < 0}, {t: String(x.nota || '').replace(/^al /, '')}
+      ]));
     });
+    bc.appendChild(filaCuenta([
+      {t: 'Total'}, {t: ''}, {t: pesos(totReal)}, {t: pesos(totDesc), rojo: totDesc > 0},
+      {t: pesos(totReal - totDesc), rojo: totReal - totDesc < 0}, {t: ''}
+    ], true));
     tc.appendChild(bc); cc.appendChild(tc);
-    cc.appendChild(el('p', 'nota', 'En efectivo: <b>' + pesos(efectivo) + '</b> · en bancos: <b>' +
-      pesos(bancos) + '</b>. Un saldo de banco en negativo es descubierto en uso. Las cajas se cargan con cada arqueo.'));
+    cc.appendChild(el('p', 'nota', 'Saldo real: la plata que hay en cada cuenta y en las cajas. Descubierto usado: ' +
+      'lo que se le debe al banco por tener la cuenta en negativo. Neto = saldo real − descubierto usado.'));
     out.push(cc);
   }
 
