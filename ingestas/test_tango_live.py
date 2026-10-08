@@ -397,6 +397,66 @@ class TangoLiveTest(unittest.TestCase):
                          (r["fecha"], r["cod"], r["tipo"], r["c"], r["cuit"]))
         self.assertEqual("BANCO INVENTADO", r["desc_cuenta"])
 
+    def _live_inventada(self, renglones, desordena=False):
+        """Live de mentira: filtra por fromDate/toDate (incluidos) y pagina como la real. Con
+        `desordena`, cada página sale de un orden distinto (lo que pasó el 07/10/2026)."""
+        pedidos = []
+
+        def a_fecha(texto):
+            return datetime.datetime.strptime(texto, "%d/%m/%Y").date() if texto else None
+
+        def llamar(cfg, tok, empresa, consulta, proceso, desde, hasta, pagina=0, tam=live.PAGINA):
+            pedidos.append((desde, hasta, pagina))
+            d, h = a_fecha(desde), a_fecha(hasta)
+            filas = [r for r in renglones if (not d or r["F"] >= d) and (not h or r["F"] <= h)]
+            if desordena and pagina % 2:
+                filas = list(reversed(filas))
+            hoja = filas[pagina * tam:(pagina + 1) * tam]
+            hoja = [dict(r, F=r["F"].isoformat()) for r in hoja]
+            return 200, "http://ejemplo", cuerpo(hoja, total=len(filas),
+                                                 sigue=(pagina + 1) * tam < len(filas), pagina=pagina)
+        return llamar, pedidos
+
+    def test_mas_de_una_pagina_se_baja_por_tramos_de_fechas(self):
+        """Live no respeta el orden entre páginas: con fecha desde, la bajada parte el rango
+        hasta que cada tramo entre en una página, y no pasa páginas."""
+        hoy = datetime.date(2026, 10, 7)
+        renglones = [{"N": i, "F": hoy - datetime.timedelta(days=i % 40)} for i in range(25)]
+        renglones.append({"N": 99, "F": datetime.date(2036, 8, 5)})  # fecha futura mal cargada
+        llamar, pedidos = self._live_inventada(renglones, desordena=True)
+        with mock.patch.object(live, "PAGINA", 4), mock.patch.object(live, "llamar", side_effect=llamar):
+            filas = live.bajar(self.cfg, "t", "A", "detalle_tesoreria", 106,
+                               (hoy - datetime.timedelta(days=40)).strftime("%d/%m/%Y"), "", hoy)
+        self.assertEqual(sorted(r["N"] for r in renglones), sorted(f["N"] for f in filas))
+        self.assertTrue(all(p == 0 for _, _, p in pedidos))     # nunca pidió la página 2
+        self.assertEqual("", pedidos[-1][1])                      # el último tramo queda abierto
+
+    def test_paginas_desordenadas_sin_fechas_frenan_la_bajada(self):
+        renglones = [{"N": i, "F": datetime.date(2026, 9, 1)} for i in range(10)]
+        llamar, _ = self._live_inventada(renglones, desordena=True)
+        with mock.patch.object(live, "PAGINA", 4), mock.patch.object(live, "llamar", side_effect=llamar):
+            with self.assertRaisesRegex(RuntimeError, "repitió"):
+                live.bajar(self.cfg, "t", "AA", "movimientos_tesoreria", 105, "", "")
+
+    def test_un_dia_que_no_entra_en_una_pagina_pasa_paginas_con_control(self):
+        dia = datetime.date(2026, 10, 1)
+        renglones = [{"N": i, "F": dia} for i in range(6)]
+        llamar, _ = self._live_inventada(renglones)
+        with mock.patch.object(live, "PAGINA", 4), mock.patch.object(live, "llamar", side_effect=llamar):
+            filas = live.bajar(self.cfg, "t", "A", "detalle_tesoreria", 106, "01/10/2026", "01/10/2026")
+        self.assertEqual(list(range(6)), [f["N"] for f in filas])
+
+    def test_el_cruce_no_corre_con_un_detalle_con_renglones_repetidos(self):
+        from lector import cruce
+        fila = {"FECHA": "2026-08-05T00:00:00", "COD_COMPROBANTE": "REC", "NRO_INTERNO": 7,
+                "RENGLON": 1, "COD_CUENTA": 5, "DESC_CUENTA": "BANCO",
+                "DEBE_CTE_RENGLON": 10, "HABER_CTE_RENGLON": 0}
+        preparadas, columnas, _, _ = live.preparar_filas("detalle_tesoreria", "A", [fila, dict(fila)])
+        with tempfile.TemporaryDirectory() as carpeta:
+            live.escribir_xlsx(preparadas, os.path.join(carpeta, "A tesoreria detalle 2026-10-07.xlsx"), columnas)
+            with self.assertRaisesRegex(SystemExit, "repetidos"):
+                cruce.leer_tango(carpeta, {})
+
     def test_detalle_tesoreria_sin_columnas_del_cruce_no_se_publica(self):
         filas = [{"FECHA_DE_EMISION": "2026-08-05T00:00:00", "COD_COMPROBANTE": "REC", "COMPROBANTE": "1",
                   "COD_CUENTA": 5, "DEBE_CTE_RENGLON": 1, "HABER_CTE_RENGLON": 0}]   # falta FECHA

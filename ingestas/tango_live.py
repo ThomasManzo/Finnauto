@@ -285,32 +285,90 @@ def _respuesta(cuerpo, url):
     }
 
 
-def bajar(cfg, tok, empresa, consulta, proceso, desde, hasta):
-    """Trae todas las páginas y no entrega una foto si no cierra con totalCount."""
-    filas = []
+def _pedir(cfg, tok, empresa, consulta, proceso, desde, hasta, pagina):
+    """Una llamada a Live (una página) ya controlada."""
+    st, url, cuerpo = llamar(
+        cfg, tok, empresa, consulta, proceso, desde, hasta, pagina, PAGINA)
+    if st != 200:
+        raise RuntimeError("Live devolvió HTTP %s en %s: %s" % (st, url, cuerpo[:300]))
+    return _respuesta(cuerpo, url)
+
+
+def _fecha_api(texto):
+    return datetime.datetime.strptime(texto, "%d/%m/%Y").date()
+
+
+def _texto_api(fecha):
+    return fecha.strftime("%d/%m/%Y") if fecha else ""
+
+
+def _por_paginas(cfg, tok, empresa, consulta, proceso, desde, hasta, primera):
+    """Pasa las páginas de Live una por una. Ojo: Live no garantiza el mismo orden entre una
+    página y la siguiente. El 07/10/2026 la página 2 del detalle de tesorería repitió 829
+    renglones de la página 1 y se perdió otros tantos; el total cerraba igual. Por eso se usa
+    solo si no queda otra (consultas sin fechas, o un solo día que no entra en una página), y si
+    aparece un renglón repetido la bajada se frena en vez de escribir un archivo con huecos."""
+    filas = list(primera["filas"])
+    total_esperado = primera["total"]
     pagina = 0
-    total_esperado = None
-    while True:
-        st, url, cuerpo = llamar(
-            cfg, tok, empresa, consulta, proceso, desde, hasta, pagina, PAGINA)
-        if st != 200:
-            raise RuntimeError("Live devolvió HTTP %s en %s: %s" % (st, url, cuerpo[:300]))
-        datos = _respuesta(cuerpo, url)
-        if total_esperado is None:
-            total_esperado = datos["total"]
-        elif datos["total"] != total_esperado:
-            raise RuntimeError("totalCount cambió durante la paginación: %d → %d" % (
-                total_esperado, datos["total"]))
-        filas.extend(datos["filas"])
-        if not datos["sigue"]:
-            break
+    datos = primera
+    while datos["sigue"]:
         if not datos["filas"]:
             raise RuntimeError("Live dice que hay otra página, pero la página %d vino vacía" % pagina)
         pagina += 1
-    if len(filas) != (total_esperado or 0):
+        datos = _pedir(cfg, tok, empresa, consulta, proceso, desde, hasta, pagina)
+        if datos["total"] != total_esperado:
+            raise RuntimeError("totalCount cambió durante la paginación: %d → %d" % (
+                total_esperado, datos["total"]))
+        filas.extend(datos["filas"])
+    if pagina:
+        vistas = Counter(json.dumps(f, sort_keys=True, default=str) for f in filas)
+        repetidas = sum(n - 1 for n in vistas.values() if n > 1)
+        if repetidas:
+            raise RuntimeError(
+                "Live repitió %d filas entre una página y otra (el orden no es fijo) y se perdió "
+                "otras tantas; no se escribe el archivo" % repetidas)
+    return filas
+
+
+def _por_tramos(cfg, tok, empresa, consulta, proceso, desde, hasta, hoy, primera):
+    """Parte el rango de fechas en dos hasta que cada tramo entre en UNA página de Live (así no
+    hace falta pasar páginas, que es lo que falla). `hasta` vacío = sin tope: el último tramo
+    queda abierto para no perder renglones con fecha futura (se vio una fecha de 2036)."""
+    if not primera["sigue"]:
+        return list(primera["filas"])
+    fin = hasta or hoy
+    if fin <= desde:
+        # un solo día con más renglones que una página: no se puede partir más
+        return _por_paginas(cfg, tok, empresa, consulta, proceso,
+                            _texto_api(desde), _texto_api(hasta), primera)
+    medio = desde + (fin - desde) // 2
+    filas = []
+    for d, h in ((desde, medio), (medio + datetime.timedelta(days=1), hasta)):
+        datos = _pedir(cfg, tok, empresa, consulta, proceso, _texto_api(d), _texto_api(h), 0)
+        filas.extend(_por_tramos(cfg, tok, empresa, consulta, proceso, d, h, hoy, datos))
+    return filas
+
+
+def bajar(cfg, tok, empresa, consulta, proceso, desde, hasta, hoy=None):
+    """Trae todo lo de la consulta y no entrega una foto si no cierra con totalCount.
+
+    Si entra en una página (5000 renglones), una sola llamada. Si no y la consulta tiene fecha
+    desde, la baja por tramos de fechas que entren en una página cada uno (tarea 55). Las
+    consultas sin fechas (las de AA con toda la historia) pasan páginas, con control de
+    repetidos."""
+    primera = _pedir(cfg, tok, empresa, consulta, proceso, desde, hasta, 0)
+    total_esperado = primera["total"]
+    if primera["sigue"] and desde:
+        filas = _por_tramos(cfg, tok, empresa, consulta, proceso, _fecha_api(desde),
+                            _fecha_api(hasta) if hasta else None,
+                            hoy or datetime.date.today(), primera)
+    else:
+        filas = _por_paginas(cfg, tok, empresa, consulta, proceso, desde, hasta, primera)
+    if len(filas) != total_esperado:
         raise RuntimeError(
             "descarga incompleta: junté %d filas y Live informó totalCount=%d; no se escribe el archivo"
-            % (len(filas), total_esperado or 0))
+            % (len(filas), total_esperado))
     return filas
 
 
