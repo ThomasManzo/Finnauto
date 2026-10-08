@@ -1087,7 +1087,7 @@ def deuda_bancaria(contrato, unidad, hoy):
 
 
 def cuentas_de_hoy(contrato, unidad):
-    """La caja de hoy, cuenta por cuenta: cada banco (último extracto) y cada caja (arqueo + Tango).
+    """La caja de hoy, cuenta por cuenta: cada banco (último saldo) y cada caja (arqueo + Tango).
 
     Suma lo mismo que «Caja de hoy»: son los mismos saldos. Sirve para ver dónde está la plata y de
     cuándo es cada dato (tarea 53).
@@ -1096,12 +1096,12 @@ def cuentas_de_hoy(contrato, unidad):
     for s in contrato.get("saldos") or []:
         if unidad != GRUPO and _unidad_real(s.get("unidad")) != unidad:
             continue
+        # "De cuándo es el dato": solo la fecha (pedido de Thomas, 08/10/2026). La caja ya es el
+        # arqueo más los movimientos de Tango; el banco, su saldo al cierre de ese día.
+        nota = "al %s" % _dd(s.get("fecha"))
         if s.get("es_caja"):
-            nota = "arqueo del %s%s" % (_dd(s.get("fecha_arqueo")),
-                    " + %d movimientos de Tango" % s["movimientos_desde_arqueo"] if s.get("movimientos_desde_arqueo") else "")
             nombre = s.get("nombre_caja") or s.get("banco")
         else:
-            nota = "extracto al %s" % _dd(s.get("fecha"))
             nombre = _NOMBRES_BANCO.get(_norm_banco(s.get("banco")), str(s.get("banco") or "Sin banco").title())
         out.append({"nombre": nombre, "unidad": s.get("unidad") or "", "saldo": float(s.get("saldo") or 0),
                     "es_caja": bool(s.get("es_caja")), "nota": nota, "cuenta": str(s.get("cuenta") or "")})
