@@ -180,6 +180,14 @@ class CajasTest(unittest.TestCase):
         self.assertEqual(["Cuenta Tango", "Leyenda"], enc[-2:])
         self.assertEqual("Movimientos", ws.title)
 
+    def test_detalle_con_renglones_repetidos_no_se_publica(self):
+        # Tarea 57: como el cruce, si la bajada repitió renglones enteros se frena.
+        ruta = os.path.join(self.dir, "rep.xlsx")
+        fila = renglon(40, "OPF", "CAJA CHICA", haber=10)
+        escribir(ruta, [fila, renglon(40, "OPF", "GASTOS VARIOS", debe=10), fila])
+        with self.assertRaisesRegex(ValueError, "1 renglones repetidos"):
+            cajas.leer_detalle(ruta)
+
     def test_origen_de_a_no_cae_en_el_patron_de_aa(self):
         import fnmatch
         self.assertFalse(fnmatch.fnmatchcase(cajas.MARCAS["A"] + " · cajas · x", "Tango AA*"))
