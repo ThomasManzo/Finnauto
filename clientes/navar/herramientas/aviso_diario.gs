@@ -28,11 +28,14 @@ var AVISO_DIA = 24 * 60 * 60 * 1000;
 var TANGO_BAJADAS = 11;
 // Estas fuentes ya llegan solas. Al automatizar otro banco, se lo agrega acá para
 // que el aviso deje de pedir una carga manual y pase a revisar la notebook.
-var FUENTES_AUTOMATICAS = ["tango", "cajas", "galicia"];
+var FUENTES_AUTOMATICAS = ["tango", "cajas", "galicia", "nacion"];
 // Hasta qué hora reintenta sola cada bajada en la notebook (tarea 51). Tienen que coincidir con
-// los horarios de instalar_tango.ps1 (último 20:00) e instalar_galicia.ps1 (último 16:00).
+// los horarios de instalar_tango.ps1 (último 20:00), instalar_galicia.ps1 (último 16:00) e
+// instalar_nacion.ps1 (último 16:00, tarea 56).
 var TANGO_REINTENTA_HASTA = 20;
 var GALICIA_REINTENTA_HASTA = 16;
+var NACION_REINTENTA_HASTA = 16;
+var BANCOS_REINTENTAN_HASTA = {galicia: GALICIA_REINTENTA_HASTA, nacion: NACION_REINTENTA_HASTA};
 
 // Traduce el error técnico a algo que entienda cualquiera (tarea 51). fuente: "tango", "banco" o
 // "sheet". Si no lo reconoce, deja el texto original recortado: mejor eso que inventar un motivo.
@@ -602,11 +605,12 @@ function _armarAviso_(ahora, datos) {
     var archivo = ultimo(entradas.filter(function (f) {
       var ruta = String(f.ruta || "").replace(/\\/g, "/").toLowerCase();
       return ruta.indexOf("bancos/" + clave + "/") === 0 &&
-        f.nombre.toLowerCase().indexOf("movimientos " + clave + " ") === 0 && /\.xlsx$/i.test(f.nombre);
+        // Nación entrega .xls (formato viejo de Excel); Galicia, .xlsx.
+        f.nombre.toLowerCase().indexOf("movimientos " + clave + " ") === 0 && /\.xlsx?$/i.test(f.nombre);
     }));
     var ok = p && deHoy(p.fecha) && p.ok && !errores[clave === "galicia" ? "GaliciaParte" : clave + "Parte"];
     var freno = p && deHoy(p.fecha) && /NO SE REINTENTA/i.test(p.detalle || "");
-    var hasta = clave === "galicia" ? GALICIA_REINTENTA_HASTA : TANGO_REINTENTA_HASTA;
+    var hasta = BANCOS_REINTENTAN_HASTA[clave] || TANGO_REINTENTA_HASTA;
     poner(ok, _nombreBancoAviso_(banco.nombre) + ": " + (ok ? _fechaAviso_(p.fecha, "HH:mm") + " · movimientos hasta " + dia(banco.dia) :
       (p && deHoy(p.fecha) ? "el bot falló a las " + _fechaAviso_(p.fecha, "HH:mm") + " (" +
         _enCriolloAviso_(p.detalle, "banco") + ")" : "el bot no corrió hoy (¿está prendida la notebook?)") +
