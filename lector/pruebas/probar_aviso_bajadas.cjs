@@ -101,7 +101,8 @@ for (const [entrada, salida] of Object.entries({
   GALICIA:'Galicia', NACION:'Nación', CORRIENTES:'Corrientes', MACRO:'Macro', BBVA:'BBVA', ITAU:'Itau'
 })) assert.equal(contexto._nombreBancoAviso_(entrada),salida);
 probar(d=>{d.saldos[0].banco='GALICIA';d.saldos[0].origen='Extracto GALICIA';},0,['☑ Galicia:'],['☑ GALICIA:']);
-for (const [entrada,salida] of [['NACION','Nación'],['ITAU','Itau']]) {
+// Nación ya no es manual (tarea 57): el caso de banco manual con nombre prolijo queda con uno desconocido.
+for (const [entrada,salida] of [['ITAU','Itau']]) {
   const d=foto();d.saldos[1].banco=entrada;d.saldos[1].origen='Extracto '+entrada;
   const a=contexto._armarAviso_(ahora,d);
   assert.equal(a.asunto,'NAVAR · 28/09 · todo al día');
@@ -206,3 +207,28 @@ probar(d=>{d.saldos[1].fecha=fecha('22');d.entradas.push(subidoMacro('26','Raro.
   d.ilegibles=[{banco:'macro',archivo:'Raro.pdf',motivo:'formato desconocido'}];},1,
   ['☐ Macro: llegó «Raro.pdf» pero no se pudo leer (formato desconocido)']);
 console.log('OK: extractos subidos sin movimientos del último día hábil.');
+
+// Tarea 57: Nación es automático (bot de la tarea 56). Se arma aparte porque probar() cuenta 5 líneas.
+function avisoNacion(cambio) {
+  const d=foto();
+  d.saldos.push({banco:'NACION',origen:'Extracto NACION',empresa:'A',fecha:fecha('25')});
+  d.entradas.push({nombre:'Movimientos Nacion 12345678901234 2026-09-28.xls',
+    ruta:'Bancos/nacion/Movimientos Nacion 12345678901234 2026-09-28.xls',tipo:'bancos',fecha:fecha('28','06:11')});
+  d.bancosPartes={nacion:{fecha:fecha('28','06:11'),ok:true,detalle:''}};
+  cambio(d);
+  return contexto._armarAviso_(ahora,d);
+}
+{
+  const bien=avisoNacion(()=>{});
+  assert.ok(bien.cuerpo.includes('☑ Nación: 06:11 · movimientos hasta 25/09'), bien.cuerpo);
+  assert.ok(!bien.cuerpo.includes('subir a mano'), bien.cuerpo);
+  assert.equal(bien.asunto,'NAVAR · 28/09 · todo al día');
+  const fallo=avisoNacion(d=>{d.bancosPartes.nacion.ok=false;d.bancosPartes.nacion.detalle='se cortó';});
+  assert.ok(fallo.cuerpo.includes('☐ Nación: el bot falló a las 06:11'), fallo.cuerpo);
+  assert.ok(fallo.cuerpo.includes('se reintenta solo hasta las 16:00'), fallo.cuerpo);
+  assert.ok(fallo.cuerpo.includes('Último extracto: 28/09 06:11'), fallo.cuerpo);
+  const sinCorrer=avisoNacion(d=>{d.bancosPartes={};});
+  assert.ok(sinCorrer.cuerpo.includes('☐ Nación: el bot no corrió hoy'), sinCorrer.cuerpo);
+  assert.equal(sinCorrer.asunto,'NAVAR · 28/09 · falta 1 cosa');
+  console.log('OK: Nación como banco automático (bajó, falló con reintentos, no corrió).');
+}
