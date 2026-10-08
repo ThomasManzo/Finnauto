@@ -331,9 +331,14 @@ class BotNacionNavar(BotBanco):
                 captura(page, "ERROR_fecha_no_tomada")
                 raise RuntimeError("la fecha %s no quedó cargada en el filtro" % valor)
         captura(page, "filtro_cargado")
+        # 07/10: con el nombre accesible no apareció; se prueban también el texto y otras etiquetas.
         buscar = _esperar_unico(page, [
             lambda m: m.get_by_role("button", name="Buscar", exact=True),
-        ], "el botón Buscar", timeout)
+            lambda m: m.locator("button, a, [role=button], input[type=submit]").filter(
+                has_text=re.compile(r"^\s*Buscar\s*$")),
+            lambda m: m.get_by_text("Buscar", exact=True),
+            lambda m: m.locator("input[type=submit][value='Buscar'], button[type=submit]"),
+        ], "el botón Buscar", 15000)
         buscar.click(timeout=timeout)
         page.wait_for_timeout(1500)
         captura(page, "movimientos_filtrados")
