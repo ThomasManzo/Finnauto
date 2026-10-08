@@ -1,5 +1,5 @@
 # Tarea 57 — El mail diario trata a Nación como banco automático
-Estado: lista para revisión
+Estado: aprobada e instalada en Apps Script (08/10/2026)
 Rama: tarea/aviso-nacion
 
 ## Objetivo
@@ -35,3 +35,9 @@ bot bajó hoy, ❌ "el bot falló / no corrió" con los reintentos, y la fecha d
 - Node: todas las pruebas OK, datos inventados.
 
 ## Revisión
+
+**Claude, 08/10/2026.** Instalada en Apps Script: el editor tenía exactamente la versión anterior
+(hash verificado); se reemplazó el contenido, se guardó con el botón "Guardar proyecto en Drive"
+(Cmd+S no guardó) y después de recargar el hash es el del commit. Falta ver el aviso con "Ver el aviso
+de hoy (sin mandar)": el menú de la Sheet no se abre con la ventana de Chrome en segundo plano; lo
+mira Thomas. Ese día el bot de Nación ya había bajado solo a las 06:15.
