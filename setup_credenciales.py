@@ -29,19 +29,21 @@ def main():
     ap = argparse.ArgumentParser(
         description="Cargar credenciales de banco en el llavero del sistema")
     ap.add_argument("--cliente", required=True, help="carpeta del cliente (ej: maga)")
-    ap.add_argument("--banco", required=True, help="banco (galicia/bbva/comafi/santander)")
+    ap.add_argument("--banco", required=True, help="banco (galicia/bbva/nacion/comafi/santander)")
     args = ap.parse_args()
 
     print("Cargando credenciales de %s para el cliente %s." % (args.banco, args.cliente))
     print("(Se guardan en el llavero del sistema de esta maquina; nunca en texto plano.)\n")
 
-    # BBVA pide tres datos para entrar: código de empresa, usuario y clave.
-    # El código de empresa se guarda junto con los otros dos, en el llavero.
+    # Algunos bancos piden un tercer dato para entrar: BBVA el código de empresa y Nación el DNI.
+    # Se guarda junto con usuario y clave, en el llavero.
     extra = {}
-    if args.banco.lower() == "bbva":
-        extra["codigo_empresa"] = input("Codigo de empresa: ").strip()
-        if not extra["codigo_empresa"]:
-            print("Codigo de empresa vacio. Cancelado.")
+    pedido = {"bbva": ("codigo_empresa", "Codigo de empresa"), "nacion": ("dni", "DNI")}.get(args.banco.lower())
+    if pedido:
+        campo, texto = pedido
+        extra[campo] = input("%s: " % texto).strip()
+        if not extra[campo]:
+            print("%s vacio. Cancelado." % texto)
             sys.exit(1)
 
     usuario = input("Usuario del banco: ").strip()

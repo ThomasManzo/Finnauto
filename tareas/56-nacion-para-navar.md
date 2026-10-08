@@ -1,5 +1,5 @@
 # Tarea 56 — Nación para NAVAR: bot de BNA+ Empresas y lector de su Excel
-Estado: en curso
+Estado: lista para revisión
 Rama: tarea/nacion-navar
 
 ## Objetivo
@@ -66,5 +66,33 @@ un robot", **el bot para** y no intenta resolverlo.
 3. Prueba real en la notebook (la corre Thomas) con `--modo prueba`.
 
 ## Qué hice
+
+Lo escribió Claude (03-07/10 Thomas pidió que los bots los escriba Claude).
+
+- `lector/extractos.py`: `leer_planilla_nacion` + registro en `BANCOS` (Nación ahora acepta planilla
+  además de PDF). Cuenta del nombre del archivo; prueba la cadena con el Saldo "de antes" y "de
+  después" y usa la que cierra; si ninguna, error. Importes `$ -1.234,56` con `_monto_nacion`.
+- `bots/nacion/navar.py`: `BotNacionNavar` con el recorrido de Thomas. Usa los ayudantes de espera de
+  `bots/bbva/navar.py`. Frena si aparece un reCAPTCHA visible (la casilla o la prueba; el sellito
+  invisible no cuenta). Filtro: los dos campos de fecha del panel se reconocen por tener una fecha
+  dd/mm/aaaa; se cargan con `fill` + Tab y se verifica que quedaron. La notificación se elige por su
+  hora (la más nueva desde el pedido, con 2 minutos de margen); si no llegó, vuelve a Inicio y
+  reabre la campanita cada 10 s, hasta 3 minutos. La campanita se busca por nombre accesible
+  ("notificación"/"mensaje"); si no se reconoce, va a la bandeja por la ruta de la plataforma
+  (`/communications`, no verificada).
+- `orquestador/correr.py`: Nación como variante NAVAR; `EXTRA_LLAVERO` (BBVA código de empresa,
+  Nación DNI). `setup_credenciales.py` pide el DNI con `--banco nacion`.
+- `perfil.json` (bloque nacion): cuenta, prefijo, `dias_a_bajar: 5`, carpeta, visible. Se sacó una
+  nota vieja con datos de situación crediticia.
+- `instalar_nacion.ps1`: 05:52 y 05:57, log `privado\nacion.log`.
+
+Comprobaciones:
+- Pruebas: bots 75 OK (Nación 15 nuevas), lectores OK (5 nuevas de Nación). Todo con datos inventados.
+- Lector con el Excel real del 07/10: cadena OK y saldos coinciden con la pantalla y con la Sheet
+  (anotado en el LEEME, no acá).
+- Login real abierto desde la Mac **sin credenciales**: encuentra DNI (`#document`), usuario
+  (`#username`) y Continuar (apagado hasta cargar datos). No se apretó Continuar.
+- No probado: todo lo de después del login (campanita, filtro, adjunto). Se afina con la prueba en
+  la notebook mirando las capturas.
 
 ## Revisión

@@ -42,7 +42,9 @@ REGISTRO_BANCOS = {
 
 # Bancos con un recorrido propio para NAVAR (se importan recién cuando se usan).
 # BBVA solo existe en su variante NAVAR, por eso no está en el registro general.
-VARIANTES_NAVAR = ("galicia", "bbva")
+VARIANTES_NAVAR = ("galicia", "bbva", "nacion")
+# Dato de más que algunos bancos piden para entrar; vive en el llavero junto con usuario y clave.
+EXTRA_LLAVERO = {"bbva": "codigo_empresa", "nacion": "dni"}
 
 
 # ---- reintentos (tarea 51) -------------------------------------------------------------
@@ -117,9 +119,12 @@ def correr_banco(cliente, banco, modo_forzado=None, navegador=None, si_falta=Fal
         if banco == "galicia":
             from bots.galicia.navar import BotGaliciaNavar
             bot = BotGaliciaNavar(cfg_banco)
-        else:
+        elif banco == "bbva":
             from bots.bbva.navar import BotBbvaNavar
             bot = BotBbvaNavar(cfg_banco)
+        else:
+            from bots.nacion.navar import BotNacionNavar
+            bot = BotNacionNavar(cfg_banco)
     else:
         bot = REGISTRO_BANCOS[banco]()
     ctx.banco_nombre = bot.nombre  # nombre lindo para _ESTADO_/_SALDOS_
@@ -154,9 +159,10 @@ def correr_banco(cliente, banco, modo_forzado=None, navegador=None, si_falta=Fal
             return None
 
     usuario, clave = _cred.cargar(BASE_REPO, cliente, banco)
-    if variante_navar and banco == "bbva":
-        # BBVA pide un tercer dato para entrar; vive en el llavero junto con usuario y clave.
-        bot.codigo_empresa = _cred.dato_extra(cliente, banco, "codigo_empresa")
+    if variante_navar and banco in EXTRA_LLAVERO:
+        # BBVA pide el código de empresa y Nación el DNI: se leen del llavero, nunca del perfil.
+        campo = EXTRA_LLAVERO[banco]
+        setattr(bot, campo, _cred.dato_extra(cliente, banco, campo))
 
     log("=== finauto :: cliente=%s banco=%s modo=%s ===" % (
         ctx.cliente_nombre, bot.nombre, "visible" if ctx.modo_visible else "invisible"))
@@ -287,7 +293,7 @@ def main():
     # maquina hacen fallar los dos.
     ap.add_argument("--cliente", help="carpeta del cliente (ej: maga). "
                                       "Sin esto, corren TODOS los clientes")
-    ap.add_argument("--banco", help="banco a correr (galicia/bbva/comafi/santander)")
+    ap.add_argument("--banco", help="banco a correr (galicia/bbva/nacion/comafi/santander)")
     ap.add_argument("--todos", action="store_true", help="correr todos los bancos activos del perfil")
     ap.add_argument("--modo", choices=["prueba", "produccion"], help="visible / invisible")
     ap.add_argument("--si-falta", action="store_true",
