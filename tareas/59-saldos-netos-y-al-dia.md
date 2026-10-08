@@ -1,5 +1,5 @@
 # Tarea 59 — Saldos de bancos netos y "al día" aunque no haya movimientos
-Estado: lista para revisión
+Estado: aprobada; instalada en Apps Script (falta rearmar el Cash y actualizar la notebook)
 Rama: tarea/saldos-netos
 
 ## Objetivo
@@ -54,3 +54,9 @@ Lo escribió Claude.
   a la bajada, con la observación de "sin movimientos"; los demás bancos no cambian.
 
 ## Revisión
+
+**Claude, 08/10/2026.** `crear_cash.gs` instalado en Apps Script: lo instalado era la versión de la
+tarea 48 con montos reales en las propuestas del Plan (en el repo van como "$X M"), así que se aplicó
+solo este cambio sobre lo instalado y se verificó por huella después de recargar; la copia de Drive
+`Scripts/crear_cash.gs.txt` quedó igual. Falta: que Thomas rearme el Cash desde el menú finauto, y
+actualizar la notebook (lector y tablero corren allá).
