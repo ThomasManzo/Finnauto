@@ -1,5 +1,5 @@
 # Tarea 55 — La bajada de Tango por tramos de fechas (las páginas de Live vienen desordenadas)
-Estado: aprobada (OK de Thomas 07/10/2026), falta instalar en la notebook
+Estado: aprobada e instalada (07/10/2026 21:30: bajada 11 de 11 sin repetidos, cruce 20 para cargar)
 Rama: tarea/55-bajada-por-tramos
 
 ## Qué pasó
