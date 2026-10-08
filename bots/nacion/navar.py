@@ -316,12 +316,17 @@ class BotNacionNavar(BotBanco):
         if len(campos) != 2:
             captura(page, "ERROR_campos_fecha")
             raise RuntimeError("en el panel de filtros esperaba 2 fechas (Desde/Hasta) y hay %d" % len(campos))
+        titulo = _esperar_unico(page, [
+            lambda m: m.get_by_text(re.compile(r"^\s*Seleccion[aá] los siguientes filtros\s*$")),
+        ], "el título del panel de filtros", timeout)
         for campo, valor in zip(campos, (_fecha(self.desde), _fecha(self.hasta))):
-            campo.click(timeout=timeout)
+            # Sin clic en el campo: el calendario del campo anterior puede taparlo (07/10 quedó
+            # abierto el de "Desde" encima de "Hasta"). fill escribe igual.
             campo.fill(valor, timeout=timeout)
-            # Tab cierra el calendario sin cerrar el panel (Escape podría cerrar los dos).
-            campo.press("Tab")
             page.wait_for_timeout(300)
+            # Un clic en el título del panel (fuera del calendario) lo cierra sin cerrar el panel.
+            titulo.click(timeout=timeout)
+            page.wait_for_timeout(400)
             if (campo.input_value() or "").strip() != valor:
                 captura(page, "ERROR_fecha_no_tomada")
                 raise RuntimeError("la fecha %s no quedó cargada en el filtro" % valor)
