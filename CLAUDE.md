@@ -86,6 +86,9 @@ la sección "Dónde estamos" más nueva. Ahí está el estado real; esta secció
 - Hay chats en paralelo (bancos, cruce banco ↔ Tango): antes de crear una consigna, mirar
   `tareas/` y tomar el número libre siguiente. Al terminar, borrar el worktree y la rama mergeada.
 - Nada sale a NAVAR sin validar los números antes (ver memoria del proyecto).
+- **Mapa de chats** (`docs/mapa_de_chats.md`, solo en esta Mac): dice qué chat lleva cada tema. Cada chat,
+  al abrir o cerrar un tema, actualiza SU renglón (estado + fecha). Si un pedido es de un tema que lleva
+  otro chat, avisarle a Thomas a cuál ir en vez de retomarlo.
 
 ## Estado / pendiente (06/10/2026)
 - ✅ Tango por API, automático de punta a punta (tareas 18, 20, 22); 11 bajadas diarias desde la 48.
