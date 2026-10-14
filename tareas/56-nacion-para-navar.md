@@ -115,3 +115,7 @@ el período seleccionado" en vez del botón Descargar, y el bot fallaba ("el bot
 visible en 45 s") en todos los reintentos. Ahora, después de Buscar, espera una de las dos cosas: con
 el aviso, la corrida termina OK sin publicar archivo (el saldo de la pantalla queda en `_SALDOS_` y el
 lector da la cuenta al día si coincide, tarea 59). 2 pruebas nuevas; bots 77 OK.
+En pantalla el aviso dice "No hay movimientos para esta consulta" (no "…el período seleccionado") y ya
+aparece antes de buscar: ahora se acepta "No hay movimientos para…", se espera que cierre el panel y
+se confirma dos veces. Probado en la notebook el 14/10 12:50: "El banco no tiene movimientos del 10/10
+al 14/10" → OK: 1, sin archivo, con `_SALDOS_` escrito.
