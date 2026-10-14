@@ -41,6 +41,8 @@ URL_LOGIN = "https://digital.bna.com.ar/loginStep1"
 ESPERA_ARCHIVO_S = 180
 # Cuánto se espera el inicio después de la contraseña.
 ESPERA_INICIO_MS = 120000
+# El aviso de BNA+ cuando el filtro no trae nada (texto del propio banco, accounts.movements.none).
+PATRON_SIN_MOVIMIENTOS = re.compile(r"No hay movimientos para el per[ií]odo seleccionado", re.I)
 PATRON_FECHA_HORA = re.compile(r"(\d\d)/(\d\d)/(\d{4})\s+(\d\d):(\d\d)")
 
 
@@ -87,6 +89,7 @@ class BotNacionNavar(BotBanco):
         # Lo completa orquestador/correr.py desde el llavero (nunca desde el perfil).
         self.dni = None
         self.desde = self.hasta = None
+        self.sin_movimientos = False
 
     # ----------------------------------------------------------------- captcha
     @staticmethod
@@ -345,9 +348,28 @@ class BotNacionNavar(BotBanco):
             lambda m: m.locator("input[type=submit][value='Buscar'], button[type=submit]"),
         ], "el botón Buscar", 15000)
         buscar.click(timeout=timeout)
-        page.wait_for_timeout(1500)
+        # Después de Buscar aparece una de dos cosas: el botón Descargar (hay movimientos) o el cartel
+        # "No hay movimientos para el período seleccionado". El 14/10/2026 pasó lo segundo (feriado
+        # y una cuenta quieta: nada del 10 al 14/10) y el bot lo tomó como falla.
+        self.sin_movimientos = self._esperar_resultado_filtro(page, timeout)
         captura(page, "movimientos_filtrados")
+        if self.sin_movimientos:
+            log("   El banco no tiene movimientos del %s al %s." % (_fecha(self.desde), _fecha(self.hasta)))
         return True
+
+    @staticmethod
+    def _esperar_resultado_filtro(page, timeout):
+        """True si el banco dice que no hay movimientos; False si apareció el botón Descargar."""
+        limite = time.monotonic() + max(timeout, 0) / 1000.0
+        while True:
+            if _hay_visible(page, lambda m: m.get_by_text(PATRON_SIN_MOVIMIENTOS)):
+                return True
+            if _hay_visible(page, lambda m: m.get_by_text("Descargar", exact=True)):
+                return False
+            if time.monotonic() > limite:
+                captura(page, "ERROR_resultado_filtro")
+                raise RuntimeError("después de Buscar no apareció ni Descargar ni el aviso de 'No hay movimientos'")
+            page.wait_for_timeout(300)
 
     # ---------------------------------------------------------------- descarga
     def _pedir_xls(self, page, timeout):
@@ -457,6 +479,11 @@ class BotNacionNavar(BotBanco):
             raise RuntimeError("Falta confirmar la empresa antes de descargar.")
         if self.desde is None:
             raise RuntimeError("Falta aplicar el filtro de fechas antes de descargar.")
+        if self.sin_movimientos:
+            # No es una falla: el banco confirmó que no hubo movimientos. No se publica archivo; el
+            # saldo de la pantalla ya quedó en _SALDOS_ y el lector lo usa para dar la cuenta al día.
+            log("   Sin movimientos nuevos: no hay nada que descargar.")
+            return None
         self._limpiar_temporales(ctx.descargas_dir)
         pedido = self._pedir_xls(page, timeout)
         self._buscar_notificacion(page, pedido, timeout)

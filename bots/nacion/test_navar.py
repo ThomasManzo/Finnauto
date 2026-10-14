@@ -118,6 +118,19 @@ class Frenos(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "filtro"):
             _bot().descargar_csv(None, "/drive", "NAVAR SA", 1000, SimpleNamespace(descargas_dir="/tmp"))
 
+    def test_sin_movimientos_no_es_falla(self):
+        # 14/10/2026: el banco dijo "No hay movimientos" y el bot lo tomaba como error.
+        bot = _bot()
+        bot.desde, bot.hasta = bot.ventana(dt.date(2026, 10, 14))
+        bot.sin_movimientos = True
+        self.assertIsNone(bot.descargar_csv(None, "/drive", "NAVAR SA", 1000,
+                                            SimpleNamespace(descargas_dir="/tmp")))
+
+    def test_reconoce_el_aviso_del_banco(self):
+        from bots.nacion.navar import PATRON_SIN_MOVIMIENTOS
+        self.assertTrue(PATRON_SIN_MOVIMIENTOS.search(
+            "No hay movimientos para el período seleccionado. Buscá fechas anteriores desde 'Filtrar'."))
+
     def test_captcha_visible_frena_y_el_invisible_no(self):
         class Marco:
             def __init__(self, src, alto):

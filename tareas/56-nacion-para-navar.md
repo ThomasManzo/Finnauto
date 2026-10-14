@@ -108,3 +108,10 @@ adjunto validado con la cadena de saldos, publicado en Drive). Para cubrir el hu
 escaneado se copió a la carpeta el Excel completo que Thomas bajó a mano, con la cuenta en el nombre.
 Falta: instalar el horario (confirmar desde qué hora deja entrar BNA+) y sumar Nación a las
 fuentes automáticas del mail diario.
+
+**Claude, 14/10/2026 — falla real: período sin movimientos.** La cuenta no tuvo movimientos del 10 al
+14/10 (feriado del 12 y cuenta quieta). Con el filtro de 5 días BNA+ muestra "No hay movimientos para
+el período seleccionado" en vez del botón Descargar, y el bot fallaba ("el botón Descargar no apareció
+visible en 45 s") en todos los reintentos. Ahora, después de Buscar, espera una de las dos cosas: con
+el aviso, la corrida termina OK sin publicar archivo (el saldo de la pantalla queda en `_SALDOS_` y el
+lector da la cuenta al día si coincide, tarea 59). 2 pruebas nuevas; bots 77 OK.
