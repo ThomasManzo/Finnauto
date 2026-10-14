@@ -41,8 +41,9 @@ URL_LOGIN = "https://digital.bna.com.ar/loginStep1"
 ESPERA_ARCHIVO_S = 180
 # Cuánto se espera el inicio después de la contraseña.
 ESPERA_INICIO_MS = 120000
-# El aviso de BNA+ cuando el filtro no trae nada (texto del propio banco, accounts.movements.none).
-PATRON_SIN_MOVIMIENTOS = re.compile(r"No hay movimientos para el per[ií]odo seleccionado", re.I)
+# El aviso de BNA+ cuando no hay nada que mostrar. Se vio con dos textos: "No hay movimientos para esta
+# consulta" (14/10/2026, en pantalla) y "…para el período seleccionado" (en el código de la página).
+PATRON_SIN_MOVIMIENTOS = re.compile(r"No hay movimientos para", re.I)
 PATRON_FECHA_HORA = re.compile(r"(\d\d)/(\d\d)/(\d{4})\s+(\d\d):(\d\d)")
 
 
@@ -359,13 +360,24 @@ class BotNacionNavar(BotBanco):
 
     @staticmethod
     def _esperar_resultado_filtro(page, timeout):
-        """True si el banco dice que no hay movimientos; False si apareció el botón Descargar."""
+        """True si el banco dice que no hay movimientos; False si apareció el botón Descargar.
+
+        Ojo: el aviso de "No hay movimientos" puede estar desde ANTES de buscar (la vista por defecto
+        también puede venir vacía). Por eso primero se espera que se cierre el panel de filtros, y el
+        "no hay" se da por bueno solo si sigue igual un par de segundos después (sin Descargar).
+        """
         limite = time.monotonic() + max(timeout, 0) / 1000.0
+        panel = lambda m: m.get_by_text(re.compile(r"^\s*Seleccion[aá] los siguientes filtros\s*$"))
+        while _hay_visible(page, panel) and time.monotonic() < limite:
+            page.wait_for_timeout(300)
+        page.wait_for_timeout(1500)
         while True:
-            if _hay_visible(page, lambda m: m.get_by_text(PATRON_SIN_MOVIMIENTOS)):
-                return True
             if _hay_visible(page, lambda m: m.get_by_text("Descargar", exact=True)):
                 return False
+            if _hay_visible(page, lambda m: m.get_by_text(PATRON_SIN_MOVIMIENTOS)):
+                page.wait_for_timeout(2000)
+                if not _hay_visible(page, lambda m: m.get_by_text("Descargar", exact=True)):
+                    return True
             if time.monotonic() > limite:
                 captura(page, "ERROR_resultado_filtro")
                 raise RuntimeError("después de Buscar no apareció ni Descargar ni el aviso de 'No hay movimientos'")

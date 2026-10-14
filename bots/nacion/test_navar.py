@@ -130,6 +130,9 @@ class Frenos(unittest.TestCase):
         from bots.nacion.navar import PATRON_SIN_MOVIMIENTOS
         self.assertTrue(PATRON_SIN_MOVIMIENTOS.search(
             "No hay movimientos para el período seleccionado. Buscá fechas anteriores desde 'Filtrar'."))
+        # El texto que se vio en pantalla el 14/10/2026.
+        self.assertTrue(PATRON_SIN_MOVIMIENTOS.search(
+            'No hay movimientos para esta consulta. Podés ver más movimientos desde "Filtrar".'))
 
     def test_captcha_visible_frena_y_el_invisible_no(self):
         class Marco:
