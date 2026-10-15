@@ -170,9 +170,18 @@ var ORDEN_AUTO = ["deuda", "impuestos", "bancos", "cajas", "tango", "ultimos_pag
 function importarLoNuevo() {
   var props = PropertiesService.getDocumentProperties();
   var hubo = 0;
+  var sinRevisar = [];   // tipos que no se pudieron buscar en Drive esta vuelta (tarea 61)
   ORDEN_AUTO.forEach(function (cual) {
     var cfg = IMPORTS[cual];
-    var archivo = _ultimoConPrefijo_(cfg.prefijo);
+    // Tarea 61: si Drive tropieza buscando un tipo, se reintenta una vez y, si sigue, se sigue con
+    // los demás. Antes un tropiezo cortaba toda la vuelta.
+    var archivo;
+    try {
+      archivo = _conUnReintento_(function () { return _ultimoConPrefijo_(cfg.prefijo); });
+    } catch (e) {
+      sinRevisar.push(cual + " (" + String(e && e.message || e) + ")");
+      return;
+    }
     if (!archivo) return;
     var firma = archivo.getId() + "@" + archivo.getLastUpdated().getTime();
     if (props.getProperty("importado_" + cual) === firma) return;     // ya se importó ese mismo archivo
@@ -191,7 +200,23 @@ function importarLoNuevo() {
   if (hubo && typeof exportarParaTablero === "function") {
     try { exportarParaTablero(); } catch (e) { Logger.log("copia para el tablero: " + (e && e.message || e)); }
   }
+  // Lo que no se pudo revisar se avisa al final, cuando lo demás ya se importó: la ejecución
+  // queda como "Fallida" en Apps Script (y Google manda su aviso), y en una hora se vuelve a probar.
+  if (sinRevisar.length) {
+    throw new Error("No se pudo revisar Drive para: " + sinRevisar.join(" · ") + ". Se vuelve a probar en la próxima hora.");
+  }
   return hubo;
+}
+
+// Corre fn; si falla, espera 3 segundos y la corre otra vez. Los "Error de servicio: Drive" suelen
+// ser tropiezos de un momento.
+function _conUnReintento_(fn) {
+  try { return fn(); }
+  catch (e) {
+    Logger.log("Drive tropezó, reintento: " + (e && e.message || e));
+    Utilities.sleep(3000);
+    return fn();
+  }
 }
 
 function instalarDisparador() {
@@ -323,8 +348,66 @@ function _importarConLock_(cual, archivo) {
 }
 
 
-// ---- el archivo más nuevo con ese prefijo, buscando en todo el árbol de NAVAR - Datos
+// ---- el archivo más nuevo con ese prefijo, dentro del árbol de NAVAR - Datos
+// Tarea 61: antes esto recorría TODO el árbol (cientos de archivos) una vez por cada tipo de
+// archivo, cada hora. Tardaba de 1 a 6 minutos, a veces Google lo cortaba a los 6 y, con tantas
+// consultas, Drive a veces devolvía "Error de servicio". Ahora le pregunta al buscador de Drive
+// por el nombre (una sola consulta), ordena lo que encuentra del más nuevo al más viejo y se
+// queda con el primero que esté adentro de NAVAR - Datos. Si el buscador no trae nada que sirva,
+// se recorre el árbol como antes: más lento, pero nunca se queda sin respuesta.
 function _ultimoConPrefijo_(prefijo) {
+  var candidatos = [];
+  var consulta = "title contains '" + prefijo.replace(/\\/g, "\\\\").replace(/'/g, "\\'") + "' and trashed = false";
+  var encontrados = DriveApp.searchFiles(consulta);
+  while (encontrados.hasNext()) {
+    var f = encontrados.next();
+    if (f.getName().indexOf(prefijo) === 0) candidatos.push(f);   // el buscador es más laxo: se filtra igual
+  }
+  candidatos.sort(function (a, b) { return b.getLastUpdated().getTime() - a.getLastUpdated().getTime(); });
+  var memo = {};
+  for (var i = 0; i < candidatos.length; i++) {
+    if (_dentroDeLaRaiz_(candidatos[i], memo)) return candidatos[i];
+  }
+  return _ultimoConPrefijoRecorriendo_(prefijo);
+}
+
+// ¿El archivo está en NAVAR - Datos o en alguna subcarpeta? Sube por las carpetas "padre" hasta
+// encontrarla. memo recuerda las carpetas ya vistas para no preguntarle dos veces lo mismo a Drive.
+function _dentroDeLaRaiz_(archivo, memo) {
+  var padres = archivo.getParents();
+  while (padres.hasNext()) {
+    if (_carpetaDentroDeLaRaiz_(padres.next(), memo, 0)) return true;
+  }
+  return false;
+}
+
+function _carpetaDentroDeLaRaiz_(carpeta, memo, nivel) {
+  var id = carpeta.getId();
+  if (Object.prototype.hasOwnProperty.call(memo, id)) return memo[id];
+  var adentro = carpeta.getName() === CARPETA_RAIZ;
+  if (!adentro && nivel < 10) {                       // 10 niveles alcanza de sobra; evita vueltas infinitas
+    var padres = carpeta.getParents();
+    while (!adentro && padres.hasNext()) adentro = _carpetaDentroDeLaRaiz_(padres.next(), memo, nivel + 1);
+  }
+  memo[id] = adentro;
+  return adentro;
+}
+
+// Para revisar a mano desde el editor (▶ Ejecutar): para cada tipo de archivo compara la búsqueda
+// nueva con el recorrido viejo y anota cuánto tardó cada una. No importa nada ni toca la Sheet.
+function probarBusquedaRapida() {
+  Object.keys(IMPORTS).forEach(function (cual) {
+    var prefijo = IMPORTS[cual].prefijo;
+    var t0 = Date.now(), nuevo = _ultimoConPrefijo_(prefijo), t1 = Date.now();
+    var viejo = _ultimoConPrefijoRecorriendo_(prefijo), t2 = Date.now();
+    Logger.log(cual + ": " + (nuevo ? nuevo.getName() : "(nada)") + " en " + (t1 - t0) + " ms · recorriendo: " +
+               (viejo ? viejo.getName() : "(nada)") + " en " + (t2 - t1) + " ms · " +
+               ((nuevo && viejo && nuevo.getId() === viejo.getId()) || (!nuevo && !viejo) ? "IGUAL" : "DISTINTO"));
+  });
+}
+
+// La forma vieja (recorrer todas las carpetas). Queda solo de respaldo.
+function _ultimoConPrefijoRecorriendo_(prefijo) {
   var raiz = DriveApp.getFoldersByName(CARPETA_RAIZ);
   if (!raiz.hasNext()) return null;
   var mejor = null;
