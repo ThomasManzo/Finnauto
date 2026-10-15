@@ -1,5 +1,5 @@
 # Tarea 61 — El importador busca los archivos rápido y no se corta por un tropiezo de Drive
-Estado: aprobada (falta pegarla en Apps Script)
+Estado: aprobada e instalada (14/10/2026)
 Rama: tarea/61-importador-rapido
 
 ## Objetivo
@@ -55,7 +55,10 @@ tropiezo momentáneo de Drive no frene toda la vuelta.
   minuto.
 
 ## Revisión
-- Pendiente:
-  - pegar en Apps Script (Importar_cashflow.gs) y verificar la huella contra `main`;
-  - correr `probarBusquedaRapida` y confirmar "IGUAL" en todos los tipos;
-  - mirar que las revisiones siguientes duren segundos.
+- **Instalada el 14/10/2026.** Se pegó en Apps Script (Importar_cashflow.gs) desde el commit de `main`.
+  Antes de reemplazarlo se comparó la huella: lo instalado era idéntico a `main` anterior. Después de
+  recargar, la huella coincide con la nueva. Copia en Drive `Scripts/importar_cashflow.gs.txt`.
+- `probarBusquedaRapida` en el editor: **los 7 tipos dan "IGUAL"** (mismo archivo que el recorrido
+  viejo). La búsqueda nueva tarda entre 0,7 y 1,3 segundos por tipo; el recorrido viejo, entre 14 y 57.
+  Una revisión sin nada nuevo pasa de varios minutos a unos segundos.
+- Falta: mirar en "Ejecuciones" que las revisiones de cada hora duren segundos.
