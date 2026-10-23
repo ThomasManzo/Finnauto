@@ -207,13 +207,13 @@ CSS += r"""
 .cc-panel{min-width:0;max-width:100%}
 .cc-panel table{min-width:1000px}
 .cc-controles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:18px;margin:20px 0}
-.cc-control{min-width:0;padding:14px;border:1px solid var(--linea);border-radius:8px}
-.cc-control label{font-size:12px;display:block}.cc-grande{font-family:Newsreader,Georgia,serif;font-size:26px;margin:8px 0}
-.cc-control input[type=range]{width:100%;accent-color:#244e3b}.cc-limites{font-size:11px;color:#69736c}
+.cc-control{min-width:0;padding:14px 16px 16px 0;border-top:1px solid var(--linea)}
+.cc-control label{font-size:12.5px;color:var(--suave);display:block;min-height:34px}.cc-grande{font:600 25px/1 var(--serif);margin:6px 0 10px;font-variant-numeric:tabular-nums}
+.cc-control input[type=range]{width:100%;accent-color:var(--tinta)}.cc-limites{font:400 10.5px var(--mono);color:var(--tenue)}
 .cc-cab{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.cc-cab h2{margin-right:auto}
-.cc-estado{font-size:12px}.cc-aviso{background:#fff1cf;color:#785300;padding:12px}
+.cc-estado{font-size:12px}.cc-aviso{background:var(--ambar-piso);color:var(--amarillo);padding:12px 14px}
 .cc-meses{max-height:240px;overflow:auto}.cc-meses input{width:100%;box-sizing:border-box}
-.cc-meses[hidden]{display:none}.cc-total{font-weight:bold}.cc-panel .malo{color:#b3261e}
+.cc-meses[hidden]{display:none}.cc-total{font-weight:bold}.cc-panel .malo .n{color:var(--rojo)}
 .cc-panel svg{width:100%;height:auto}.cc-panel .envuelve{overflow-x:auto}.cc-panel td{white-space:nowrap}
 @media(max-width:1000px){.cc-controles{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:600px){.cc-controles{grid-template-columns:1fr}}
@@ -316,7 +316,7 @@ function ccResultados(){
  var tarjetas=el('div','kpis');
  [[ 'Peor saldo acumulado',pesos(peor,true)+' · '+ccMes(d.meses[a.indexOf(peor)]),peor<0],
  ['Se pasa del descubierto en',primero<0?'no se pasa':ccMes(d.meses[primero]),primero>=0],
- ['Plata que hay que conseguir',pesos(falta,true),falta>0],['Resultado de un mes típico',pesos(prom,true),prom<0]].forEach(function(x){var k=el('div','kpi'+(x[2]?' malo':''));k.append(ccTexto('div','',x[0]),ccTexto('div','cc-grande',x[1]));tarjetas.append(k);});area.append(tarjetas);
+ ['Plata que hay que conseguir',pesos(falta,true),falta>0],['Resultado de un mes típico',pesos(prom,true),prom<0]].forEach(function(x){var k=el('div','kpi'+(x[2]?' malo':''));k.append(ccTexto('div','et',x[0]),ccTexto('div','n',x[1]));tarjetas.append(k);});area.append(tarjetas);
  var graf=el('section','card');graf.append(ccTexto('h2','','Caja mes a mes'));
  var ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');svg.setAttribute('viewBox','0 0 960 330');svg.setAttribute('role','img');svg.setAttribute('aria-label','Saldo acumulado, saldo del mes y límite del descubierto');
  var todos=a.concat(m,desc.map(function(v){return -v;}),[0]),lo=Math.min.apply(null,todos),hi=Math.max.apply(null,todos);if(hi===lo)hi=lo+1;
@@ -324,12 +324,12 @@ function ccResultados(){
  function forma(t,attrs){var n=document.createElementNS(ns,t);Object.keys(attrs).forEach(function(k){n.setAttribute(k,attrs[k]);});svg.append(n);return n;}
  forma('line',{x1:50,x2:930,y1:Y(0),y2:Y(0),stroke:'#aaa'});
  [hi,lo].forEach(function(v){forma('text',{x:0,y:Y(v),'font-size':11}).textContent=pesos(v,true);});
- m.forEach(function(v,i){forma('rect',{x:X(i)-13,y:Math.min(Y(0),Y(v)),width:26,height:Math.max(1,Math.abs(Y(v)-Y(0))),fill:v<0?'#b3261e':'#137333',opacity:.25});
+ m.forEach(function(v,i){forma('rect',{x:X(i)-13,y:Math.min(Y(0),Y(v)),width:26,height:Math.max(1,Math.abs(Y(v)-Y(0))),fill:v<0?'#B4321F':'#2F6B45',opacity:.35});
  forma('text',{x:X(i),y:300,'text-anchor':'middle','font-size':11}).textContent=ccMes(d.meses[i]);});
- forma('polyline',{points:desc.map(function(v,i){return X(i)+','+Y(-v);}).join(' '),fill:'none',stroke:'#ad7800','stroke-dasharray':'6 5'});
- forma('text',{x:65,y:320,fill:'#ad7800','font-size':12}).textContent='límite del descubierto';
- forma('polyline',{points:a.map(function(v,i){return X(i)+','+Y(v);}).join(' '),fill:'none',stroke:'#244e3b','stroke-width':3});
- a.forEach(function(v,i){forma('circle',{cx:X(i),cy:Y(v),r:4,fill:dis[i]<0?'#b3261e':'#244e3b'});});graf.append(svg,ccTexto('p','sub','Línea: saldo acumulado · barras: saldo del mes · puntos rojos: falta financiar'));area.append(graf);
+ forma('polyline',{points:desc.map(function(v,i){return X(i)+','+Y(-v);}).join(' '),fill:'none',stroke:'#B97A2A','stroke-width':1.4,'stroke-dasharray':'5 4'});
+ forma('text',{x:65,y:320,fill:'#B97A2A','font-size':11}).textContent='límite del descubierto';
+ forma('polyline',{points:a.map(function(v,i){return X(i)+','+Y(v);}).join(' '),fill:'none',stroke:'#1B1A17','stroke-width':2.2});
+ a.forEach(function(v,i){forma('circle',{cx:X(i),cy:Y(v),r:4,fill:dis[i]<0?'#B4321F':'#1B1A17'});});graf.append(svg,ccTexto('p','sub','Línea: saldo acumulado · barras: saldo del mes · puntos rojos: falta financiar'));area.append(graf);
  var det=el('section','card');det.append(ccTexto('h2','','El detalle'),ccTexto('p','sub','En millones de pesos, sin decimales'));
  var env=el('div','envuelve'),tabla=el('table'),head=el('tr');head.append(ccTexto('th','','Concepto'));d.meses.forEach(function(v){head.append(ccTexto('th','',ccMes(v)));});tabla.append(head);
  var gastos=fila('Gastos de la operación (promedio de los 3 meses cerrados × inflación)'),menos=fila('Menos: secadero y hoja verde (no corren)'),compra=fila('Compra de canchada (lo que se paga en el mes, según las partes)'),flete=fila('Flete de la canchada');
