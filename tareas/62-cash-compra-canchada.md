@@ -35,7 +35,8 @@ canchada cuando el secadero deja de andar:
     - gasto del secadero y la hoja verde que deja de estar;
     - primer mes.
   - Leídos de otras solapas (gris), por texto del renglón y no por posición:
-    - promedio base de egresos ("Prom. base" de "Total egresos de la operación");
+    - promedio de egresos: el promedio de los 3 meses cerrados de "Total egresos de la operación". Ese
+      renglón no tiene "Prom. base": el primer armado lo buscaba ahí y daba vacío;
     - inflación (`Cash Mensual!B4`);
     - saldo de partida y descubierto acordado (del Cash Mensual, el mes anterior al primero).
   - Renglones:
@@ -43,7 +44,9 @@ canchada cuando el secadero deja de andar:
     - cobranza corrida por los días de cobro (parte entera en meses y fracción);
     - gastos base × inflación, menos secadero y hoja verde;
     - canchada en N partes iguales desde el mes de compra, más el flete;
-    - deuda del cronograma por mes de vencimiento (automática y por decisión);
+    - deuda: la del Cash Mensual (respeta lo decidido en Plan) mientras el Cash Mensual llega; después,
+      la del cronograma por mes de vencimiento (automática y por decisión), con un renglón que dice de
+      dónde sale cada mes;
     - saldo del mes, acumulado, descubierto y saldo disponible;
     - TN compradas y stock total.
   - Fila "Faltan cargar": lista los supuestos vacíos para que un cero no se lea como dato.

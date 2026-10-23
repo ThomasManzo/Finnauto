@@ -1060,8 +1060,8 @@ function _separadorLocal_(ss, h) {
 //                hoja verde (una celda: lo que deja de estar porque el secadero no corre).
 //  · Canchada  = toneladas compradas × precio, pagadas en N partes iguales, una por mes, la
 //                primera el mes de la compra (4 partes = 0/30/60/90 días). El flete, al comprar.
-//  · Deuda     = cuotas y planes del cronograma (Deuda Bancaria y Deuda Impositiva) que vencen en
-//                cada mes, separados en débito automático y por decisión. El atrasado NO entra:
+//  · Deuda     = la del Cash Mensual (respeta lo decidido en Plan) en los meses que el Cash Mensual
+//                muestra; después, cuotas y planes del cronograma tal cual. El atrasado NO entra:
 //                es un stock que se decide aparte (solapa Plan).
 //  · Saldo     = parte del cierre del mes anterior al primero, según el Cash Mensual.
 // Las celdas amarillas se editan a mano y se conservan al rearmar la solapa.
@@ -1108,7 +1108,9 @@ function armarCompraCanchada() {
   });
   // Los que salen solos de otras solapas (gris: no se tocan acá)
   var finAnterior = "EOMONTH(" + S.inicio + ",-2)+1";            // el mes anterior al primero
-  [["base", "Gastos de la operación por mes: promedio de los 3 meses cerrados", "=INDEX(" + CM + "$A:$AZ,MATCH(\"Total egresos de la operación\"," + CM + "$A:$A,0),MATCH(\"Prom. base\"," + CM + "$6:$6,0))", "Cash Mensual, columna Prom. base"],
+  // El total de egresos no tiene "Prom. base" (ese promedio está solo en los renglones que se
+  // estiman por promedio): se promedian sus 3 meses cerrados, las 3 primeras columnas del Cash Mensual.
+  [["base", "Gastos de la operación por mes: promedio de los 3 meses cerrados", "=AVERAGE(OFFSET(INDEX(" + CM + "$A:$A,MATCH(\"Total egresos de la operación\"," + CM + "$A:$A,0)),0,1,1," + MESES_BASE + "))", "Cash Mensual, total de egresos de la operación, promedio de los 3 meses cerrados"],
    ["inflacion", "Inflación mensual de los gastos", "=" + CM + "$B$4", "la misma celda del Cash Mensual"],
    ["saldo0", "Saldo de partida (cierre del mes anterior al primero)", "=" + celdaCM("SALDO AL CIERRE del mes pagando toda la deuda", finAnterior), "Cash Mensual, pagando toda la deuda"],
    ["desc", "Descubierto acordado con los bancos", "=" + celdaCM("Descubierto acordado con los bancos", finAnterior), "Cash Mensual"]
@@ -1186,20 +1188,26 @@ function armarCompraCanchada() {
   h.getRange(fRes, 1, 1, ancho).setBackground("#fff8e1");
   fila = fRes + 2;
 
-  // ---- 3 · deuda (del cronograma, por mes de vencimiento)
+  // ---- 3 · deuda: la del Cash Mensual (respeta lo decidido en Plan: lo que se pospone o se
+  //      refinancia). Donde el Cash Mensual no llega, el cronograma tal cual, y se avisa.
   var entre = function (vto, c) { return vto + ",\">=\"&" + L(c) + "$" + filaMes + "," + vto + ",\"<\"&EDATE(" + L(c) + "$" + filaMes + ",1)"; };
-  _seccion_(h, fila++, "3 · Deuda que vence en el mes (cronograma)", "#fce8e6", "#a50e0e", ancho);
-  var fCuAuto = fila++, fImpAuto = fila++, fCuDec = fila++, fImpDec = fila++, fTotDeuda = fila++;
-  h.getRange(fCuAuto, 1).setValue("Cuotas y tarjetas con débito automático");
-  porMes(fCuAuto, function (c) { return "=SUMIFS(" + R.cuTot + "," + entre(R.cuVto, c) + "," + R.cuEstado + ",\"Pendiente\"," + R.cuAuto + ",\"Si\")"; });
-  h.getRange(fImpAuto, 1).setValue("Planes de ARCA con débito automático");
-  porMes(fImpAuto, function (c) { return "=SUMIFS(" + R.diImp + "," + entre(R.diVto, c) + "," + R.diEstado + ",\"<>Pagado\"," + R.diAuto + ",\"Si\")"; });
-  h.getRange(fCuDec, 1).setValue("Cuotas que se pagan por decisión");
-  porMes(fCuDec, function (c) { return "=SUMIFS(" + R.cuTot + "," + entre(R.cuVto, c) + "," + R.cuEstado + ",\"Pendiente\"," + R.cuAuto + ",\"<>Si\")"; });
-  h.getRange(fImpDec, 1).setValue("Impuestos por VEP y planes nuevos");
-  porMes(fImpDec, function (c) { return "=SUMIFS(" + R.diImp + "," + entre(R.diVto, c) + "," + R.diEstado + ",\"<>Pagado\"," + R.diAuto + ",\"<>Si\")"; });
+  var cronograma = function (c, auto) {
+    var signo = auto ? "\"Si\"" : "\"<>Si\"";
+    return "SUMIFS(" + R.cuTot + "," + entre(R.cuVto, c) + "," + R.cuEstado + ",\"Pendiente\"," + R.cuAuto + "," + signo + ")+" +
+           "SUMIFS(" + R.diImp + "," + entre(R.diVto, c) + "," + R.diEstado + ",\"<>Pagado\"," + R.diAuto + "," + signo + ")";
+  };
+  var mesEnCM = function (c) { return "ISNUMBER(MATCH(" + L(c) + "$" + filaMes + "," + CM + "$6:$6,0))"; };
+  _seccion_(h, fila++, "3 · Deuda que vence en el mes", "#fce8e6", "#a50e0e", ancho);
+  var fDeuAuto = fila++, fDeuDec = fila++, fFuente = fila++, fTotDeuda = fila++;
+  h.getRange(fDeuAuto, 1).setValue("Deuda que sale sí o sí (débito automático)");
+  porMes(fDeuAuto, function (c) { return "=IF(" + mesEnCM(c) + "," + celdaCM("Total deuda que sale sí o sí (débito automático)", L(c) + "$" + filaMes) + "," + cronograma(c, true) + ")"; });
+  h.getRange(fDeuDec, 1).setValue("Deuda que se paga por decisión");
+  porMes(fDeuDec, function (c) { return "=IF(" + mesEnCM(c) + "," + celdaCM("Total deuda que se paga por decisión", L(c) + "$" + filaMes) + "," + cronograma(c, false) + ")"; });
+  h.getRange(fFuente, 1).setValue("De dónde sale: Cash Mensual (con lo decidido en Plan) o cronograma tal cual (sin decisiones)").setFontColor("#5f6368");
+  porMes(fFuente, function (c) { return "=IF(" + mesEnCM(c) + ",\"Cash Mensual\",\"cronograma\")"; });
+  h.getRange(fFuente, 2, 1, nCols).setFontColor("#5f6368").setHorizontalAlignment("right");
   h.getRange(fTotDeuda, 1).setValue("Total deuda del mes").setFontWeight("bold");
-  porMes(fTotDeuda, function (c) { return "=SUM(" + L(c) + fCuAuto + ":" + L(c) + fImpDec + ")"; });
+  porMes(fTotDeuda, function (c) { return "=" + L(c) + fDeuAuto + "+" + L(c) + fDeuDec; });
   _lineaTotal_(h, fTotDeuda, ancho);
   fila++;
 
@@ -1229,7 +1237,7 @@ function armarCompraCanchada() {
   h.getRange(fila, 1, 4, 1).setValues([
     ["Qué no está: el IVA (todo va sin IVA, como el esquema de compra), el atrasado (se decide en Plan) y la merma de molienda (las TN compradas y vendidas se cargan tal cual)."],
     ["La base de gastos es la plata que salió en los 3 meses cerrados: si en esos meses se dejó de pagar algo (por ejemplo envases), tampoco está acá."],
-    ["Las cuotas salen del cronograma tal cual (no de lo decidido en Plan)."],
+    ["La deuda es la del Cash Mensual (con lo decidido en Plan) mientras el Cash Mensual llega; después, el cronograma tal cual."],
     ["Se rearma desde finauto → Armar solapa Cash compra canchada: conserva lo amarillo."],
   ]).setFontStyle("italic").setFontColor("#5f6368");
 
