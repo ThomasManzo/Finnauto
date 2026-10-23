@@ -2,6 +2,7 @@
   "_comentario": "Perfil del cliente NAVAR S.A. (yerbatera, Corrientes). Primer cliente real de finauto (12/09/2026). Todo lo especifico de este cliente vive aca y en catalogo.json; el codigo (nucleo/bots/simulador) no cambia entre clientes.",
   "_estado": "BORRADOR - armado con lo relevado en el descubrimiento del 12/09/2026. Lo marcado con _pendiente se confirma con el cliente.",
   "cliente": "NAVAR S.A.",
+  "tablero": {"escenario_canchada": true},
   "rubro": "yerbatera",
   "ubicacion": "Corrientes",
   "carpeta_drive_destino": "",

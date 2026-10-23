@@ -1,5 +1,5 @@
 # Tarea 63 — Apartado "Compra de canchada" en el tablero: panel con controles conectado a la planilla
-Estado: pendiente
+Estado: lista para revisión
 Rama: tarea/63-panel-canchada
 
 ## Objetivo
@@ -160,7 +160,43 @@ No tocar `crear_cash.gs`, `importar_cashflow.gs` ni la notebook.
    prueba Claude después en la planilla. Anotar qué mirar.
 
 ## Qué hice
-(lo completa Codex)
+- Agregué el apartado «Compra de canchada» debajo de Hallazgos, habilitado por la marca
+  `tablero.escenario_canchada` del perfil. Otros clientes siguen sin ese botón ni el JS del panel.
+- Toqué solamente los archivos permitidos: `dashboard/app.py`, `dashboard/datos.py`,
+  `clientes/navar/perfil.json`, `clientes/navar/herramientas/tablero_web.gs`, esta consigna
+  y las pruebas nuevas `lector/pruebas/probar_panel_canchada.cjs` y
+  `lector/pruebas/test_panel_canchada.py`.
+- Las diez barras muestran el valor mientras se arrastran. Al soltarlas se esperan 0,8 segundos;
+  se juntan los cambios y se mandan a Apps Script. El servidor verifica el acceso y los rangos,
+  toma el candado, encuentra los renglones por su texto, escribe únicamente las celdas editadas
+  y pide recalcular. La respuesta trae los números de la planilla: con ellos se dibujan las tarjetas,
+  el gráfico y el detalle. No se duplicaron las fórmulas del escenario en el navegador.
+- Los controles siguen usables durante el guardado: otra tanda queda esperando y una respuesta
+  anterior no pisa sus valores. Ante un error se recupera el último valor confirmado y se muestra
+  el mensaje. También agregué edición de TN mes por mes, aviso de faltantes y las notas de la solapa.
+- La primera escritura conserva antes una foto del plan en las Propiedades del script. Los botones
+  permiten reemplazar esa foto o recuperarla, incluyendo las celdas originalmente vacías.
+  Las cuatro funciones públicas comprueban PERMITIDOS; las escrituras y las fotos usan el mismo candado.
+- Comprobaciones: `python -m pytest -q`: **296 pruebas y 52 subpruebas pasaron**.
+  Los **12 archivos `.cjs`** de `lector/pruebas/` pasaron con Node. La prueba nueva usa una hoja
+  inventada, mueve las filas, comprueba permisos, rangos, foto previa, reemplazo y recuperación.
+  `git diff --check` sin errores.
+- Probé además en un navegador con una respuesta ficticia de `google.script.run`: archivo suelto,
+  diez controles, cuatro tarjetas, detalle, arrastrar sin guardar, agrupación de cambios, mover otra
+  barra durante el guardado y recuperación ante un error. Revisé capturas de escritorio y celular;
+  en celular hay una columna y el detalle se desplaza dentro de su propio contenedor.
+- No se usaron datos reales, Drive ni la planilla del cliente. No cambié dependencias del producto.
+  Faltaba pytest en el entorno: lo descargué solo en `/private/tmp/finnauto63-testdeps` para las
+  comprobaciones. Node y Playwright ya estaban disponibles en el entorno de la aplicación.
+- Para la revisión en vivo: completar `CANCHADA_PLANILLA_ID` en Apps Script con el ID de la Sheet
+  (queda vacío a propósito: la consigna no lo proporciona y no se consultaron archivos privados).
+  Autorizar el acceso a Sheets y publicar una nueva versión con la misma URL. Revisar lectura inicial,
+  días y primer mes en hora argentina, valores sin cargar, guardar dos barras seguidas, editar TN por
+  mes y comprobar las mismas celdas en la Sheet. Comparar tarjetas, gráfico y detalle con sus filas,
+  probar los dos botones del original y una cuenta sin permiso. La prueba real de permisos de Google
+  y de `google.script.run` queda para Claude, tal como indica la consigna.
+- Trabajo realizado en el worktree `/private/tmp/finnauto-63`, rama `tarea/63-panel-canchada`.
+  No se modificó main ni se publicó nada.
 
 ## Revisión
 (lo completa Claude: pegar tablero_web.gs en Apps Script, nueva versión de la implementación con la

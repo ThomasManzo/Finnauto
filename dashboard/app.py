@@ -202,6 +202,155 @@ button.mini:hover{color:var(--tinta);border-color:var(--tinta)}
 @media print{.lado{position:static;height:auto}.card{break-inside:avoid}}
 """
 
+CSS += r"""
+.wrap:has(.cc-panel){min-width:0;width:100%}
+.cc-panel{min-width:0;max-width:100%}
+.cc-panel table{min-width:1000px}
+.cc-controles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:18px;margin:20px 0}
+.cc-control{min-width:0;padding:14px;border:1px solid var(--linea);border-radius:8px}
+.cc-control label{font-size:12px;display:block}.cc-grande{font-family:Newsreader,Georgia,serif;font-size:26px;margin:8px 0}
+.cc-control input[type=range]{width:100%;accent-color:#244e3b}.cc-limites{font-size:11px;color:#69736c}
+.cc-cab{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.cc-cab h2{margin-right:auto}
+.cc-estado{font-size:12px}.cc-aviso{background:#fff1cf;color:#785300;padding:12px}
+.cc-meses{max-height:240px;overflow:auto}.cc-meses input{width:100%;box-sizing:border-box}
+.cc-meses[hidden]{display:none}.cc-total{font-weight:bold}.cc-panel .malo{color:#b3261e}
+.cc-panel svg{width:100%;height:auto}.cc-panel .envuelve{overflow-x:auto}.cc-panel td{white-space:nowrap}
+@media(max-width:1000px){.cc-controles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.cc-controles{grid-template-columns:1fr}}
+"""
+
+JS_CANCHADA = r"""
+// Las barras mandan supuestos; los importes vuelven de la planilla. Solo resumimos sus filas.
+var CC = {bueno:null, pendiente:{}, ocupado:false, timer:null, mensaje:'cargando…', raiz:null};
+var CC_CONTROLES = [
+ ['pCanch','Canchada: precio de compra',900,1800,5,'$/kg'],
+ ['flete','Canchada: flete',0,100,1,'$/kg'],
+ ['tnCompradas','TN compradas por mes',0,600,10,'TN'],
+ ['tnVendidas','TN vendidas por mes',0,600,10,'TN'],
+ ['precio','Precio de venta hoy',1000,3000,1,'$/kg'],
+ ['suba','Suba del precio por mes',0,20,.5,'%'],
+ ['mesesSuba','Durante cuántos meses sube',0,14,1,'meses'],
+ ['dias','Días promedio de cobro',0,90,1,'días'],
+ ['partes','Canchada: partes de pago',1,6,1,'partes'],
+ ['secadero','Secadero y hoja verde que dejan de estar',0,400,1,'M $ por mes']
+];
+function ccTexto(t,c,txt){var n=el(t,c); n.textContent=txt;return n;}
+function ccRpc(nombre,arg,ok,mal){
+ var r=google.script.run.withSuccessHandler(ok).withFailureHandler(mal); if(arg===undefined)r[nombre]();else r[nombre](arg);
+}
+function ccEstado(){
+ if(!CC.raiz)return;
+ var n=CC.raiz.querySelector('.cc-estado');
+ if(n)n.textContent=CC.ocupado || Object.keys(CC.pendiente).length ? 'guardando…' : CC.mensaje;
+ CC.raiz.querySelectorAll('.cc-plan').forEach(function(b){b.disabled=CC.ocupado || Object.keys(CC.pendiente).length>0 || !CC.bueno;});
+}
+function ccCambio(k,v){
+ if(k==='tnCompradas'||k==='tnVendidas')CC.pendiente[k]=v;
+ else {if(!CC.pendiente.supuestos)CC.pendiente.supuestos={};CC.pendiente.supuestos[k]=v;}
+ clearTimeout(CC.timer);CC.timer=setTimeout(ccGuardar,800);ccEstado();
+}
+function ccError(e){
+ CC.ocupado=false; CC.pendiente={};clearTimeout(CC.timer);
+ CC.mensaje='No se guardó: '+(e.message||String(e));ccControles();ccEstado();
+}
+function ccGuardar(){
+ if(CC.ocupado || !Object.keys(CC.pendiente).length)return;
+ var lote=CC.pendiente;CC.pendiente={};CC.ocupado=true;ccEstado();
+ ccRpc('guardarEscenarioCanchada',lote,function(d){
+   CC.bueno=d;CC.ocupado=false;CC.mensaje='guardado en la planilla · recalculado hace 0 s';
+   ccResultados();
+   // Una respuesta anterior no pisa lo que se acaba de mover mientras guardaba.
+   if(Object.keys(CC.pendiente).length) {clearTimeout(CC.timer);CC.timer=setTimeout(ccGuardar,800);}
+   else ccControles();ccEstado();
+ },ccError);
+}
+function ccValor(c,v){
+ if(v===''||v===null||v===undefined)return 'sin cargar';
+ if(c[0]==='partes')return v+' ('+Array.from({length:v},function(_,i){return i*30;}).join('/')+')';
+ return Number(v).toLocaleString('es-AR')+' '+c[5];
+}
+function ccControles(){
+ if(!CC.raiz||!CC.bueno)return;
+ var grid=CC.raiz.querySelector('.cc-controles');grid.replaceChildren();
+ CC_CONTROLES.forEach(function(c){
+  var k=c[0],tn=k.indexOf('tn')===0,datos=tn?CC.bueno.filas[k==='tnCompradas'?'TN compradas':'TN vendidas']:null;
+  var raw=tn?datos[0]:CC.bueno.supuestos[k], v=raw;
+  if(tn && CC.pendiente[k]){datos=CC.pendiente[k];v=datos[0];}
+  if(!tn && CC.pendiente.supuestos && Object.prototype.hasOwnProperty.call(CC.pendiente.supuestos,k))v=CC.pendiente.supuestos[k];
+  if(k==='suba'&&v!=='')v*=100;if(k==='secadero'&&v!=='')v/=1e6;
+  var caja=el('div','cc-control'),label=ccTexto('label','',c[1]), grande=ccTexto('div','cc-grande',ccValor(c,v));
+  var barra=el('input');barra.type='range';barra.id='cc-'+k;label.htmlFor=barra.id;
+  barra.min=c[2];barra.max=c[3];barra.step=c[4];barra.value=v==null||v===''?c[2]:v;
+  barra.setAttribute('aria-label',c[1]);
+  // Si la planilla tiene un valor fuera de la escala habitual, se muestra tal cual hasta moverlo.
+  barra.oninput=function(){grande.textContent=ccValor(c,Number(barra.value));};
+  barra.onchange=function(){var n=Number(barra.value);if(k==='suba')n/=100;if(k==='secadero')n*=1e6;
+   ccCambio(k,tn?Array(14).fill(n):n);
+   if(tn)caja.querySelectorAll('input[type=number]').forEach(function(x){x.value=n;});
+  };
+  caja.append(label,grande,barra,ccTexto('div','cc-limites',c[2].toLocaleString('es-AR')+' — '+c[3].toLocaleString('es-AR')+' '+c[5]));
+  if(tn){
+   var boton=ccTexto('button','mini','cambiar mes por mes'), meses=el('div','cc-meses');meses.hidden=true;
+   boton.onclick=function(){meses.hidden=!meses.hidden;boton.setAttribute('aria-expanded',!meses.hidden);};
+   if(datos.some(function(x){return x!==datos[0];}))grande.textContent='varía por mes';
+   datos.forEach(function(n,i){var l=ccTexto('label','',ccMes(CC.bueno.meses[i])),x=el('input');x.type='number';x.min=0;x.max=5000;x.step='any';x.value=n===null?'':n;
+    x.setAttribute('aria-label',c[1]+' '+ccMes(CC.bueno.meses[i]));
+    x.onchange=function(){var inputs=Array.from(meses.querySelectorAll('input')),a=inputs.map(function(z){return z.value===''?NaN:Number(z.value);});
+     if(a.some(function(z){return !Number.isFinite(z)||z<0||z>5000;})){ccError(new Error('Las TN deben estar entre 0 y 5.000 en los 14 meses'));return;}
+     grande.textContent='varía por mes';ccCambio(k,a);
+    };l.append(x);meses.append(l);
+   });caja.append(boton,meses);
+  } grid.append(caja);
+ });
+}
+function ccMes(iso){if(!iso)return 'sin mes';return new Date(iso+'T12:00:00').toLocaleDateString('es-AR',{month:'short',year:'2-digit'});}
+function ccResultados(){
+ if(!CC.bueno||!CC.raiz)return;
+ var d=CC.bueno,f=d.filas,area=CC.raiz.querySelector('.cc-resultados');area.replaceChildren();
+ if(d.falta)area.append(ccTexto('p','cc-aviso',d.falta));
+ var nombres={acum:'Saldo acumulado',mes:'Saldo del mes pagando la deuda que vence',disp:'Saldo disponible (acumulado + descubierto): si da negativo, eso es lo que falta financiar',desc:'Descubierto acordado con los bancos'};
+ function fila(txt){var a=f[txt];if(!a||a.length!==14||a.some(function(v){return typeof v!=='number'||!Number.isFinite(v);}))throw new Error('La planilla todavía no devuelve números en: '+txt);return a;}
+ try {
+ var a=fila(nombres.acum),m=fila(nombres.mes),dis=fila(nombres.disp),desc=fila(nombres.desc);
+ var peor=Math.min.apply(null,a),primero=dis.findIndex(function(v){return v<0;}),falta=Math.max(0,-Math.min.apply(null,dis)),desde=Math.max(0,(Number(d.supuestos.partes)||1)-1),tip=m.slice(desde),prom=tip.reduce(function(x,y){return x+y;},0)/tip.length;
+ var tarjetas=el('div','kpis');
+ [[ 'Peor saldo acumulado',pesos(peor,true)+' · '+ccMes(d.meses[a.indexOf(peor)]),peor<0],
+ ['Se pasa del descubierto en',primero<0?'no se pasa':ccMes(d.meses[primero]),primero>=0],
+ ['Plata que hay que conseguir',pesos(falta,true),falta>0],['Resultado de un mes típico',pesos(prom,true),prom<0]].forEach(function(x){var k=el('div','kpi'+(x[2]?' malo':''));k.append(ccTexto('div','',x[0]),ccTexto('div','cc-grande',x[1]));tarjetas.append(k);});area.append(tarjetas);
+ var graf=el('section','card');graf.append(ccTexto('h2','','Caja mes a mes'));
+ var ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');svg.setAttribute('viewBox','0 0 960 330');svg.setAttribute('role','img');svg.setAttribute('aria-label','Saldo acumulado, saldo del mes y límite del descubierto');
+ var todos=a.concat(m,desc.map(function(v){return -v;}),[0]),lo=Math.min.apply(null,todos),hi=Math.max.apply(null,todos);if(hi===lo)hi=lo+1;
+ function X(i){return 65+i*65;}function Y(v){return 270-(v-lo)/(hi-lo)*235;}
+ function forma(t,attrs){var n=document.createElementNS(ns,t);Object.keys(attrs).forEach(function(k){n.setAttribute(k,attrs[k]);});svg.append(n);return n;}
+ forma('line',{x1:50,x2:930,y1:Y(0),y2:Y(0),stroke:'#aaa'});
+ [hi,lo].forEach(function(v){forma('text',{x:0,y:Y(v),'font-size':11}).textContent=pesos(v,true);});
+ m.forEach(function(v,i){forma('rect',{x:X(i)-13,y:Math.min(Y(0),Y(v)),width:26,height:Math.max(1,Math.abs(Y(v)-Y(0))),fill:v<0?'#b3261e':'#137333',opacity:.25});
+ forma('text',{x:X(i),y:300,'text-anchor':'middle','font-size':11}).textContent=ccMes(d.meses[i]);});
+ forma('polyline',{points:desc.map(function(v,i){return X(i)+','+Y(-v);}).join(' '),fill:'none',stroke:'#ad7800','stroke-dasharray':'6 5'});
+ forma('text',{x:65,y:320,fill:'#ad7800','font-size':12}).textContent='límite del descubierto';
+ forma('polyline',{points:a.map(function(v,i){return X(i)+','+Y(v);}).join(' '),fill:'none',stroke:'#244e3b','stroke-width':3});
+ a.forEach(function(v,i){forma('circle',{cx:X(i),cy:Y(v),r:4,fill:dis[i]<0?'#b3261e':'#244e3b'});});graf.append(svg,ccTexto('p','sub','Línea: saldo acumulado · barras: saldo del mes · puntos rojos: falta financiar'));area.append(graf);
+ var det=el('section','card');det.append(ccTexto('h2','','El detalle'),ccTexto('p','sub','En millones de pesos, sin decimales'));
+ var env=el('div','envuelve'),tabla=el('table'),head=el('tr');head.append(ccTexto('th','','Concepto'));d.meses.forEach(function(v){head.append(ccTexto('th','',ccMes(v)));});tabla.append(head);
+ var gastos=fila('Gastos de la operación (promedio de los 3 meses cerrados × inflación)'),menos=fila('Menos: secadero y hoja verde (no corren)'),compra=fila('Compra de canchada (lo que se paga en el mes, según las partes)'),flete=fila('Flete de la canchada');
+ [['Cobranza',fila('Cobranza de las ventas (según los días de cobro)')],['Gastos sin secadero',gastos.map(function(v,i){return v+menos[i];})],['Canchada + flete',compra.map(function(v,i){return v+flete[i];})],['Deuda',fila('Total deuda del mes')],['Saldo del mes',m],['Saldo acumulado',a]].forEach(function(r,i){var tr=el('tr',i===5?'cc-total':'');tr.append(ccTexto('th','',r[0]));r[1].forEach(function(v){tr.append(ccTexto('td','',Math.round(v/1e6).toLocaleString('es-AR')));});tabla.append(tr);});
+ env.append(tabla);det.append(env);(d.notas||[]).forEach(function(n){det.append(ccTexto('p','sub',n));});area.append(det);
+ }catch(e){area.append(ccTexto('p','cc-aviso',e.message));}
+}
+function verCanchada(){
+ var root=el('div','cc-panel');CC.raiz=root;
+ root.append(ccTexto('p','sub','Escenario conectado a la solapa Cash compra canchada de la planilla: movés un control, se guarda ahí y vuelve el número que calcula la planilla.'));
+ if(typeof google==='undefined'||!google.script||!google.script.run){root.append(ccTexto('p','','este apartado funciona desde el link del tablero'));return [root];}
+ var cab=el('div','cc-cab');cab.append(ccTexto('h2','','Supuestos'),ccTexto('span','cc-estado','cargando…'));
+ [['Volver al plan original','volverAlPlanOriginalCanchada'],['Guardar como plan original','guardarPlanOriginalCanchada']].forEach(function(p){var b=ccTexto('button','mini cc-plan',p[0]);b.onclick=function(){if(CC.ocupado)return;CC.ocupado=true;ccEstado();ccRpc(p[1],undefined,function(d){CC.bueno=d;CC.ocupado=false;CC.mensaje='guardado en la planilla · recalculado hace 0 s';ccControles();ccResultados();ccEstado();if(Object.keys(CC.pendiente).length){clearTimeout(CC.timer);CC.timer=setTimeout(ccGuardar,800);}},ccError);};cab.append(b);});
+ root.append(cab,el('div','cc-controles'),el('div','cc-resultados'));
+ if(CC.bueno){ccControles();ccResultados();}
+ if(!CC.ocupado&&!Object.keys(CC.pendiente).length){CC.ocupado=true;ccRpc('leerEscenarioCanchada',undefined,function(d){CC.bueno=d;CC.ocupado=false;CC.mensaje='guardado en la planilla · recalculado hace 0 s';ccControles();ccResultados();ccEstado();if(Object.keys(CC.pendiente).length){clearTimeout(CC.timer);CC.timer=setTimeout(ccGuardar,800);}},ccError);}
+ ccEstado();return [root];
+}
+setInterval(function(){if(CC.bueno&&!CC.ocupado&&!Object.keys(CC.pendiente).length&&CC.mensaje.indexOf('guardado en')===0){CC.mensaje='guardado en la planilla · recalculado hace '+Math.max(0,Math.floor((Date.now()-Date.parse(CC.bueno.hora))/1000))+' s';ccEstado();}},1000);
+"""
+
 JS = r"""
 // ---------------------------------------------------------------- formato
 // Acá NO se calcula plata. Todo viene resuelto de Python (dashboard/datos.py):
@@ -1617,6 +1766,7 @@ ICONOS = {
     "pagar": '<path d="M4 7h16M4 12h11M4 17h7"/>',
     "cobrar": '<path d="M12 20V5M6 11l6-6 6 6"/>',
     "proyeccion": '<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
+    "canchada": '<path d="M3 17l5-6 5 3 8-9M3 21h18"/>',
     "hallazgos": '<path d="M12 3l9.5 17h-19z"/><path d="M12 10v4M12 17h.01"/>',
 }
 
@@ -1694,7 +1844,9 @@ def render(paquete):
           % (e(u), e("GRUPO" if u == "GRUPO" else u)))
     A('</div>')
     A('<nav class="tabs" role="tablist">')
-    for cid, nom in CAPAS:
+    capas = CAPAS + ([("canchada", "Compra de canchada")]
+                     if (paquete.get("tablero") or {}).get("escenario_canchada") else [])
+    for cid, nom in capas:
         A('<button class="tab" role="tab" data-capa="%s"><svg viewBox="0 0 24 24">%s</svg>%s</button>'
           % (cid, ICONOS.get(cid, ""), e(nom)))
     A('</nav>')
@@ -1724,7 +1876,10 @@ def render(paquete):
     A('</div>')
     A('<script>var D = %s;</script>'
       % json.dumps(paquete, ensure_ascii=False).replace("</", "<\\/"))
-    A('<script>%s</script>' % JS)
+    A('<script>%s</script>' % (JS.replace('// ---------------------------------------------------------------- pintar',
+        JS_CANCHADA + '\n// ---------------------------------------------------------------- pintar').replace(
+        'hallazgos: verHallazgos}', 'hallazgos: verHallazgos, canchada: verCanchada}')
+        if (paquete.get('tablero') or {}).get('escenario_canchada') else JS))
     return "\n".join(H)
 
 

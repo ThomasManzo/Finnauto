@@ -1274,6 +1274,15 @@ def vocabulario(cliente):
     return v
 
 
+def opciones_tablero(cliente):
+    """Cada perfil prende sus apartados; no se adivinan por el nombre del cliente."""
+    from nucleo import config as _config
+    try:
+        return (_config.cargar_perfil(BASE_REPO, cliente).get("tablero") or {})
+    except FileNotFoundError:
+        return {}
+
+
 def armar(contrato, cliente="maga"):
     # La estimación por kg fue dada de baja en NAVAR. Filtramos una copia
     # antes de TODOS los cálculos del tablero; el contrato original no se toca.
@@ -1355,6 +1364,7 @@ def armar(contrato, cliente="maga"):
         "hallazgos": hallazgos(contrato),
         "faltantes": faltantes(contrato),
         "modo_vencido": modo,
+        "tablero": opciones_tablero(cliente),
         "memoria": memoria_del_cliente(cliente),
         # LO QUE DIJIMOS LA VEZ PASADA, contra lo que pasa hoy.
         # Es lo que hace que la segunda visita valga mas que la primera.
