@@ -1,5 +1,5 @@
 # Tarea 63 — Apartado "Compra de canchada" en el tablero: panel con controles conectado a la planilla
-Estado: lista para revisión
+Estado: aprobada (instalado en Apps Script; falta actualizar la notebook y probar en vivo)
 Rama: tarea/63-panel-canchada
 
 ## Objetivo
@@ -199,5 +199,18 @@ No tocar `crear_cash.gs`, `importar_cashflow.gs` ni la notebook.
   No se modificó main ni se publicó nada.
 
 ## Revisión
-(lo completa Claude: pegar tablero_web.gs en Apps Script, nueva versión de la implementación con la
-misma URL, rearmar el tablero en la notebook con `actualizar.ps1` y probar el apartado en vivo)
+- Claude (23/10):
+  - revisó el diff y lo aprobó: permisos, validación antes de escribir, candado, búsqueda por texto,
+    foto previa, guardado agrupado sin pisarse y prueba sólida;
+  - **retoque de estilo** (commit c57a137): controles con líneas en vez de cajas, color tinta en vez
+    de verde, tarjetas con `.kpi .n` como el resto del tablero y colores del gráfico de la paleta;
+  - mergeado a main (fe0d936).
+- **Instalado en Apps Script:**
+  - en Código.gs se agregó solo el bloque nuevo sobre lo instalado: `PERMITIDOS` reales intactos y
+    `CANCHADA_PLANILLA_ID` completado ahí, no en el repo;
+  - las huellas coinciden después de recargar;
+  - aplicación web: versión 6, con la misma URL.
+- Falta:
+  - `actualizar.ps1` en la notebook y rearmar el tablero;
+  - probar en vivo: lectura, guardar dos barras seguidas, TN mes por mes, los dos botones del plan
+    original y comparar con la solapa.
