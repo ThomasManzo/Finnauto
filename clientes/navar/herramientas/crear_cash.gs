@@ -1045,6 +1045,243 @@ function _separadorLocal_(ss, h) {
   }
 }
 
+// ================================================================== Cash compra canchada (tarea 62)
+// Un escenario aparte, mes por mes, para ver cómo pega en la caja un plan de compra de canchada
+// cuando el secadero deja de andar. NO pisa Cash, Cash Semanal, Cash Mensual ni Plan: los lee.
+//
+// Cómo se arma cada renglón (todo en pesos SIN IVA, como el esquema de compra):
+//  · Ventas    = toneladas vendidas del mes × 1000 × precio. El precio arranca en "precio de hoy"
+//                y sube un % por mes durante los meses que se indiquen.
+//  · Cobranza  = las ventas corridas por los días promedio de cobro (27 días = 90% del mes
+//                anterior + 10% del de antes, por ejemplo). Antes del primer mes se supone que se
+//                vendía lo mismo que el primer mes, al precio de hoy.
+//  · Gastos    = el promedio de los 3 meses cerrados del Cash Mensual ("Prom. base" del total de
+//                egresos de la operación) × inflación, MENOS lo que gastaban el secadero y la
+//                hoja verde (una celda: lo que deja de estar porque el secadero no corre).
+//  · Canchada  = toneladas compradas × precio, pagadas en N partes iguales, una por mes, la
+//                primera el mes de la compra (4 partes = 0/30/60/90 días). El flete, al comprar.
+//  · Deuda     = cuotas y planes del cronograma (Deuda Bancaria y Deuda Impositiva) que vencen en
+//                cada mes, separados en débito automático y por decisión. El atrasado NO entra:
+//                es un stock que se decide aparte (solapa Plan).
+//  · Saldo     = parte del cierre del mes anterior al primero, según el Cash Mensual.
+// Las celdas amarillas se editan a mano y se conservan al rearmar la solapa.
+var CC_HOJA = "Cash compra canchada", CC_MESES = 14;
+var CC_SUPUESTOS = [
+  // [clave, texto, formato, nota]
+  ["precio",   "Precio de venta hoy ($/kg, sin IVA)",              "#,##0", "precio promedio reciente de la yerba vendida"],
+  ["suba",     "Suba del precio de venta por mes",                 "0%",    "se aplica desde el primer mes"],
+  ["mesesSuba","Durante cuántos meses sube el precio",             "0",     "1 = una sola suba; igual a la cantidad de meses = sube todos los meses"],
+  ["dias",     "Días promedio de cobro",                           "0",     "ponderado por importe; corre la cobranza respecto de la venta"],
+  ["pCanch",   "Canchada: precio ($/kg, sin IVA)",                 "#,##0", "precio promedio de compra"],
+  ["flete",    "Canchada: flete ($/kg)",                           "#,##0", "se paga el mes de la compra"],
+  ["partes",   "Canchada: en cuántas partes se paga",              "0",     "una por mes, la primera al comprar (4 = 0/30/60/90 días)"],
+  ["stock",    "Stock de canchada propia al empezar (TN)",         "#,##0", "para seguir el stock total mes a mes"],
+  ["secadero", "Gasto por mes del secadero y la hoja verde que deja de estar ($)", "#,##0", "se resta del promedio de gastos: el secadero no corre"],
+  ["inicio",   "Primer mes del plan",                              "mmm yyyy", "primer día del mes"],
+];
+
+function armarCompraCanchada() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss.getSheetByName("Cash Mensual")) throw new Error("Primero armar el Cash (finauto → Armar solapa Cash)");
+  R = _rangos_(ss);
+  var guardado = _ccLeerEditable_(ss.getSheetByName(CC_HOJA));
+  var nCols = CC_MESES, ancho = 2 + nCols;
+  var h = _hojaLimpia_(ss, CC_HOJA, ancho + 1);
+  var L = function (j) { return _colLetra_(2 + j); };
+  var CM = "'Cash Mensual'!";
+  var celdaCM = function (renglon, fecha) {   // un valor del Cash Mensual por el texto del renglón y la columna
+    return "INDEX(" + CM + "$A:$AZ,MATCH(\"" + renglon + "\"," + CM + "$A:$A,0),MATCH(" + fecha + "," + CM + "$6:$6,0))";
+  };
+
+  _titulo_(h, "CASH · " + _cliente_(ss) + " · plan de compra de canchada sin secadero (escenario)", ancho);
+  h.getRange(2, 1).setValue("Escenario aparte: no cambia el Cash ni el Cash Mensual. En pesos sin IVA. Amarillo = se edita a mano y se conserva al rearmar.")
+    .setFontStyle("italic").setFontColor("#5f6368");
+
+  // ---- supuestos
+  var fila = 4, S = {};
+  CC_SUPUESTOS.forEach(function (s) {
+    h.getRange(fila, 1).setValue(s[1]);
+    h.getRange(fila, 2).setNumberFormat(s[2]).setBackground("#fff8e1");
+    h.getRange(fila, 3).setValue(s[3]).setFontStyle("italic").setFontColor("#5f6368");
+    S[s[0]] = "$B$" + fila;
+    fila++;
+  });
+  // Los que salen solos de otras solapas (gris: no se tocan acá)
+  var finAnterior = "EOMONTH(" + S.inicio + ",-2)+1";            // el mes anterior al primero
+  [["base", "Gastos de la operación por mes: promedio de los 3 meses cerrados", "=INDEX(" + CM + "$A:$AZ,MATCH(\"Total egresos de la operación\"," + CM + "$A:$A,0),MATCH(\"Prom. base\"," + CM + "$6:$6,0))", "Cash Mensual, columna Prom. base"],
+   ["inflacion", "Inflación mensual de los gastos", "=" + CM + "$B$4", "la misma celda del Cash Mensual"],
+   ["saldo0", "Saldo de partida (cierre del mes anterior al primero)", "=" + celdaCM("SALDO AL CIERRE del mes pagando toda la deuda", finAnterior), "Cash Mensual, pagando toda la deuda"],
+   ["desc", "Descubierto acordado con los bancos", "=" + celdaCM("Descubierto acordado con los bancos", finAnterior), "Cash Mensual"]
+  ].forEach(function (s) {
+    h.getRange(fila, 1).setValue(s[1]);
+    h.getRange(fila, 2).setFormula(s[2]).setNumberFormat(s[0] === "inflacion" ? "0.0%" : FORMATO_NUM).setBackground("#f1f3f4");
+    h.getRange(fila, 3).setValue(s[3]).setFontStyle("italic").setFontColor("#5f6368");
+    S[s[0]] = "$B$" + fila;
+    fila++;
+  });
+  var filaFaltan = fila++;
+  fila++;
+
+  // ---- meses
+  var filaMes = fila++, filaN = fila++;
+  h.getRange(filaMes, 1).setValue("Mes").setFontWeight("bold");
+  h.getRange(filaN, 1).setValue("meses desde hoy (para la inflación)").setFontColor("#9aa0a6");
+  for (var j = 0; j < nCols; j++) {
+    h.getRange(filaMes, 2 + j).setFormula("=EDATE(" + S.inicio + "," + j + ")").setNumberFormat("mmm yy").setFontWeight("bold").setHorizontalAlignment("right");
+    h.getRange(filaN, 2 + j).setFormula("=MAX(0,(YEAR(" + L(j) + "$" + filaMes + ")-YEAR(TODAY()))*12+MONTH(" + L(j) + "$" + filaMes + ")-MONTH(TODAY()))").setFontColor("#9aa0a6");
+  }
+  h.getRange(filaMes, 1, 1, ancho).setBorder(false, false, true, false, false, false, "#3c4043", SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+  var rango = function (f) { return "$B$" + f + ":$" + L(nCols - 1) + "$" + f; };
+  var porMes = function (f, formula) { for (var c = 0; c < nCols; c++) h.getRange(f, 2 + c).setFormula(formula(c)); };
+
+  // ---- ventas
+  _seccion_(h, fila++, "Ventas", "#e6f4ea", "#137333", ancho);
+  var fTnV = fila++, fPrecio = fila++, fVentas = fila++;
+  h.getRange(fTnV, 1).setValue("TN vendidas"); h.getRange(fTnV, 2, 1, nCols).setBackground("#fff8e1").setNumberFormat("#,##0");
+  h.getRange(fPrecio, 1).setValue("Precio ($/kg, sin IVA)");
+  porMes(fPrecio, function (c) { return "=" + S.precio + "*(1+" + S.suba + ")^MIN(" + (c + 1) + "," + S.mesesSuba + ")"; });
+  h.getRange(fPrecio, 2, 1, nCols).setNumberFormat("#,##0");
+  h.getRange(fVentas, 1).setValue("Ventas del mes");
+  porMes(fVentas, function (c) { return "=" + L(c) + fTnV + "*1000*" + L(c) + fPrecio; });
+  fila++;
+
+  // ---- 1 · ingresos
+  _seccion_(h, fila++, "1 · Ingresos", "#e6f4ea", "#137333", ancho);
+  var fCobro = fila++;
+  h.getRange(fCobro, 1).setValue("Cobranza de las ventas (según los días de cobro)");
+  var k = "INT(" + S.dias + "/30)", fr = "(" + S.dias + "/30-INT(" + S.dias + "/30))";
+  var ventaAntes = "$B$" + fTnV + "*1000*" + S.precio;           // antes del primer mes: lo mismo, al precio de hoy
+  porMes(fCobro, function (c) {
+    var v = function (corre) {
+      return "IF(" + c + "-" + k + "-" + corre + ">=0,INDEX(" + rango(fVentas) + "," + (c + 1) + "-" + k + "-" + corre + ")," + ventaAntes + ")";
+    };
+    return "=(1-" + fr + ")*" + v(0) + "+" + fr + "*" + v(1);
+  });
+  h.getRange(fCobro, 1, 1, ancho).setFontWeight("bold");
+  fila++;
+
+  // ---- 2 · egresos de la operación
+  _seccion_(h, fila++, "2 · Egresos de la operación", "#fce8e6", "#a50e0e", ancho);
+  var fGastos = fila++, fSecadero = fila++, fCanch = fila++, fFlete = fila++, fTotEgr = fila++;
+  // La fila de TN compradas va abajo, en su bloque, pero la fórmula de canchada la usa acá: se
+  // reserva su lugar (resultado, deuda, saldos y el título del bloque ocupan las 15 filas de abajo).
+  var fTnC = fTotEgr + 16;
+  h.getRange(fGastos, 1).setValue("Gastos de la operación (promedio de los 3 meses cerrados × inflación)");
+  porMes(fGastos, function (c) { return "=" + S.base + "*(1+" + S.inflacion + ")^" + L(c) + "$" + filaN; });
+  h.getRange(fSecadero, 1).setValue("Menos: secadero y hoja verde (no corren)");
+  porMes(fSecadero, function (c) { return "=-" + S.secadero + "*(1+" + S.inflacion + ")^" + L(c) + "$" + filaN; });
+  h.getRange(fCanch, 1).setValue("Compra de canchada (lo que se paga en el mes, según las partes)");
+  porMes(fCanch, function (c) {
+    var desde = "INDEX(" + rango(fTnC) + ",MAX(1," + (c + 2) + "-" + S.partes + "))", hasta = "INDEX(" + rango(fTnC) + "," + (c + 1) + ")";
+    return "=IF(N(" + S.partes + ")<1,0," + S.pCanch + "*1000/" + S.partes + "*SUM(" + desde + ":" + hasta + "))";
+  });
+  h.getRange(fFlete, 1).setValue("Flete de la canchada");
+  porMes(fFlete, function (c) { return "=" + L(c) + fTnC + "*1000*" + S.flete; });
+  h.getRange(fTotEgr, 1).setValue("Total egresos de la operación").setFontWeight("bold");
+  porMes(fTotEgr, function (c) { return "=SUM(" + L(c) + fGastos + ":" + L(c) + fFlete + ")"; });
+  _lineaTotal_(h, fTotEgr, ancho);
+  var fRes = fTotEgr + 1;
+  h.getRange(fRes, 1).setValue("Resultado de la operación (antes de la deuda)").setFontWeight("bold");
+  porMes(fRes, function (c) { return "=" + L(c) + fCobro + "-" + L(c) + fTotEgr; });
+  h.getRange(fRes, 1, 1, ancho).setBackground("#fff8e1");
+  fila = fRes + 2;
+
+  // ---- 3 · deuda (del cronograma, por mes de vencimiento)
+  var entre = function (vto, c) { return vto + ",\">=\"&" + L(c) + "$" + filaMes + "," + vto + ",\"<\"&EDATE(" + L(c) + "$" + filaMes + ",1)"; };
+  _seccion_(h, fila++, "3 · Deuda que vence en el mes (cronograma)", "#fce8e6", "#a50e0e", ancho);
+  var fCuAuto = fila++, fImpAuto = fila++, fCuDec = fila++, fImpDec = fila++, fTotDeuda = fila++;
+  h.getRange(fCuAuto, 1).setValue("Cuotas y tarjetas con débito automático");
+  porMes(fCuAuto, function (c) { return "=SUMIFS(" + R.cuTot + "," + entre(R.cuVto, c) + "," + R.cuEstado + ",\"Pendiente\"," + R.cuAuto + ",\"Si\")"; });
+  h.getRange(fImpAuto, 1).setValue("Planes de ARCA con débito automático");
+  porMes(fImpAuto, function (c) { return "=SUMIFS(" + R.diImp + "," + entre(R.diVto, c) + "," + R.diEstado + ",\"<>Pagado\"," + R.diAuto + ",\"Si\")"; });
+  h.getRange(fCuDec, 1).setValue("Cuotas que se pagan por decisión");
+  porMes(fCuDec, function (c) { return "=SUMIFS(" + R.cuTot + "," + entre(R.cuVto, c) + "," + R.cuEstado + ",\"Pendiente\"," + R.cuAuto + ",\"<>Si\")"; });
+  h.getRange(fImpDec, 1).setValue("Impuestos por VEP y planes nuevos");
+  porMes(fImpDec, function (c) { return "=SUMIFS(" + R.diImp + "," + entre(R.diVto, c) + "," + R.diEstado + ",\"<>Pagado\"," + R.diAuto + ",\"<>Si\")"; });
+  h.getRange(fTotDeuda, 1).setValue("Total deuda del mes").setFontWeight("bold");
+  porMes(fTotDeuda, function (c) { return "=SUM(" + L(c) + fCuAuto + ":" + L(c) + fImpDec + ")"; });
+  _lineaTotal_(h, fTotDeuda, ancho);
+  fila++;
+
+  // ---- saldos
+  var fMes = fila++, fAcum = fila++, fDesc = fila++, fDisp = fila++;
+  h.getRange(fMes, 1).setValue("Saldo del mes pagando la deuda que vence").setFontWeight("bold");
+  porMes(fMes, function (c) { return "=" + L(c) + fRes + "-" + L(c) + fTotDeuda; });
+  h.getRange(fAcum, 1).setValue("Saldo acumulado").setFontWeight("bold");
+  porMes(fAcum, function (c) { return "=" + (c === 0 ? S.saldo0 : L(c - 1) + fAcum) + "+" + L(c) + fMes; });
+  h.getRange(fAcum, 1, 1, ancho).setBackground("#fff8e1");
+  h.getRange(fDesc, 1).setValue("Descubierto acordado con los bancos");
+  porMes(fDesc, function () { return "=" + S.desc; });
+  h.getRange(fDisp, 1).setValue("Saldo disponible (acumulado + descubierto): si da negativo, eso es lo que falta financiar").setFontWeight("bold");
+  porMes(fDisp, function (c) { return "=" + L(c) + fAcum + "+" + L(c) + fDesc; });
+  h.getRange(fDisp, 1, 1, ancho).setBackground("#fce8e6");
+  if (fila > fTnC - 1) throw new Error("armarCompraCanchada: las filas se pisan, revisar el diseño");
+  fila = fTnC - 1;
+
+  // ---- canchada: compra y stock
+  _seccion_(h, fila, "Canchada (toneladas)", "#e8f0fe", "#174ea6", ancho);
+  var fStock = fTnC + 1;
+  h.getRange(fTnC, 1).setValue("TN compradas"); h.getRange(fTnC, 2, 1, nCols).setBackground("#fff8e1").setNumberFormat("#,##0");
+  h.getRange(fStock, 1).setValue("Stock de canchada a fin de mes (TN): propia + comprada − vendida");
+  porMes(fStock, function (c) { return "=" + (c === 0 ? S.stock : L(c - 1) + fStock) + "+" + L(c) + fTnC + "-" + L(c) + fTnV; });
+  h.getRange(fStock, 2, 1, nCols).setNumberFormat("#,##0");
+  fila = fStock + 2;
+  h.getRange(fila, 1, 4, 1).setValues([
+    ["Qué no está: el IVA (todo va sin IVA, como el esquema de compra), el atrasado (se decide en Plan) y la merma de molienda (las TN compradas y vendidas se cargan tal cual)."],
+    ["La base de gastos es la plata que salió en los 3 meses cerrados: si en esos meses se dejó de pagar algo (por ejemplo envases), tampoco está acá."],
+    ["Las cuotas salen del cronograma tal cual (no de lo decidido en Plan)."],
+    ["Se rearma desde finauto → Armar solapa Cash compra canchada: conserva lo amarillo."],
+  ]).setFontStyle("italic").setFontColor("#5f6368");
+
+  // ---- qué falta cargar (los supuestos vacíos dan cero y eso no se tiene que leer como dato)
+  var faltan = CC_SUPUESTOS.map(function (s, i) {
+    return "IF(ISBLANK($B$" + (4 + i) + "),\"" + s[1].replace(/"/g, "") + "\",\"\")";
+  }).concat(["IF(COUNT(" + rango(fTnV) + ")=0,\"TN vendidas\",\"\")", "IF(COUNT(" + rango(fTnC) + ")=0,\"TN compradas\",\"\")"]);
+  h.getRange(filaFaltan, 1).setValue("Faltan cargar").setFontWeight("bold").setFontColor("#a50e0e");
+  h.getRange(filaFaltan, 2).setFormula("=IF(TEXTJOIN(\" · \",TRUE," + faltan.join(",") + ")=\"\",\"nada: el escenario está completo\",TEXTJOIN(\" · \",TRUE," + faltan.join(",") + "))").setFontColor("#a50e0e");
+
+  // ---- formato
+  h.getRange(filaMes + 2, 2, fStock - filaMes - 1, nCols).setNumberFormat(FORMATO_NUM);
+  h.getRange(fTnV, 2, 1, nCols).setNumberFormat("#,##0");
+  h.getRange(fPrecio, 2, 1, nCols).setNumberFormat("#,##0");
+  h.getRange(fTnC, 2, 2, nCols).setNumberFormat("#,##0");
+  h.setColumnWidth(1, 430);
+  for (var w = 0; w < nCols; w++) h.setColumnWidth(2 + w, 100);
+  h.hideRows(filaN);
+  h.setFrozenRows(filaMes);
+  h.setFrozenColumns(1);
+
+  _ccReponerEditable_(h, guardado, { tnVendidas: fTnV, tnCompradas: fTnC });
+  _separadorLocal_(ss, h);
+  try { ss.toast("Solapa " + CC_HOJA + " armada", "finauto", 8); } catch (e) {}
+}
+
+// Antes de rearmar, se guardan los valores amarillos por su texto (no por la posición), así un
+// cambio de diseño no los mezcla.
+function _ccLeerEditable_(h) {
+  var out = { sup: {}, filas: {} };
+  if (!h) return out;
+  var datos = h.getDataRange().getValues();
+  datos.forEach(function (r) {
+    var texto = String(r[0] || "");
+    CC_SUPUESTOS.forEach(function (s) { if (texto === s[1] && r[1] !== "") out.sup[s[0]] = r[1]; });
+    if (texto === "TN vendidas") out.filas.tnVendidas = r.slice(1, 1 + CC_MESES);
+    if (texto === "TN compradas") out.filas.tnCompradas = r.slice(1, 1 + CC_MESES);
+  });
+  return out;
+}
+
+function _ccReponerEditable_(h, guardado, filas) {
+  CC_SUPUESTOS.forEach(function (s, i) {
+    if (Object.prototype.hasOwnProperty.call(guardado.sup, s[0])) h.getRange(4 + i, 2).setValue(guardado.sup[s[0]]);
+  });
+  Object.keys(filas).forEach(function (clave) {
+    var valores = guardado.filas[clave];
+    if (valores && valores.length === CC_MESES) h.getRange(filas[clave], 2, 1, CC_MESES).setValues([valores]);
+  });
+}
+
+
 // ================================================================== Modelo Nuevo
 // Se corre aparte: no rearma el cash actual, no cambia Plan ni la inflación ya cargada.
 // Los números de este bloque son plazos del calendario, filas y reglas de cálculo;
