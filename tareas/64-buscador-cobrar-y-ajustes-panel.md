@@ -1,5 +1,5 @@
 # Tarea 64 — Buscador en "A cobrar" y tres ajustes del panel "Compra de canchada"
-Estado: pendiente
+Estado: lista para revisión
 Rama: tarea/64-buscador-y-panel
 
 ## Objetivo
@@ -83,7 +83,31 @@ Cuatro cambios chicos del tablero, pedidos por la administración del cliente:
 3. Todas las pruebas que ya existen siguen pasando.
 
 ## Qué hice
-(lo completa Codex)
+- Cambié solamente `dashboard/app.py`, `lector/pruebas/test_panel_canchada.py`,
+  el test nuevo `lector/pruebas/test_buscador_cobrar.py` y esta consigna.
+- En A cobrar agregué el buscador por nombre, sin distinguir acentos ni mayúsculas.
+  Usa GRUPO cuando viene en el paquete; si no, reúne las listas e identifica la empresa.
+  Ordena por total: muestra diez, permite ver todos/ver menos y muestra todas las coincidencias
+  al buscar. Los indicadores y los cheques siguen usando la empresa elegida arriba.
+- Elegí un casillero chico debajo del valor grande de cada control. Enter o salir del casillero
+  valida los límites del servidor, incluyendo enteros para partes y meses. Los errores quedan
+  en rojo y no se mandan. Porcentajes y millones se convierten antes de entrar en `ccCambio`.
+  Los valores válidos fuera de la escala conservan su número y dejan la barra en el tope con aviso.
+  No cambié el agrupado de cambios, la espera de 0,8 segundos ni la recuperación ante errores.
+- Agregué la leyenda arriba del gráfico con muestras de los mismos colores y oculté la banda
+  cuando el texto está vacío o empieza con «nada», ignorando espacios y mayúsculas.
+- Comprobaciones: **299 pruebas de Python y 52 subpruebas pasaron**; también los **12 archivos
+  `.cjs`** existentes. `git diff --check` sin errores. Sin dependencias nuevas: utilicé los
+  entornos ya disponibles. Las pruebas que abren Chromium requirieron ejecución fuera del sandbox.
+- En Chromium, con `google.script.run` simulado y datos inventados, comprobé: valor válido guarda
+  y mueve la barra; negativo inválido queda marcado sin enviar; precio fuera de escala guarda;
+  leyenda visible; banda oculta con «nada: …». El buscador mostró diez de doce filas, desplegó
+  las doce, encontró «García Inventado» buscando «GARCIA» y mostró el mensaje sin coincidencias.
+  Revisé capturas de escritorio y celular: una columna de controles en celular y tabla desplazable.
+  Capturas locales: `/private/tmp/64-panel-desktop.png` y `/private/tmp/64-panel-mobile.png`.
+- Worktree: `/private/tmp/finnauto-64`, rama `tarea/64-buscador-y-panel`. Sin datos reales,
+  sin acceder a archivos privados, sin tocar main ni publicar. La validación contra la aplicación
+  real queda para la revisión en vivo, como en la tarea 63. No quedaron dudas de alcance.
 
 ## Revisión
 (lo completa Claude)

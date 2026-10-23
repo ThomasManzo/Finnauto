@@ -210,7 +210,7 @@ CSS += r"""
 .cc-control{min-width:0;padding:14px 16px 16px 0;border-top:1px solid var(--linea)}
 .cc-control label{font-size:12.5px;color:var(--suave);display:block;min-height:34px}.cc-grande{font:600 25px/1 var(--serif);margin:6px 0 10px;font-variant-numeric:tabular-nums}
 .cc-control input[type=range]{width:100%;accent-color:var(--tinta)}.cc-limites{font:400 10.5px var(--mono);color:var(--tenue)}
-.cc-cab{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.cc-cab h2{margin-right:auto}
+.cc-numero{width:100%;box-sizing:border-box;font:600 25px var(--serif)}.cc-numero[aria-invalid=true]{border:1px solid var(--rojo);color:var(--rojo)}.cc-error{color:var(--rojo);font-size:12px}.cc-leyenda{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;margin-bottom:16px}.cc-muestra{display:inline-block;width:28px;margin-right:6px}.cc-cab{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.cc-cab h2{margin-right:auto}
 .cc-estado{font-size:12px}.cc-aviso{background:var(--ambar-piso);color:var(--amarillo);padding:12px 14px}
 .cc-meses{max-height:240px;overflow:auto}.cc-meses input{width:100%;box-sizing:border-box}
 .cc-meses[hidden]{display:none}.cc-total{font-weight:bold}.cc-panel .malo .n{color:var(--rojo)}
@@ -288,7 +288,25 @@ function ccControles(){
    ccCambio(k,tn?Array(14).fill(n):n);
    if(tn)caja.querySelectorAll('input[type=number]').forEach(function(x){x.value=n;});
   };
-  caja.append(label,grande,barra,ccTexto('div','cc-limites',c[2].toLocaleString('es-AR')+' — '+c[3].toLocaleString('es-AR')+' '+c[5]));
+  // El casillero admite el rango del servidor, aunque exceda la escala habitual de la barra.
+  var numero=el('input','cc-numero'),aviso=ccTexto('div','cc-error','');numero.type='number';numero.step='any';numero.value=v==null?'':v;
+  numero.setAttribute('aria-label',c[1]+' · escribir número');
+  var limites={pCanch:[0,100000],flete:[0,10000],tnCompradas:[0,5000],tnVendidas:[0,5000],precio:[0,100000],suba:[0,50],mesesSuba:[0,14],dias:[0,365],partes:[1,6],secadero:[0,100000]};
+  numero.min=limites[k][0];numero.max=limites[k][1];
+  function escala(n){aviso.textContent=n<c[2]||n>c[3]?'fuera de la escala':'';}
+  escala(Number(v));
+  function confirmar(){
+   var n=numero.value===''?NaN:Number(numero.value),lim=limites[k],entero=k==='partes'||k==='mesesSuba';
+   if(!Number.isFinite(n)||n<lim[0]||n>lim[1]||(entero&&!Number.isInteger(n))){numero.setAttribute('aria-invalid','true');aviso.textContent='Usá '+(entero?'un entero':'un número')+' entre '+lim[0]+' y '+lim[1]+' '+c[5];return;}
+   numero.removeAttribute('aria-invalid');barra.value=n;grande.textContent=ccValor(c,n);escala(n);
+   if(k==='suba')n/=100;if(k==='secadero')n*=1e6;ccCambio(k,tn?Array(14).fill(n):n);
+   if(tn)caja.querySelectorAll('.cc-meses input').forEach(function(x){x.value=n;});
+  }
+  numero.onblur=confirmar;numero.onkeydown=function(e){if(e.key==='Enter'){e.preventDefault();numero.blur();}};
+  var mover=barra.oninput,guardar=barra.onchange;
+  barra.oninput=function(){mover();numero.value=barra.value;numero.removeAttribute('aria-invalid');escala(Number(barra.value));};
+  barra.onchange=function(){guardar();numero.value=barra.value;escala(Number(barra.value));};
+  caja.append(label,grande,numero,aviso,barra,ccTexto('div','cc-limites',c[2].toLocaleString('es-AR')+' — '+c[3].toLocaleString('es-AR')+' '+c[5]));
   if(tn){
    var boton=ccTexto('button','mini','cambiar mes por mes'), meses=el('div','cc-meses');meses.hidden=true;
    boton.onclick=function(){meses.hidden=!meses.hidden;boton.setAttribute('aria-expanded',!meses.hidden);};
@@ -307,7 +325,7 @@ function ccMes(iso){if(!iso)return 'sin mes';return new Date(iso+'T12:00:00').to
 function ccResultados(){
  if(!CC.bueno||!CC.raiz)return;
  var d=CC.bueno,f=d.filas,area=CC.raiz.querySelector('.cc-resultados');area.replaceChildren();
- if(d.falta)area.append(ccTexto('p','cc-aviso',d.falta));
+ if(String(d.falta||'').trim()&&!/^nada/i.test(String(d.falta).trim()))area.append(ccTexto('p','cc-aviso',d.falta));
  var nombres={acum:'Saldo acumulado',mes:'Saldo del mes pagando la deuda que vence',disp:'Saldo disponible (acumulado + descubierto): si da negativo, eso es lo que falta financiar',desc:'Descubierto acordado con los bancos'};
  function fila(txt){var a=f[txt];if(!a||a.length!==14||a.some(function(v){return typeof v!=='number'||!Number.isFinite(v);}))throw new Error('La planilla todavía no devuelve números en: '+txt);return a;}
  try {
@@ -318,6 +336,8 @@ function ccResultados(){
  ['Se pasa del descubierto en',primero<0?'no se pasa':ccMes(d.meses[primero]),primero>=0],
  ['Plata que hay que conseguir',pesos(falta,true),falta>0],['Resultado de un mes típico',pesos(prom,true),prom<0]].forEach(function(x){var k=el('div','kpi'+(x[2]?' malo':''));k.append(ccTexto('div','et',x[0]),ccTexto('div','n',x[1]));tarjetas.append(k);});area.append(tarjetas);
  var graf=el('section','card');graf.append(ccTexto('h2','','Caja mes a mes'));
+ var leyenda=el('div','cc-leyenda');
+ [['#1B1A17','━●','Saldo acumulado a fin de cada mes (lo que queda después de todo)'],['#B4321F','●','Meses en que ni usando el descubierto alcanza'],['#2F6B45','▥','Barras verdes / rojas: lo que gana o pierde la caja en cada mes'],['#B97A2A','┄┄','Límite del descubierto acordado con los bancos: por debajo falta plata']].forEach(function(x){var item=el('span'),muestra=ccTexto('span','cc-muestra',x[1]);muestra.style.color=x[0];item.append(muestra,document.createTextNode(x[2]));if(x[1]==='▥'){var roja=ccTexto('span','cc-muestra','▥');roja.style.color='#B4321F';item.prepend(roja);}leyenda.append(item);});graf.append(leyenda);
  var ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');svg.setAttribute('viewBox','0 0 960 330');svg.setAttribute('role','img');svg.setAttribute('aria-label','Saldo acumulado, saldo del mes y límite del descubierto');
  var todos=a.concat(m,desc.map(function(v){return -v;}),[0]),lo=Math.min.apply(null,todos),hi=Math.max.apply(null,todos);if(hi===lo)hi=lo+1;
  function X(i){return 65+i*65;}function Y(v){return 270-(v-lo)/(hi-lo)*235;}
@@ -1038,6 +1058,7 @@ function verRetiro(){
 }
 
 
+function normalizarCliente(texto){return String(texto||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();}
 function verCobrar(){
   var d = actual(), c = d.a_cobrar, out = [];
   var k = el('div', 'kpis');
@@ -1055,23 +1076,26 @@ function verCobrar(){
   });
   out.push(k);
 
-  if (c.filas.length){
-    out.push(el('h2', null, 'Quien nos debe'));
-    var cc = el('div', 'card'), t = el('table');
-    t.innerHTML = '<tr><th>Contraparte</th><th>Vencido</th><th>Por vencer</th><th>Total</th></tr>';
-    c.filas.forEach(function(f){
-      var tr = el('tr');
-      tr.appendChild(el('td', null, '<b>' + f.nombre + '</b>' +
-        '<div class="resumen">' + (f.que_es === 'drogueria' ? V.proveedor : f.que_es) + '</div>'));
-      tr.appendChild(el('td', f.vencido ? 'neg' : '', pesos(f.vencido)));
-      tr.appendChild(el('td', null, pesos(f.por_vencer)));
-      tr.appendChild(el('td', null, '<b>' + pesos(f.total) + '</b>'));
-      t.appendChild(tr);
+  // GRUPO ya reúne a las empresas; si no viene, juntamos las listas identificando su origen.
+  var grupo=D.datos.GRUPO, separadas=!(grupo&&grupo.a_cobrar);
+  var filas=separadas?Object.keys(D.datos).reduce(function(a,u){return a.concat(((D.datos[u].a_cobrar||{}).filas||[]).map(function(f){return Object.assign({},f,{empresa:u});}));},[]):grupo.a_cobrar.filas.slice();
+  filas.sort(function(a,b){return b.total-a.total;});
+  out.push(el('h2', null, 'Quién nos debe'));
+  var cc=el('div','card'),buscar=el('input'),w=el('div','envuelve'),boton=el('button','mini'),todos=false;
+  buscar.placeholder='Buscar cliente…';buscar.setAttribute('aria-label','Buscar cliente');
+  function pintarClientes(){
+    var texto=normalizarCliente(buscar.value),coinciden=filas.filter(function(f){return normalizarCliente(f.nombre).includes(texto);});
+    w.replaceChildren();var t=el('table');
+    t.innerHTML='<tr><th>Contraparte</th>'+(separadas?'<th>Empresa</th>':'')+'<th>Vencido</th><th>Por vencer</th><th>Total</th></tr>';
+    (texto||todos?coinciden:coinciden.slice(0,10)).forEach(function(f){var tr=el('tr'),nombre=el('td');nombre.textContent=f.nombre;tr.append(nombre);
+      if(separadas){var empresa=el('td');empresa.textContent=f.empresa;tr.append(empresa);}
+      tr.append(el('td',f.vencido?'neg':'',pesos(f.vencido)),el('td',null,pesos(f.por_vencer)),el('td',null,pesos(f.total)));t.append(tr);
     });
-    var w = el('div', 'envuelve'); w.appendChild(t); cc.appendChild(w);
-    cc.appendChild(el('p', 'nota', V.nota_a_cobrar));
-    out.push(cc);
+    if(!coinciden.length)w.append(el('p',null,'No hay clientes con ese nombre'));else w.append(t);
+    boton.hidden=!!texto||filas.length<=10;boton.textContent=todos?'ver menos':'ver todos ('+filas.length+')';
   }
+  buscar.oninput=function(){todos=false;pintarClientes();};boton.onclick=function(){todos=!todos;pintarClientes();};
+  cc.append(buscar,w,boton,el('p','nota',V.nota_a_cobrar));out.push(cc);pintarClientes();
 
   // CADA CHEQUE, CON SUS DOS DECISIONES SEPARADAS.
   //

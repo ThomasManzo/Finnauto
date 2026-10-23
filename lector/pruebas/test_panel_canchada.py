@@ -31,3 +31,14 @@ def test_la_marca_se_lee_del_perfil(monkeypatch):
     assert opciones_tablero("ejemplo")["escenario_canchada"] is True
     monkeypatch.setattr(config, "cargar_perfil", lambda *args: {})
     assert opciones_tablero("otro") == {}
+
+
+def test_entrada_numerica_y_leyenda():
+    html = render(paquete(True))
+    assert "numero.onblur=confirmar" in html
+    assert "ccCambio(k,tn?Array(14).fill(n):n)" in html
+    assert "fuera de la escala" in html
+    assert "Number.isInteger(n)" in html
+    assert "!/^nada/i.test" in html
+    assert "cc-leyenda" in html
+    assert "por debajo falta plata" in html
