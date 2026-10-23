@@ -157,6 +157,7 @@ function onOpen() {
     .addSeparator()
     .addItem("Armar solapa Cash (Cash, Semanal, Mensual)", "armarCash")
     .addItem("Armar solapa Plan (pisa las decisiones cargadas)", "armarPlan")
+    .addItem("Armar solapa Cash compra canchada (escenario)", "armarCompraCanchada")   // crear_cash.gs (tarea 62)
     .addItem("Arreglar los desplegables (Origen, Banco, Categoria)", "arreglarValidaciones")   // crear_cash.gs
     .addToUi();
 }
