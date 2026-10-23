@@ -1,5 +1,5 @@
 # Tarea 62 — Escenario "Cash compra canchada": la compra de canchada mes a mes, sin secadero
-Estado: aprobada (falta pegarla en Apps Script y cargar los supuestos)
+Estado: aprobada e instalada (23/10/2026)
 Rama: tarea/62-cash-compra-canchada
 
 ## Objetivo
@@ -56,9 +56,21 @@ canchada cuando el secadero deja de andar:
   números son fórmulas de la planilla. Se verifica en la planilla contra una cuenta hecha aparte.
 
 ## Revisión
-- Pendiente:
-  - pegar en Apps Script. En crear_cash, **solo el bloque nuevo** sobre lo instalado: lo instalado
-    tiene textos del Plan que en el repo están tapados;
-  - correr `armarCompraCanchada`;
-  - cargar los supuestos;
-  - comparar los números contra la cuenta aparte.
+- **Instalada el 23/10/2026.**
+  - En crear_cash se insertó solo el bloque nuevo sobre lo instalado; fuera del bloque, lo instalado
+    no cambió.
+  - Las huellas coinciden después de recargar.
+  - La solapa está armada y los supuestos cargados (los valores, solo en la planilla).
+- **Verificación contra una cuenta aparte, con los mismos datos de la planilla:**
+  - la base de gastos es el promedio de los 3 meses cerrados;
+  - la inflación del primer mes;
+  - la cobranza del primer mes (fracción de días);
+  - la canchada en 4 partes (rampa 1/4, 2/4, 3/4, 4/4);
+  - la deuda igual al Cash Mensual de noviembre a abril;
+  - el saldo del mes y el acumulado.
+  Todo da igual.
+- **Primer armado con dos errores, corregidos en el segundo commit:**
+  - la base daba vacía, porque el total de egresos no tiene "Prom. base";
+  - la deuda salía del cronograma tal cual y no coincidía con el Cash Mensual.
+- En el editor, un clic de más corrió `armarCash` en modo depuración. Es seguro: rearma desde las
+  listas y no toca el Plan. Se dejó terminar.
