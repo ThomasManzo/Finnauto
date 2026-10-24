@@ -1103,8 +1103,14 @@ function armarCompraCanchada() {
   if (!ss.getSheetByName("Cash Mensual")) throw new Error("Primero armar el Cash (finauto → Armar solapa Cash)");
   R = _rangos_(ss);
   var guardado = _ccLeerEditable_(ss.getSheetByName(CC_HOJA));
+  // 24/10: un armado que falló a la mitad dejó la solapa vacía y el siguiente ya no encontró nada
+  // para conservar. Ahora se guarda una copia ANTES de borrar, y si la solapa vino vacía (porque el
+  // armado anterior se cortó) se usa esa copia.
+  guardado = _ccRespaldo_(guardado);
   var nCols = CC_MESES, ancho = 2 + nCols;
   var h = _hojaLimpia_(ss, CC_HOJA, ancho + 1);
+  // clear() no borra las reglas de validación: si quedaban de un diseño anterior, caían en otra fila.
+  h.getRange(1, 1, h.getMaxRows(), h.getMaxColumns()).clearDataValidations();
   // Se quita el grupo anterior antes de rearmar, para no acumular niveles.
   h.getRange(2, 1, h.getMaxRows() - 1, 1).shiftRowGroupDepth(-8);
   h.showRows(1, h.getMaxRows());
@@ -1359,6 +1365,20 @@ function _ccLeerEditable_(h) {
     if (texto === "TN vendidas") out.filas.tnVendidas = r.slice(1, 1 + CC_MESES);
     if (texto === "TN compradas (a mano)" || (texto === "TN compradas" && !out.filas.tnCompradas)) out.filas.tnCompradas = r.slice(1, 1 + CC_MESES);
   });
+  return out;
+}
+
+// Copia de lo cargado a mano, en las propiedades de la planilla. Si lo leído trae algo, se guarda;
+// si vino vacío, se devuelve la última copia (las fechas vuelven como fecha, no como texto).
+function _ccRespaldo_(guardado) {
+  if (typeof PropertiesService === "undefined") return guardado;
+  var props = PropertiesService.getDocumentProperties(), clave = "cc_editable_respaldo";
+  var hayAlgo = Object.keys(guardado.sup).length > 0 || Object.keys(guardado.filas).length > 0;
+  if (hayAlgo) { props.setProperty(clave, JSON.stringify(guardado)); return guardado; }
+  var copia = props.getProperty(clave);
+  if (!copia) return guardado;
+  var out = JSON.parse(copia);
+  if (out.sup && typeof out.sup.inicio === "string") out.sup.inicio = new Date(out.sup.inicio);
   return out;
 }
 

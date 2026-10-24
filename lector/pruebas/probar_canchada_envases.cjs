@@ -9,7 +9,7 @@ function range(r,c,n=1,w=1){let proxy;const obj={
  setDataValidation(v){validaciones.push([r,c,v]);return proxy;},
  shiftRowGroupDepth(v){grupos.push([r,n,v]);return proxy;}
 };proxy=new Proxy(obj,{get:(o,k)=>k in o?o[k]:()=>proxy});return proxy;}
-const h={setConditionalFormatRules(v){reglas=v;},getRange:range,getMaxRows:()=>1000,showRows(){},getDataRange:()=>({getValues:()=>Array.from({length:180},(_,i)=>Array.from({length:15},(_,j)=>cells.get(at(i+1,j+1))??''))}),setColumnWidth(){},hideRows(){},setFrozenRows(){},setFrozenColumns(){}};
+const h={setConditionalFormatRules(v){reglas=v;},getRange:range,getMaxRows:()=>1000,getMaxColumns:()=>40,showRows(){},getDataRange:()=>({getValues:()=>Array.from({length:180},(_,i)=>Array.from({length:15},(_,j)=>cells.get(at(i+1,j+1))??''))}),setColumnWidth(){},hideRows(){},setFrozenRows(){},setFrozenColumns(){}};
 let existente=false;
 const ss={getSheetByName:n=>n==='Cash Mensual'?{}:existente?h:null,toast(){}};
 const ctx=vm.createContext({SpreadsheetApp:{getActiveSpreadsheet:()=>ss,BorderStyle:{SOLID_MEDIUM:'medio'},newConditionalFormatRule:()=>{let valores={},p; p=new Proxy(valores,{get:(o,k)=>k==='build'?()=>valores:v=>{o[k]=v;return p;}});return p;},newDataValidation:()=>{let opciones;return {requireValueInList(v){opciones=v;return this;},requireFormulaSatisfied(v){opciones=v;return this;},setAllowInvalid(v){assert.equal(v,false);return this;},build(){return opciones;}};}}});
