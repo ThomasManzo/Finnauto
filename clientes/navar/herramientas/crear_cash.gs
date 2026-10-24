@@ -1199,8 +1199,9 @@ function armarCompraCanchada() {
   porMes(fRestaEstampillas, function(c) { return "=-" + S.estampillasBase + "*" + inflar(c); });
   h.getRange(fRestaComision, 1).setValue("Menos: comisiones de la base × inflación");
   porMes(fRestaComision, function(c) { return "=-" + S.comision + "*" + S.kilosBase + "*" + inflar(c); });
+  // El secadero está en pesos de los meses base, igual que la base: se actualiza con la misma inflación.
   h.getRange(fSecadero, 1).setValue("Menos: secadero y hoja verde (no corren)");
-  porMes(fSecadero, function(c) { return "=-" + S.secadero; });
+  porMes(fSecadero, function(c) { return "=-" + S.secadero + "*" + inflar(c); });
   h.getRange(fBase, 1, fSecadero-fBase+1, ancho).shiftRowGroupDepth(1);
   h.getRange(fEnvases, 1).setValue("Gastos de envase");
   porMes(fEnvases, function(c) { return '=IF(' + S.pagoEnvases + '="30 días",' + L(Math.max(0,c-1)) + fTnV + ',' + L(c) + fTnV + ')*1000*' + S.costoEnvase; });

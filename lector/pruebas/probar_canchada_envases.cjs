@@ -36,7 +36,7 @@ assert.equal(formula('Gastos operativos sin secadero'),'=SUM(B'+row('Base de gas
 assert(formula('Menos: comisiones de la base × inflación').startsWith('=-'+sup('comision')+'*'+sup('kilosBase')+'*'));
 assert(formula('Menos: estampillas de la base × inflación').startsWith('=-'+sup('estampillasBase')+'*'));
 assert(formula('Menos: intereses y gastos bancarios de la base × inflación').startsWith('=-$B$'+row('Intereses y gastos bancarios de la base')+'*'));
-assert.equal(formula('Menos: secadero y hoja verde (no corren)'),'=-'+sup('secadero'));
+assert(formula('Menos: secadero y hoja verde (no corren)').startsWith('=-'+sup('secadero')+'*(1+'), 'el secadero se actualiza por inflación, igual que la base');
 assert.equal(formula('Total bancos y deuda'),'='+['Intereses y gastos bancarios','Deuda que sale sí o sí (débito automático)','Deuda que se paga por decisión'].map(t=>'B'+row(t)).join('+'));
 assert.equal(formula('Saldo del mes pagando la deuda que vence'),'=B'+row('Resultado de la operación (antes de la deuda)')+'-B'+row('Total bancos y deuda'));
 assert(formula('Compra de canchada (lo que se paga en el mes, según las partes)').includes('$B$'+row('TN compradas')+':$O$'+row('TN compradas')));
