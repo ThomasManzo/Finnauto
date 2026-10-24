@@ -405,6 +405,8 @@ def leer(archivo, cliente, hoy=None):
 
     # ---- Cartera de Cheques
     cartera = []
+    # Solo para avisar que Tango todavía tiene cheques viejos sin actualizar.
+    calendario_cheques_pasados = []
     for d in _tabla(hojas["cheques"]) if "cheques" in hojas else []:
         fecha = _iso(_col(d, "fecha pago", "fecha cobro", "pago / cobro"))
         importe = _num(_col(d, "importe"))
@@ -420,6 +422,10 @@ def leer(archivo, cliente, hoy=None):
         # Un cheque PROPIO con fecha pasada y sin debitar es plata que se debe hoy: va al vencido
         # (igual que en el Cash: "Cheques propios vencidos sin debitar"). Tarea 54, Thomas 07/10/2026.
         # Los de terceros con fecha pasada siguen en Hallazgos: no son deuda, son cobros dudosos.
+        if (motivo and not _norm(tipo).startswith("propio") and fecha < hoy
+                and _norm(est) == "en cartera"):
+            calendario_cheques_pasados.append({"fecha": fecha, "importe": abs(importe),
+                "unidad": _u(_col(d, "empresa")), "estado": "EN CARTERA"})
         if motivo and not _norm(tipo).startswith("propio"):
             revisar[("Cheques de terceros", motivo)][0] += 1
             revisar[("Cheques de terceros", motivo)][1] += abs(importe)
@@ -436,6 +442,7 @@ def leer(archivo, cliente, hoy=None):
                 egresos_cf.append({"fecha": fecha, "unidad": item["unidad"], "tipo": "CHEQUE",
                                    "contraparte": "Cheque propio %s a %s" % (item["numero"], item["librador"]),
                                    "importe": item["importe"], "intercompany": False,
+                                   "calendario_revisar": bool(motivo) and fecha >= hoy,
                                    "vencido_pendiente": fecha < hoy,
                                    "origen": "Cartera de Cheques (propios)"})
         else:
@@ -460,6 +467,7 @@ def leer(archivo, cliente, hoy=None):
              "vencido_pendiente": venc < hoy,
              # "Si" = lo debita solo ARCA (plan con CBU) · "No" = VEP por decisión (tarea 53)
              "debito_automatico": _txt(_col(d, "debito")),
+             "calendario_revisar": bool(_revisar(d)),
              "agregado": MARCA_AGREGADO in _txt(_col(d, "observ")).upper(),
              "origen": "Deuda Impositiva"}
         impositiva.append(x)
@@ -498,6 +506,7 @@ def leer(archivo, cliente, hoy=None):
                          "importe": abs(tot), "intercompany": False,
                          "vencido_pendiente": venc < hoy,
                          "debito_automatico": _txt(_col(d, "debito")),
+                         "calendario_revisar": bool(_revisar(d)),
                          "agregado": MARCA_AGREGADO in _txt(_col(d, "observ")).upper(),
                          "origen": "Deuda Bancaria (cronograma)"}
                     cuotas.append(x)
@@ -604,6 +613,7 @@ def leer(archivo, cliente, hoy=None):
         ("cuentas_a_cobrar_droguerias", cobrar),
         ("deuda_droguerias", deuda),
         ("cartera_cheques", cartera),
+        ("calendario_cheques_pasados", calendario_cheques_pasados),
         ("deuda_impositiva", impositiva),
         ("deuda_bancaria", {"lineas": lineas, "cuotas": cuotas}),
         ("referencias_del_cliente", {}),

@@ -1,5 +1,5 @@
 # Tarea 67 — Apartado "Calendario" en el tablero: vencimientos día por día, egresos e ingresos
-Estado: pendiente
+Estado: lista para revisión
 Rama: tarea/67-calendario
 
 ## Objetivo
@@ -101,7 +101,42 @@ el detalle. La dirección aprobó una maqueta: abajo, la descripción.
 4. Todas las pruebas que ya existen siguen pasando.
 
 ## Qué hice
-(lo completa Codex)
+- Agregué Calendario debajo de A cobrar, con selector de egresos/ingresos, cuatro tarjetas,
+  grilla de lunes a domingo, navegación desde el mes de la foto hasta tres meses adelante y
+  detalle al tocar un día. Abre el día de mayor importe, respeta GRUPO / A / AA y en celular
+  conserva las siete columnas con el detalle debajo. Sin saldo proyectado ni librerías nuevas.
+- En `dashboard/datos.py` precalculé los meses, totales, firme/por decisión, día más pesado,
+  barras y atraso ponderado. La pantalla solo selecciona y muestra esos datos. Cada lista se
+  lee una vez: las cuotas y los impuestos no vuelven a sumarse desde su copia en egresos_cashflow.
+  No se juntan documentos distintos por tener el mismo importe. Solo la marca afirmativa de
+  débito automático clasifica cuotas e impuestos como «sale sí o sí».
+- Separé las deudas vencidas de la grilla. Los cheques pasados, propios y de terceros, quedan
+  únicamente en el aviso de cantidad e importe. La nota de ingresos muestra los días reales de
+  atraso de las facturas pendientes vencidas, ponderados por importe; si no hay, lo informa.
+- Toqué `lector/cash_limpio.py` porque faltaban datos para esas reglas: los cheques de terceros
+  viejos marcados REVISAR se descartaban antes de llegar al contrato. Ahora se conservan en
+  `calendario_cheques_pasados`, solo para contarlos, sin volverlos a la cartera ni al cash.
+  También agregué `calendario_revisar` a cuotas, impuestos y cheques propios futuros para excluir
+  esas marcas del calendario sin cambiar los cálculos existentes. No hizo falta otro archivo.
+- Archivos tocados: `dashboard/app.py`, `dashboard/datos.py`, `lector/cash_limpio.py`,
+  la prueba nueva `lector/pruebas/test_calendario.py` y esta consigna.
+- Comprobaciones: **305 pruebas de Python y 52 subpruebas pasaron**, incluidos los recorridos
+  del banco ficticio; también pasaron los **13 archivos .cjs** de lector/pruebas.
+  Las cinco pruebas nuevas cubren grupos, vencidos, cheques viejos, promedio ponderado calculado
+  a mano, copias del cash, separación por empresa, documentos distintos con igual monto,
+  cambio de año, febrero bisiesto, render y lectura de las marcas desde una planilla inventada.
+- Probé Chromium con un paquete inventado: las dos vistas, cuatro meses y límites de navegación,
+  días vacíos y con detalle, selección inicial del máximo, empresas GRUPO/A/AA, escritorio y
+  celular sin desborde horizontal. Sin errores de JavaScript; sin `<script src=`.
+  Revisé las capturas locales: `/private/tmp/67-calendario-desktop.png`,
+  `/private/tmp/67-calendario-ingresos-desktop.png` y `/private/tmp/67-calendario-mobile.png`.
+  El paquete de prueba quedó en `/private/tmp/67-calendario.html`.
+- No instalé dependencias: usé el entorno del repo, pytest ya disponible en una carpeta temporal
+  y Node/Playwright del entorno de la aplicación. Chromium necesitó ejecución fuera del sandbox.
+  `git diff --check` sin errores. Solo datos inventados, sin acceder a privados ni a la planilla.
+- Worktree: `/private/tmp/finnauto-67`, rama `tarea/67-calendario`. Sin modificar main ni publicar.
+  Queda para la revisión de Claude comparar los totales de un mes con la planilla real, como pide
+  la consigna. No quedaron dudas de alcance.
 
 ## Revisión
 (lo completa Claude: comparar contra la planilla los totales de un mes real)

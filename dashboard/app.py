@@ -52,6 +52,22 @@ from dashboard import datos as DATOS
 
 
 CSS = """
+.cal-modos,.cal-cab{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:18px 0}
+.calendario .cal-modos button.mini[aria-pressed=true]{background:var(--tinta);color:var(--fondo)}
+.cal-cab h2{margin:0;flex:1;text-align:center}
+.cal-cuerpo{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:24px}
+.cal-grilla{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));align-content:start}
+.cal-dia{font:inherit;text-align:left;background:none;border:0;border-top:1px solid var(--linea);padding:7px;min-height:116px;cursor:pointer;min-width:0}
+.cal-dia:nth-child(7n+6),.cal-dia:nth-child(7n){background:var(--panel2)}
+.cal-dia.elegido{outline:2px solid var(--tinta);outline-offset:-2px}
+.cal-dia strong{display:block;font:21px var(--serif);margin:7px 0;overflow-wrap:anywhere}
+.cal-dia small{display:block;font-size:10px;overflow-wrap:anywhere}
+.cal-semana{text-align:center;color:var(--suave)}
+.cal-barra{margin-top:5px;width:100%;display:flex}.cal-barra>div{height:100%}
+.cal-rojo{color:#B4321F}.cal-oro{color:#C9A64A}.cal-firme{color:#2F6B45}.cal-esperado{color:#2F6B4580}
+@media(max-width:1100px){.cal-cuerpo{grid-template-columns:1fr}}
+@media(max-width:600px){.cal-dia{padding:3px;min-height:95px}.cal-dia strong{font-size:15px}.cal-dia small{font-size:9px}.cal-cab{gap:5px}.cal-cab button{font-size:10px}.cal-cab h2{font-size:20px}}
+
 /* EL ESTILO (17/09/2026).
  *
  * la dirección, 16/09: "me gustaria ver distintos estilos que se vea mas profesional,
@@ -1786,8 +1802,126 @@ function verHallazgos(){
   return out;
 }
 
+// El mes y sus importes ya vienen resueltos: acá solo elegimos qué foto mostrar.
+var CAL = {
+  vista:'egresos', mes:0, fecha:null, contexto:''
+};
+function verCalendario(){
+  var raiz=el('section','calendario'), datos=actual().calendario;
+  if(!datos){
+    raiz.textContent='Sin calendario en este paquete.';
+    return [raiz];
+  }
+  var ingreso=CAL.vista==='ingresos', v=datos[CAL.vista], m=v.meses[CAL.mes];
+  var contexto=UNIDAD+CAL.vista+CAL.mes;
+  if(CAL.contexto!==contexto){
+    CAL.fecha=m.mayor;
+    CAL.contexto=contexto;
+  }
+  function boton(texto,accion){
+    var b=el('button','mini');
+    b.textContent=texto;
+    b.onclick=accion;
+    return b;
+  }
+  var modos=el('div','cal-modos');
+  ['egresos','ingresos'].forEach(function(vista){
+    var b=boton(vista==='egresos'?'EGRESOS · lo que sale':'INGRESOS · lo que entra',function(){
+      CAL.vista=vista;
+      pintar();
+    });
+    b.setAttribute('aria-pressed',CAL.vista===vista);
+    modos.appendChild(b);
+  });
+  raiz.appendChild(modos);
+  var tarjetas=el('div','kpis');
+  [[ingreso?'Cheques que se cobran · firme':'Sale sí o sí en el mes',m.firme,''],[ingreso?'Facturas que vencen · esperado':'Vence y se paga por decisión',m.decision,''],[ingreso?'El día más fuerte':'El día más pesado',m.maximo,m.mayor?dia(m.mayor):'Sin vencimientos'],[ingreso?'Ya vencido y sin cobrar':'Ya vencido y sin pagar',v.vencido,'Fuera del calendario']].forEach(function(k){
+    var c=el('div','kpi');
+    c.appendChild(el('div',null,k[0]));
+    c.appendChild(el('div','n',pesos(k[1],true)));
+    c.appendChild(el('small',null,k[2]));
+    tarjetas.appendChild(c);
+  });
+  raiz.appendChild(tarjetas);
+  if(ingreso)raiz.appendChild(el('p','sub',v.atraso_dias===null?'Sin facturas vencidas para estimar el atraso.':'Las facturas no se cobran el día que vencen: las ya vencidas llevan en promedio '+v.atraso_dias.toLocaleString('es-AR')+' días de atraso, ponderados por importe.'));
+  var cab=el('div','cal-cab'),prev=boton(CAL.mes?'‹ '+v.meses[CAL.mes-1].nombre:'‹',function(){
+    CAL.mes--;
+    pintar();
+  }),next=boton(CAL.mes<3?v.meses[CAL.mes+1].nombre+' ›':'›',function(){
+    CAL.mes++;
+    pintar();
+  });
+  prev.disabled=CAL.mes===0;
+  next.disabled=CAL.mes===3;
+  cab.append(prev,el('h2',null,m.nombre),next);
+  raiz.appendChild(cab);
+  raiz.appendChild(el('p','cal-leyenda',ingreso?'<span class="cal-firme">● Cheques · firme</span> · <span class="cal-esperado">● Facturas · esperado</span>':'<span class="cal-rojo">● Sale sí o sí</span> · <span class="cal-oro">● Por decisión</span>'));
+  var cuerpo=el('div','cal-cuerpo'),grid=el('div','cal-grilla');
+  ['lun','mar','mié','jue','vie','sáb','dom'].forEach(function(d){
+    grid.appendChild(el('div','cal-semana',d));
+  });
+  for(var i=0;
+  i<m.inicio;
+  i++)grid.appendChild(el('div','cal-vacio'));
+  m.dias.forEach(function(d){
+    var b=boton('',function(){
+      CAL.fecha=d.fecha;
+      pintar();
+    });
+    b.className='cal-dia'+(d.fecha===CAL.fecha?' elegido':'');
+    b.setAttribute('aria-label',d.fecha+' · '+pesos(d.total));
+    b.setAttribute('aria-pressed',d.fecha===CAL.fecha);
+    b.appendChild(el('span',null,String(d.numero)));
+    b.appendChild(el('strong',d.pesado?'cal-rojo':'',d.total?pesos(d.total,true):'—'));
+    if(d.total){
+      b.appendChild(el('small',null,(ingreso?'cheques ':'sí o sí ')+pesos(d.firme,true)));
+      var barra=el('div','cal-barra');
+      barra.style.height=d.alto+'px';
+      barra.style.background=ingreso?'#2F6B4540':'#C9A64A';
+      var parte=el('div');
+      parte.style.width=d.porcentaje_firme+'%';
+      parte.style.background=ingreso?'#2F6B45':'#B4321F';
+      barra.appendChild(parte);
+      b.appendChild(barra);
+    }grid.appendChild(b);
+  });
+  cuerpo.appendChild(grid);
+  var detalle=el('section','cal-detalle'),d=m.dias.find(function(d){
+    return d.fecha===CAL.fecha;
+  });
+  detalle.appendChild(el('h2',null,d?dia(d.fecha)+' · '+m.nombre:'Elegí un día'));
+  if(d){
+    detalle.appendChild(el('p',null,d.items.length+' vencimientos · '+pesos(d.total)));
+    var env=el('div','envuelve'),tabla=el('table');
+    tabla.innerHTML='<thead><tr><th>Qué es</th><th>Detalle</th><th>Empresa</th><th>Importe</th></tr></thead>';
+    var body=el('tbody');
+    d.items.forEach(function(x){
+      var tr=el('tr');
+      [x.tipo,x.detalle,x.empresa,pesos(x.importe)].forEach(function(t,j){
+        var td=el('td');
+        td.textContent=t;
+        if(j===0){
+          var punto=el('span');
+          punto.textContent='● ';
+          punto.style.color=ingreso?(x.firme?'#2F6B45':'#2F6B4580'):(x.firme?'#B4321F':'#C9A64A');
+          td.prepend(punto);
+        }tr.appendChild(td);
+      });
+      body.appendChild(tr);
+    });
+    tabla.appendChild(body);
+    env.appendChild(tabla);
+    detalle.appendChild(env);
+    if(!d.items.length)detalle.appendChild(el('p','sub','Sin vencimientos este día.'));
+  }cuerpo.appendChild(detalle);
+  raiz.appendChild(cuerpo);
+  raiz.appendChild(el('p','sub',v.cheques_pasados.cantidad+' cheques con fecha pasada sin actualizar en Tango ('+pesos(v.cheques_pasados.importe)+')'));
+  raiz.appendChild(el('p','sub','El total reúne lo que vence ese día. '+(ingreso?'La parte firme son los cheques; el verde claro representa facturas esperadas.':'La parte roja sale sí o sí; el dorado se paga por decisión.')+' La barrita compara el peso de cada día con el mayor del mes. El total en rojo marca días de al menos la mitad del máximo. Tocá un día para ver el detalle.'));
+  return [raiz];
+}
+
 // ---------------------------------------------------------------- pintar
-var CAPAS = {posicion: verPosicion, pagar: verPagar, cobrar: verCobrar,
+var CAPAS = {posicion: verPosicion, pagar: verPagar, cobrar: verCobrar, calendario: verCalendario,
              proyeccion: verProyeccion, hallazgos: verHallazgos};
 
 // El detalle ya viene escrito en el HTML. Al cambiar de empresa copiamos el suyo.
@@ -1828,7 +1962,7 @@ pintar();
 # deuda vencida y la caja, que estan en Posicion. Una solapa entera para
 # repetir eso con otra aritmetica agregaba una respuesta mas para conciliar.
 CAPAS = [("posicion", "Posición"), ("pagar", "A quién pagar"),
-         ("cobrar", "A cobrar"), ("proyeccion", "Proyección"),
+         ("cobrar", "A cobrar"), ("calendario", "Calendario"), ("proyeccion", "Proyección"),
          ("hallazgos", "Hallazgos")]
 
 
@@ -1837,6 +1971,7 @@ ICONOS = {
     "posicion": '<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/>'
                 '<rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>',
     "pagar": '<path d="M4 7h16M4 12h11M4 17h7"/>',
+    "calendario": '<rect x="3" y="5" width="18" height="16"/><path d="M3 10h18M8 3v5M16 3v5"/>',
     "cobrar": '<path d="M12 20V5M6 11l6-6 6 6"/>',
     "proyeccion": '<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
     "canchada": '<path d="M3 17l5-6 5 3 8-9M3 21h18"/>',
