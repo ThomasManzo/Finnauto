@@ -230,7 +230,7 @@ CSS += r"""
 .cc-numero{width:100%;box-sizing:border-box;font:600 25px var(--serif)}.cc-numero[aria-invalid=true]{border:1px solid var(--rojo);color:var(--rojo)}.cc-error{color:var(--rojo);font-size:12px}.cc-leyenda{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;margin-bottom:16px}.cc-muestra{display:inline-block;width:28px;margin-right:6px}.cc-cab{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.cc-cab h2{margin-right:auto}
 .cc-estado{font-size:12px}.cc-aviso{background:var(--ambar-piso);color:var(--amarillo);padding:12px 14px}
 .cc-meses{max-height:240px;overflow:auto}.cc-meses input{width:100%;box-sizing:border-box}
-.cc-meses[hidden]{display:none}.cc-total{font-weight:bold}.cc-panel .malo .n{color:var(--rojo)}.cc-panel .kpi .pie.neg{color:var(--rojo)}
+.cc-meses[hidden]{display:none}.cc-total{font-weight:bold}.cc-panel .malo .n{color:var(--rojo)}.cc-panel .kpi .pie.neg{color:var(--rojo)}.cc-panel .kpi{min-width:0;overflow-wrap:anywhere}
 .cc-panel svg{width:100%;height:auto}.cc-panel .envuelve{overflow-x:auto}.cc-panel td{white-space:nowrap}
 @media(max-width:1000px){.cc-controles{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:600px){.cc-controles{grid-template-columns:1fr}}
@@ -394,7 +394,23 @@ function ccResultados(){
  var compradas=fila('TN compradas (lo que se usa)'),valorCompra=fila('Compra de canchada del mes (valor sin flete)'),coberturas=f['Meses que cubre']||[],validas=coberturas.filter(function(v){return typeof v==='number'&&Number.isFinite(v);}),minimo=validas.length?Math.min.apply(null,validas):null;
  var tarjeta=el('div','kpi'+(minimo!==null&&minimo<Number(d.supuestos.cobertura)?' malo':''));
  tarjeta.append(ccTexto('div','et','Compra del primer mes'),ccTexto('div','n',compradas[0].toLocaleString('es-AR')+' TN'),ccTexto('div','pie',pesos(valorCompra[0],true)+' · valor sin flete; el pago sigue las partes acordadas'),ccTexto('div','pie'+(minimo!==null&&minimo<Number(d.supuestos.cobertura)?' neg':''),minimo===null?'Sin ventas previstas para medir cobertura':'Cobertura mínima: '+minimo.toLocaleString('es-AR',{maximumFractionDigits:1})+' meses · '+ccMes(d.meses[coberturas.indexOf(minimo)])));
- tarjetas.append(tarjeta);area.append(tarjetas);
+ tarjetas.append(tarjeta);
+ // Promediamos solo resultados de la planilla; los vacíos no representan un precio cero.
+ var eqNombres=['Costo variable por kg (canchada + flete + envase + comisión)','Margen por kg','Precio de equilibrio de la operación ($/kg)','TN de equilibrio por mes'];
+ var eqFilas=eqNombres.map(function(nombre){var valores=f[nombre];if(!valores||valores.length!==14)throw new Error('Rearmar la solapa para ver el equilibrio: '+nombre);return valores;});
+ // El servidor entrega null para textos: el margen calculado permite recuperar este aviso.
+ eqFilas[3]=eqFilas[3].map(function(v,i){return v===null&&typeof eqFilas[1][i]==='number'&&eqFilas[1][i]<=0?'no hay volumen que alcance':v;});
+ function promedioNumeros(valores){var nums=valores.filter(function(v){return typeof v==='number'&&Number.isFinite(v);});return nums.length?nums.reduce(function(x,y){return x+y;},0)/nums.length:null;}
+ function numeroEq(v){return v.toLocaleString('es-AR',{maximumFractionDigits:1});}
+ function tarjetaEq(titulo,valor,pie,mala){var k=el('div','kpi'+(mala?' malo':''));k.append(ccTexto('div','et',titulo),ccTexto('div','n',valor),ccTexto('div','pie',pie));tarjetas.append(k);}
+ var precioEq=promedioNumeros(eqFilas[2].slice(desde)),precioHoy=d.supuestos.precio;
+ var faltaPrecio=precioEq!==null&&typeof precioHoy==='number'&&precioHoy<precioEq;
+ tarjetaEq('Precio de equilibrio',precioEq===null?'sin ventas':'$'+numeroEq(precioEq)+'/kg',
+   'hoy '+(typeof precioHoy==='number'?'$'+numeroEq(precioHoy)+'/kg':'sin cargar')+' · '+(precioEq===null?'sin ventas para calcular':typeof precioHoy!=='number'?'falta cargar precio':!faltaPrecio?'ya alcanza':precioHoy>0?'falta +'+numeroEq((precioEq/precioHoy-1)*100)+' %':'falta subir el precio (hoy es cero)'),faltaPrecio);
+ var tnTramo=eqFilas[3].slice(desde),sinVolumen=tnTramo.some(function(v){return v==='no hay volumen que alcance';}),tnEq=promedioNumeros(tnTramo),tnHoy=promedioNumeros(fila('TN vendidas').slice(desde));
+ tarjetaEq('TN de equilibrio',sinVolumen?'no hay volumen que alcance':tnEq===null?'sin datos':numeroEq(tnEq)+' TN/mes',
+   'hoy '+numeroEq(tnHoy)+' TN/mes · '+(sinVolumen?'el margen por kg no es positivo':tnEq===null?'sin datos':tnEq>tnHoy?'faltan '+numeroEq(tnEq-tnHoy)+' TN':'ya alcanza'),sinVolumen||(tnEq!==null&&tnEq>tnHoy));
+ area.append(tarjetas);
  var graf=el('section','card');graf.append(ccTexto('h2','','Caja mes a mes'));
  var leyenda=el('div','cc-leyenda');
  [['#1B1A17','━●','Saldo acumulado a fin de cada mes (lo que queda después de todo)'],['#B4321F','●','Meses en que ni usando el descubierto alcanza'],['#2F6B45','▥','Barras verdes / rojas: lo que gana o pierde la caja en cada mes'],['#B97A2A','┄┄','Límite del descubierto acordado con los bancos: por debajo falta plata']].forEach(function(x){var item=el('span'),muestra=ccTexto('span','cc-muestra',x[1]);muestra.style.color=x[0];item.append(muestra,document.createTextNode(x[2]));if(x[1]==='▥'){var roja=ccTexto('span','cc-muestra','▥');roja.style.color='#B4321F';item.prepend(roja);}leyenda.append(item);});graf.append(leyenda);
@@ -415,6 +431,9 @@ function ccResultados(){
  var gastos=fila('Gastos operativos sin secadero'),compra=fila('Compra de canchada (lo que se paga en el mes, según las partes)'),flete=fila('Flete de la canchada');
  [['Cobranza',fila('Cobranza de las ventas (según los días de cobro)')],['Gastos operativos sin secadero',gastos],['Gastos de envase',fila('Gastos de envase')],['Comisiones',fila('Comisiones')],['Canchada + flete',compra.map(function(v,i){return v+flete[i];})],['Bancos y deuda',fila('Total bancos y deuda')],['Saldo del mes',m],['Saldo acumulado',a]].forEach(function(r,i){var tr=el('tr',i===7?'cc-total':'');tr.append(ccTexto('th','',r[0]));r[1].forEach(function(v){tr.append(ccTexto('td','',Math.round(v/1e6).toLocaleString('es-AR')));});tabla.append(tr);});
  env.append(tabla);det.append(env);
+ det.append(ccTexto('h2','','Equilibrio (por kg)'),ccTexto('p','sub','Sin deuda. Canchada a su precio, sin depender de cuándo se paga. Tarjetas: promedio desde la compra a pleno; TN actuales del mismo período. Los meses sin ventas no entran en el promedio de precio.'));
+ var envEq=el('div','envuelve'),tablaEq=el('table');tablaEq.append(head.cloneNode(true));
+ eqNombres.forEach(function(nombre,i){var tr=el('tr');tr.append(ccTexto('th','',nombre));eqFilas[i].forEach(function(v){tr.append(ccTexto('td','',typeof v==='number'?numeroEq(v):v||'sin ventas'));});tablaEq.append(tr);});envEq.append(tablaEq);det.append(envEq);
  det.append(ccTexto('h2','','Canchada (TN)'),ccTexto('p','sub','El stock listo descuenta las ventas y suma las compras cuando terminan de estacionarse. Sin ventas previstas, la cobertura se muestra como “sin ventas”.'));
  var envStock=el('div','envuelve'),tablaStock=el('table');tablaStock.append(head.cloneNode(true));
  [['Vendidas',fila('TN vendidas')],['Compradas',compradas],['Llegan',fila('Llegan listas para moler (TN)')],['Stock listo',fila('Stock listo a fin de mes (TN)')],['Meses que cubre',coberturas]].forEach(function(r){var tr=el('tr');tr.append(ccTexto('th','',r[0]));r[1].forEach(function(v){tr.append(ccTexto('td',typeof v==='number'&&v<0?'neg':'',typeof v==='number'?v.toLocaleString('es-AR',{maximumFractionDigits:1}):'sin ventas'));});tablaStock.append(tr);});envStock.append(tablaStock);det.append(envStock);

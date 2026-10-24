@@ -110,3 +110,26 @@ escenario({stock:50,espera:2});escenario({espera:8,N:12,ventas:Array.from({lengt
 escenario({espera:0,N:1,ventas:[100,200,50,0,100,200,0,0,100,20,30,50,0,90]});
 escenario({modo:'a mano',espera:2,manual:Array.from({length:14},(_,i)=>i*10)});escenario({ventas:Array(14).fill(0)});
 console.log('Stock: casos L=0/L=2/L=8, cobertura 1/4/12, faltantes, ventas variables/cero y modo manual OK; sin ciclos');
+
+// Equilibrio: referencias por mes y casos límite, sin depender del calendario de pagos.
+const variable='Costo variable por kg (canchada + flete + envase + comisión)',margen='Margen por kg',precioEq='Precio de equilibrio de la operación ($/kg)',tnEq='TN de equilibrio por mes';
+assert(row('Resultado de la operación (antes de la deuda)')<row(variable));
+assert(row(tnEq)<row('3 · Bancos y deuda'));
+for(let c=2;c<=15;c++){
+ const l=String.fromCharCode(64+c),ref=t=>l+row(t);
+ assert.equal(formula(variable,c),'='+[sup('pCanch'),sup('flete'),'$B$'+row('Costo de envase por kg'),sup('comision')].join('+'));
+ assert.equal(formula(margen,c),'='+ref('Precio ($/kg, sin IVA)')+'-'+ref(variable));
+ assert.equal(formula(precioEq,c),'=IF('+ref('TN vendidas')+'=0,"",'+ref(variable)+'+'+ref('Gastos operativos sin secadero')+'/('+ref('TN vendidas')+'*1000))');
+ assert.equal(formula(tnEq,c),'=IF('+ref(margen)+'<=0,"no hay volumen que alcance",'+ref('Gastos operativos sin secadero')+'/'+ref(margen)+'/1000)');
+}
+function equilibrio(precio,ventas){
+ const valores={[sup('pCanch')]:1200,[sup('flete')]:30,['$B$'+row('Costo de envase por kg')]:200,[sup('comision')]:50,['B'+row('Precio ($/kg, sin IVA)')]:precio,['B'+row('TN vendidas')]:ventas,['B'+row('Gastos operativos sin secadero')]:100000000};
+ for(const nombre of [variable,margen,precioEq,tnEq]){
+  const f=formula(nombre).slice(1).replace(/\$?[A-O]\$?\d+/g,r=>JSON.stringify(valores[r])).replace(/(?<![<>=!])=(?!=)/g,'===');
+  valores['B'+row(nombre)]=Function('IF','return '+f)((c,a,b)=>c?a:b);
+ }
+ return [variable,margen,precioEq,tnEq].map(n=>valores['B'+row(n)]);
+}
+const eq=equilibrio(2000,200);assert.deepEqual(eq.slice(0,3),[1480,520,1980]);assert(Math.abs(eq[3]-192.3076923077)<1e-8);
+assert.equal(equilibrio(2000,0)[2],'');assert.equal(equilibrio(1480,200)[3],'no hay volumen que alcance');assert.equal(equilibrio(1400,200)[3],'no hay volumen que alcance');
+console.log('Equilibrio: 14 meses, ejemplo inventado, cero ventas y margen cero/negativo OK');
