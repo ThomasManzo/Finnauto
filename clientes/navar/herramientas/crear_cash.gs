@@ -1055,9 +1055,9 @@ function _separadorLocal_(ss, h) {
 //  · Cobranza  = las ventas corridas por los días promedio de cobro (27 días = 90% del mes
 //                anterior + 10% del de antes, por ejemplo). Antes del primer mes se supone que se
 //                vendía lo mismo que el primer mes, al precio de hoy.
-//  · Gastos    = el promedio de los 3 meses cerrados del Cash Mensual ("Prom. base" del total de
-//                egresos de la operación) × inflación, MENOS lo que gastaban el secadero y la
-//                hoja verde (una celda: lo que deja de estar porque el secadero no corre).
+//  · Gastos    = la base de los 3 meses cerrados, sin bancos, estampillas ni comisiones de esa
+//                base, × inflación, menos secadero. Envases y comisiones siguen los kilos vendidos.
+//                Las restas se muestran agrupadas: así queda a la vista que no se cuenta dos veces.
 //  · Canchada  = toneladas compradas × precio, pagadas en N partes iguales, una por mes, la
 //                primera el mes de la compra (4 partes = 0/30/60/90 días). El flete, al comprar.
 //  · Deuda     = la del Cash Mensual (respeta lo decidido en Plan) en los meses que el Cash Mensual
@@ -1077,6 +1077,21 @@ var CC_SUPUESTOS = [
   ["partes",   "Canchada: en cuántas partes se paga",              "0",     "una por mes, la primera al comprar (4 = 0/30/60/90 días)"],
   ["stock",    "Stock de canchada propia al empezar (TN)",         "#,##0", "para seguir el stock total mes a mes"],
   ["secadero", "Gasto por mes del secadero y la hoja verde que deja de estar ($)", "#,##0", "se resta del promedio de gastos: el secadero no corre"],
+  ["estampillas1", "Estampillas por paquete de 1 kg ($ sin IVA)", "#,##0.00", "gasto por paquete; se convierte a kilos según la mezcla"],
+  ["estampillasMedio", "Estampillas por paquete de ½ kg ($ sin IVA)", "#,##0.00", "gasto por paquete; se convierte a kilos según la mezcla"],
+  ["paquetes1", "Paquetes por paquete de 1 kg ($ sin IVA)", "#,##0.00", "gasto por paquete; se convierte a kilos según la mezcla"],
+  ["paquetesMedio", "Paquetes por paquete de ½ kg ($ sin IVA)", "#,##0.00", "gasto por paquete; se convierte a kilos según la mezcla"],
+  ["pallets1", "Pallets por paquete de 1 kg ($ sin IVA)", "#,##0.00", "gasto por paquete; se convierte a kilos según la mezcla"],
+  ["palletsMedio", "Pallets por paquete de ½ kg ($ sin IVA)", "#,##0.00", "gasto por paquete; se convierte a kilos según la mezcla"],
+  ["stretch1", "Stretch por paquete de 1 kg ($ sin IVA)", "#,##0.00", "gasto por paquete; se convierte a kilos según la mezcla"],
+  ["stretchMedio", "Stretch por paquete de ½ kg ($ sin IVA)", "#,##0.00", "gasto por paquete; se convierte a kilos según la mezcla"],
+  ["termo1", "Termocontraíble por paquete de 1 kg ($ sin IVA)", "#,##0.00", "gasto por paquete; se convierte a kilos según la mezcla"],
+  ["termoMedio", "Termocontraíble por paquete de ½ kg ($ sin IVA)", "#,##0.00", "gasto por paquete; se convierte a kilos según la mezcla"],
+  ["mezcla", "Mezcla de venta: % de kilos en paquetes de 1 kg", "0%", "el resto se vende en paquetes de ½ kg"],
+  ["pagoEnvases", "Pago de los envases", "@", "contado o 30 días"],
+  ["comision", "Comisión de los vendedores ($ por kg vendido)", "#,##0.00", "se paga en el mes de la venta"],
+  ["estampillasBase", "Estampillas pagadas por mes en la base ($)", "#,##0", "se restan de la base para no contarlas dos veces"],
+  ["kilosBase", "Kilos vendidos por mes en la base", "#,##0", "la base resta estos kilos por la comisión por kilo"],
   ["inicio",   "Primer mes del plan",                              "mmm yyyy", "primer día del mes"],
 ];
 
@@ -1087,6 +1102,9 @@ function armarCompraCanchada() {
   var guardado = _ccLeerEditable_(ss.getSheetByName(CC_HOJA));
   var nCols = CC_MESES, ancho = 2 + nCols;
   var h = _hojaLimpia_(ss, CC_HOJA, ancho + 1);
+  // Se quita el grupo anterior antes de rearmar, para no acumular niveles.
+  h.getRange(2, 1, h.getMaxRows() - 1, 1).shiftRowGroupDepth(-8);
+  h.showRows(1, h.getMaxRows());
   var L = function (j) { return _colLetra_(2 + j); };
   var CM = "'Cash Mensual'!";
   var celdaCM = function (renglon, fecha) {   // un valor del Cash Mensual por el texto del renglón y la columna
@@ -1104,6 +1122,7 @@ function armarCompraCanchada() {
     h.getRange(fila, 2).setNumberFormat(s[2]).setBackground("#fff8e1");
     h.getRange(fila, 3).setValue(s[3]).setFontStyle("italic").setFontColor("#5f6368");
     S[s[0]] = "$B$" + fila;
+    if (s[0] === "pagoEnvases") h.getRange(fila, 2).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(["contado", "30 días"], true).setAllowInvalid(false).build());
     fila++;
   });
   // Los que salen solos de otras solapas (gris: no se tocan acá)
@@ -1111,12 +1130,14 @@ function armarCompraCanchada() {
   // El total de egresos no tiene "Prom. base" (ese promedio está solo en los renglones que se
   // estiman por promedio): se promedian sus 3 meses cerrados, las 3 primeras columnas del Cash Mensual.
   [["base", "Gastos de la operación por mes: promedio de los 3 meses cerrados", "=AVERAGE(OFFSET(INDEX(" + CM + "$A:$A,MATCH(\"Total egresos de la operación\"," + CM + "$A:$A,0)),0,1,1," + MESES_BASE + "))", "Cash Mensual, total de egresos de la operación, promedio de los 3 meses cerrados"],
+   ["bancosBase", "Intereses y gastos bancarios de la base", "=AVERAGE(OFFSET(INDEX(" + CM + "$A:$A,MATCH(\"Intereses y gastos bancarios\"," + CM + "$A:$A,0)),0,1,1," + MESES_BASE + "))", "Cash Mensual, promedio de los 3 meses cerrados; se separa de la operación"],
+   ["costoEnvase", "Costo de envase por kg", "=" + S.mezcla + "*SUM(" + [S.estampillas1,S.paquetes1,S.pallets1,S.stretch1,S.termo1].join(",") + ")+(1-" + S.mezcla + ")*SUM(" + [S.estampillasMedio,S.paquetesMedio,S.palletsMedio,S.stretchMedio,S.termoMedio].join(",") + ")*2", "dos paquetes de ½ kg hacen un kilo; calculado con los supuestos amarillos"],
    ["inflacion", "Inflación mensual de los gastos", "=" + CM + "$B$4", "la misma celda del Cash Mensual"],
    ["saldo0", "Saldo de partida (cierre del mes anterior al primero)", "=" + celdaCM("SALDO AL CIERRE del mes pagando toda la deuda", finAnterior), "Cash Mensual, pagando toda la deuda"],
    ["desc", "Descubierto acordado con los bancos", "=" + celdaCM("Descubierto acordado con los bancos", finAnterior), "Cash Mensual"]
   ].forEach(function (s) {
     h.getRange(fila, 1).setValue(s[1]);
-    h.getRange(fila, 2).setFormula(s[2]).setNumberFormat(s[0] === "inflacion" ? "0.0%" : FORMATO_NUM).setBackground("#f1f3f4");
+    h.getRange(fila, 2).setFormula(s[2]).setNumberFormat(s[0] === "inflacion" ? "0.0%" : s[0] === "costoEnvase" ? "#,##0.00" : FORMATO_NUM).setBackground("#f1f3f4");
     h.getRange(fila, 3).setValue(s[3]).setFontStyle("italic").setFontColor("#5f6368");
     S[s[0]] = "$B$" + fila;
     fila++;
@@ -1164,14 +1185,28 @@ function armarCompraCanchada() {
 
   // ---- 2 · egresos de la operación
   _seccion_(h, fila++, "2 · Egresos de la operación", "#fce8e6", "#a50e0e", ancho);
-  var fGastos = fila++, fSecadero = fila++, fCanch = fila++, fFlete = fila++, fTotEgr = fila++;
-  // La fila de TN compradas va abajo, en su bloque, pero la fórmula de canchada la usa acá: se
-  // reserva su lugar (resultado, deuda, saldos y el título del bloque ocupan las 15 filas de abajo).
-  var fTnC = fTotEgr + 16;
-  h.getRange(fGastos, 1).setValue("Gastos de la operación (promedio de los 3 meses cerrados × inflación)");
-  porMes(fGastos, function (c) { return "=" + S.base + "*(1+" + S.inflacion + ")^" + L(c) + "$" + filaN; });
+  var fGastos = fila++, fBase = fila++, fRestaBancos = fila++, fRestaEstampillas = fila++, fRestaComision = fila++, fSecadero = fila++, fEnvases = fila++, fComisiones = fila++, fCanch = fila++, fFlete = fila++, fTotEgr = fila++;
+  // Se reserva lugar para el resultado, bancos y deuda, saldos y el título de canchada.
+  var fTnC = fTotEgr + 17;
+  var inflar = function(c) { return "(1+" + S.inflacion + ")^" + L(c) + "$" + filaN; };
+  h.getRange(fGastos, 1).setValue("Gastos operativos sin secadero").setFontWeight("bold");
+  porMes(fGastos, function(c) { return "=SUM(" + L(c) + fBase + ":" + L(c) + fSecadero + ")"; });
+  h.getRange(fBase, 1).setValue("Base de gastos × inflación (antes de las restas)");
+  porMes(fBase, function(c) { return "=" + S.base + "*" + inflar(c); });
+  h.getRange(fRestaBancos, 1).setValue("Menos: intereses y gastos bancarios de la base × inflación");
+  porMes(fRestaBancos, function(c) { return "=-" + S.bancosBase + "*" + inflar(c); });
+  h.getRange(fRestaEstampillas, 1).setValue("Menos: estampillas de la base × inflación");
+  porMes(fRestaEstampillas, function(c) { return "=-" + S.estampillasBase + "*" + inflar(c); });
+  h.getRange(fRestaComision, 1).setValue("Menos: comisiones de la base × inflación");
+  porMes(fRestaComision, function(c) { return "=-" + S.comision + "*" + S.kilosBase + "*" + inflar(c); });
+  // El secadero está en pesos de los meses base, igual que la base: se actualiza con la misma inflación.
   h.getRange(fSecadero, 1).setValue("Menos: secadero y hoja verde (no corren)");
-  porMes(fSecadero, function (c) { return "=-" + S.secadero + "*(1+" + S.inflacion + ")^" + L(c) + "$" + filaN; });
+  porMes(fSecadero, function(c) { return "=-" + S.secadero + "*" + inflar(c); });
+  h.getRange(fBase, 1, fSecadero-fBase+1, ancho).shiftRowGroupDepth(1);
+  h.getRange(fEnvases, 1).setValue("Gastos de envase");
+  porMes(fEnvases, function(c) { return '=IF(' + S.pagoEnvases + '="30 días",' + L(Math.max(0,c-1)) + fTnV + ',' + L(c) + fTnV + ')*1000*' + S.costoEnvase; });
+  h.getRange(fComisiones, 1).setValue("Comisiones");
+  porMes(fComisiones, function(c) { return "=" + L(c) + fTnV + "*1000*" + S.comision; });
   h.getRange(fCanch, 1).setValue("Compra de canchada (lo que se paga en el mes, según las partes)");
   porMes(fCanch, function (c) {
     var desde = "INDEX(" + rango(fTnC) + ",MAX(1," + (c + 2) + "-" + S.partes + "))", hasta = "INDEX(" + rango(fTnC) + "," + (c + 1) + ")";
@@ -1180,7 +1215,7 @@ function armarCompraCanchada() {
   h.getRange(fFlete, 1).setValue("Flete de la canchada");
   porMes(fFlete, function (c) { return "=" + L(c) + fTnC + "*1000*" + S.flete; });
   h.getRange(fTotEgr, 1).setValue("Total egresos de la operación").setFontWeight("bold");
-  porMes(fTotEgr, function (c) { return "=SUM(" + L(c) + fGastos + ":" + L(c) + fFlete + ")"; });
+  porMes(fTotEgr, function (c) { return "=" + [fGastos,fEnvases,fComisiones,fCanch,fFlete].map(function(f){return L(c)+f;}).join("+"); });
   _lineaTotal_(h, fTotEgr, ancho);
   var fRes = fTotEgr + 1;
   h.getRange(fRes, 1).setValue("Resultado de la operación (antes de la deuda)").setFontWeight("bold");
@@ -1197,8 +1232,10 @@ function armarCompraCanchada() {
            "SUMIFS(" + R.diImp + "," + entre(R.diVto, c) + "," + R.diEstado + ",\"<>Pagado\"," + R.diAuto + "," + signo + ")";
   };
   var mesEnCM = function (c) { return "ISNUMBER(MATCH(" + L(c) + "$" + filaMes + "," + CM + "$6:$6,0))"; };
-  _seccion_(h, fila++, "3 · Deuda que vence en el mes", "#fce8e6", "#a50e0e", ancho);
-  var fDeuAuto = fila++, fDeuDec = fila++, fFuente = fila++, fTotDeuda = fila++;
+  _seccion_(h, fila++, "3 · Bancos y deuda", "#fce8e6", "#a50e0e", ancho);
+  var fBancos = fila++, fDeuAuto = fila++, fDeuDec = fila++, fFuente = fila++, fTotDeuda = fila++;
+  h.getRange(fBancos, 1).setValue("Intereses y gastos bancarios");
+  porMes(fBancos, function(c) { return "=" + S.bancosBase + "*" + inflar(c); });
   h.getRange(fDeuAuto, 1).setValue("Deuda que sale sí o sí (débito automático)");
   porMes(fDeuAuto, function (c) { return "=IF(" + mesEnCM(c) + "," + celdaCM("Total deuda que sale sí o sí (débito automático)", L(c) + "$" + filaMes) + "," + cronograma(c, true) + ")"; });
   h.getRange(fDeuDec, 1).setValue("Deuda que se paga por decisión");
@@ -1206,8 +1243,8 @@ function armarCompraCanchada() {
   h.getRange(fFuente, 1).setValue("De dónde sale: Cash Mensual (con lo decidido en Plan) o cronograma tal cual (sin decisiones)").setFontColor("#5f6368");
   porMes(fFuente, function (c) { return "=IF(" + mesEnCM(c) + ",\"Cash Mensual\",\"cronograma\")"; });
   h.getRange(fFuente, 2, 1, nCols).setFontColor("#5f6368").setHorizontalAlignment("right");
-  h.getRange(fTotDeuda, 1).setValue("Total deuda del mes").setFontWeight("bold");
-  porMes(fTotDeuda, function (c) { return "=" + L(c) + fDeuAuto + "+" + L(c) + fDeuDec; });
+  h.getRange(fTotDeuda, 1).setValue("Total bancos y deuda").setFontWeight("bold");
+  porMes(fTotDeuda, function (c) { return "=" + L(c) + fBancos + "+" + L(c) + fDeuAuto + "+" + L(c) + fDeuDec; });
   _lineaTotal_(h, fTotDeuda, ancho);
   fila++;
 
@@ -1236,7 +1273,7 @@ function armarCompraCanchada() {
   fila = fStock + 2;
   h.getRange(fila, 1, 4, 1).setValues([
     ["Qué no está: el IVA (todo va sin IVA, como el esquema de compra), el atrasado (se decide en Plan) y la merma de molienda (las TN compradas y vendidas se cargan tal cual)."],
-    ["La base de gastos es la plata que salió en los 3 meses cerrados: si en esos meses se dejó de pagar algo (por ejemplo envases), tampoco está acá."],
+    ["La base de gastos es la plata que salió en los 3 meses cerrados: se restan bancos, estampillas y comisiones de esa base para no contarlos dos veces. Envases y comisiones se calculan por los kilos vendidos; bancos se muestra junto con la deuda."],
     ["La deuda es la del Cash Mensual (con lo decidido en Plan) mientras el Cash Mensual llega; después, el cronograma tal cual."],
     ["Se rearma desde finauto → Armar solapa Cash compra canchada: conserva lo amarillo."],
   ]).setFontStyle("italic").setFontColor("#5f6368");

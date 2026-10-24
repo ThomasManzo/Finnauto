@@ -209,6 +209,7 @@ CSS += r"""
 .cc-controles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:18px;margin:20px 0}
 .cc-control{min-width:0;padding:14px 16px 16px 0;border-top:1px solid var(--linea)}
 .cc-control label{font-size:12.5px;color:var(--suave);display:block;min-height:34px}.cc-grande{font:600 25px/1 var(--serif);margin:6px 0 10px;font-variant-numeric:tabular-nums}
+.cc-campo{display:block;margin:10px 0}.cc-campo input{display:block;width:100%;box-sizing:border-box}.cc-campo [aria-invalid=true]{border:1px solid var(--rojo);color:var(--rojo)}.cc-pagos{display:flex;gap:8px;flex-wrap:wrap}.cc-pagos [aria-pressed=true]{background:var(--tinta);color:var(--fondo)}.cc-control details{font-size:12px}.cc-panel summary{cursor:pointer}.cc-base{max-width:560px}
 .cc-control input[type=range]{width:100%;accent-color:var(--tinta)}.cc-limites{font:400 10.5px var(--mono);color:var(--tenue)}
 .cc-numero{width:100%;box-sizing:border-box;font:600 25px var(--serif)}.cc-numero[aria-invalid=true]{border:1px solid var(--rojo);color:var(--rojo)}.cc-error{color:var(--rojo);font-size:12px}.cc-leyenda{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;margin-bottom:16px}.cc-muestra{display:inline-block;width:28px;margin-right:6px}.cc-cab{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.cc-cab h2{margin-right:auto}
 .cc-estado{font-size:12px}.cc-aviso{background:var(--ambar-piso);color:var(--amarillo);padding:12px 14px}
@@ -232,6 +233,7 @@ var CC_CONTROLES = [
  ['mesesSuba','Durante cuántos meses sube',0,14,1,'meses'],
  ['dias','Días promedio de cobro',0,90,1,'días'],
  ['partes','Canchada: partes de pago',1,6,1,'partes'],
+ ['comision','Comisión de los vendedores ($/kg)',0,200,1,'$/kg'],
  ['secadero','Secadero y hoja verde que dejan de estar',0,400,1,'M $ por mes']
 ];
 function ccTexto(t,c,txt){var n=el(t,c); n.textContent=txt;return n;}
@@ -269,6 +271,32 @@ function ccValor(c,v){
  if(c[0]==='partes')return v+' ('+Array.from({length:v},function(_,i){return i*30;}).join('/')+')';
  return Number(v).toLocaleString('es-AR')+' '+c[5];
 }
+// Los importes de envases los calcula la planilla. Acá solo editamos sus supuestos.
+var CC_ENVASES=[['estampillas','Estampillas'],['paquetes','Paquetes'],['pallets','Pallets'],['stretch','Stretch'],['termo','Termocontraíble']];
+function ccSupuesto(k){return CC.pendiente.supuestos&&Object.prototype.hasOwnProperty.call(CC.pendiente.supuestos,k)?CC.pendiente.supuestos[k]:CC.bueno.supuestos[k];}
+function ccCampo(k,nombre,max,factor){
+ var l=ccTexto('label','cc-campo',nombre),x=el('input'),error=ccTexto('span','cc-error','');x.type='number';x.min=0;x.step='any';if(max!==undefined)x.max=max;factor=factor||1;
+ var v=ccSupuesto(k);x.value=v==null||v===''?'':v*factor;x.setAttribute('aria-label',nombre);
+ function confirmar(){var n=x.value===''?NaN:Number(x.value);
+  if(!Number.isFinite(n)||n<0||(max!==undefined&&n>max)){x.setAttribute('aria-invalid','true');error.textContent=max===undefined?'Usá un número mayor o igual a cero':'Usá un número entre 0 y '+max;return;}
+  x.removeAttribute('aria-invalid');error.textContent='';ccCambio(k,n/factor);
+ }
+ x.onblur=confirmar;x.onkeydown=function(e){if(e.key==='Enter'){e.preventDefault();x.blur();}};l.append(x,error);return l;
+}
+function ccBaseControles(){
+ var cont=CC.raiz.querySelector('.cc-base');if(!cont)return;cont.replaceChildren();
+ cont.append(ccCampo('estampillasBase','Estampillas pagadas por mes en la base ($)'),ccCampo('kilosBase','Kilos vendidos por mes en la base'));
+ ['Gastos de la operación por mes: promedio de los 3 meses cerrados','Intereses y gastos bancarios de la base'].forEach(function(txt){var a=CC.bueno.filas[txt];cont.append(ccTexto('p','sub',txt+': '+(a&&typeof a[0]==='number'?pesos(a[0]):'sin cargar')));});
+ cont.append(ccTexto('p','sub','Se restan bancos, estampillas y comisión × kilos de la base antes de aplicar inflación; después se resta el secadero. Así cada gasto se cuenta una vez.'));
+}
+function ccEnvases(grid){
+ var caja=el('div','cc-control'),valor=CC.bueno.filas['Costo de envase por kg'],detalle=el('details');detalle.open=!!CC.envAbierto;detalle.ontoggle=function(){CC.envAbierto=detalle.open;};
+ caja.append(ccTexto('label','','Gastos de envase'),ccTexto('div','cc-grande',valor&&typeof valor[0]==='number'?valor[0].toLocaleString('es-AR')+' $/kg':'sin cargar'));
+ detalle.append(ccTexto('summary','mini','ver detalle'),ccTexto('p','sub','Pesos sin IVA por paquete, según su formato.'));
+ CC_ENVASES.forEach(function(g){detalle.append(ccCampo(g[0]+'1',g[1]+' · paquete de 1 kg ($)'),ccCampo(g[0]+'Medio',g[1]+' · paquete de ½ kg ($)'));});
+ detalle.append(ccCampo('mezcla','Mezcla: % de kilos en paquetes de 1 kg',100,100),ccTexto('p','sub','El resto se vende en paquetes de ½ kg.'),ccTexto('p','sub','Pago de los envases'));
+ var pagos=el('div','cc-pagos');['contado','30 días'].forEach(function(p){var b=ccTexto('button','mini',p);b.setAttribute('aria-pressed',ccSupuesto('pagoEnvases')===p);b.onclick=function(){ccCambio('pagoEnvases',p);pagos.querySelectorAll('button').forEach(function(x){x.setAttribute('aria-pressed',x===b);});};pagos.append(b);});detalle.append(pagos);caja.append(detalle);grid.append(caja);
+}
 function ccControles(){
  if(!CC.raiz||!CC.bueno)return;
  var grid=CC.raiz.querySelector('.cc-controles');grid.replaceChildren();
@@ -291,7 +319,7 @@ function ccControles(){
   // El casillero admite el rango del servidor, aunque exceda la escala habitual de la barra.
   var numero=el('input','cc-numero'),aviso=ccTexto('div','cc-error','');numero.type='number';numero.step='any';numero.value=v==null?'':v;
   numero.setAttribute('aria-label',c[1]+' · escribir número');
-  var limites={pCanch:[0,100000],flete:[0,10000],tnCompradas:[0,5000],tnVendidas:[0,5000],precio:[0,100000],suba:[0,50],mesesSuba:[0,14],dias:[0,365],partes:[1,6],secadero:[0,100000]};
+  var limites={pCanch:[0,100000],flete:[0,10000],tnCompradas:[0,5000],tnVendidas:[0,5000],precio:[0,100000],suba:[0,50],mesesSuba:[0,14],dias:[0,365],partes:[1,6],secadero:[0,100000],comision:[0,Number.MAX_VALUE]};
   numero.min=limites[k][0];numero.max=limites[k][1];
   function escala(n){aviso.textContent=n<c[2]||n>c[3]?'fuera de la escala':'';}
   escala(Number(v));
@@ -320,6 +348,7 @@ function ccControles(){
    });caja.append(boton,meses);
   } grid.append(caja);
  });
+ ccEnvases(grid);ccBaseControles();
 }
 function ccMes(iso){if(!iso)return 'sin mes';return new Date(iso+'T12:00:00').toLocaleDateString('es-AR',{month:'short',year:'2-digit'});}
 function ccResultados(){
@@ -352,9 +381,11 @@ function ccResultados(){
  a.forEach(function(v,i){forma('circle',{cx:X(i),cy:Y(v),r:4,fill:dis[i]<0?'#B4321F':'#1B1A17'});});graf.append(svg,ccTexto('p','sub','Línea: saldo acumulado · barras: saldo del mes · puntos rojos: falta financiar'));area.append(graf);
  var det=el('section','card');det.append(ccTexto('h2','','El detalle'),ccTexto('p','sub','En millones de pesos, sin decimales'));
  var env=el('div','envuelve'),tabla=el('table'),head=el('tr');head.append(ccTexto('th','','Concepto'));d.meses.forEach(function(v){head.append(ccTexto('th','',ccMes(v)));});tabla.append(head);
- var gastos=fila('Gastos de la operación (promedio de los 3 meses cerrados × inflación)'),menos=fila('Menos: secadero y hoja verde (no corren)'),compra=fila('Compra de canchada (lo que se paga en el mes, según las partes)'),flete=fila('Flete de la canchada');
- [['Cobranza',fila('Cobranza de las ventas (según los días de cobro)')],['Gastos sin secadero',gastos.map(function(v,i){return v+menos[i];})],['Canchada + flete',compra.map(function(v,i){return v+flete[i];})],['Deuda',fila('Total deuda del mes')],['Saldo del mes',m],['Saldo acumulado',a]].forEach(function(r,i){var tr=el('tr',i===5?'cc-total':'');tr.append(ccTexto('th','',r[0]));r[1].forEach(function(v){tr.append(ccTexto('td','',Math.round(v/1e6).toLocaleString('es-AR')));});tabla.append(tr);});
- env.append(tabla);det.append(env);(d.notas||[]).forEach(function(n){det.append(ccTexto('p','sub',n));});area.append(det);
+ var gastos=fila('Gastos operativos sin secadero'),compra=fila('Compra de canchada (lo que se paga en el mes, según las partes)'),flete=fila('Flete de la canchada');
+ [['Cobranza',fila('Cobranza de las ventas (según los días de cobro)')],['Gastos operativos sin secadero',gastos],['Gastos de envase',fila('Gastos de envase')],['Comisiones',fila('Comisiones')],['Canchada + flete',compra.map(function(v,i){return v+flete[i];})],['Bancos y deuda',fila('Total bancos y deuda')],['Saldo del mes',m],['Saldo acumulado',a]].forEach(function(r,i){var tr=el('tr',i===7?'cc-total':'');tr.append(ccTexto('th','',r[0]));r[1].forEach(function(v){tr.append(ccTexto('td','',Math.round(v/1e6).toLocaleString('es-AR')));});tabla.append(tr);});
+ env.append(tabla);det.append(env);
+ var base=el('details');base.open=!!CC.baseAbierto;base.ontoggle=function(){CC.baseAbierto=base.open;};base.append(ccTexto('summary','mini','ver cómo se arma la base'),el('div','cc-base'));det.append(base);
+ (d.notas||[]).forEach(function(n){det.append(ccTexto('p','sub',n));});area.append(det);ccBaseControles();
  }catch(e){area.append(ccTexto('p','cc-aviso',e.message));}
 }
 function verCanchada(){
