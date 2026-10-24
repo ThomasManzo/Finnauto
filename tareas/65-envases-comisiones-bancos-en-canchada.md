@@ -1,5 +1,5 @@
 # Tarea 65 — Escenario de canchada: gastos de envase, comisiones y "Bancos y deuda"
-Estado: lista para revisión
+Estado: aprobada e instalada (23/10/2026; falta actualizar la notebook para el panel)
 Rama: tarea/65-envases-y-bancos
 
 ## Objetivo
@@ -208,6 +208,19 @@ Con 30 días, el mes 1 paga las ventas anteriores supuestas iguales al mes 1 y e
   archivos privados, Drive ni la planilla del cliente; no cambié main ni publiqué nada.
 
 ## Revisión
-(lo completa Claude: instalar crear_cash con solo el bloque cambiado, tablero_web.gs sobre lo instalado,
-nueva versión de la aplicación web, cargar los valores reales en la planilla, rearmar la solapa y el
-tablero, y verificar contra una cuenta aparte)
+- Claude (23/10) revisó y aprobó. **Corrección**: la consigna era ambigua y la resta del secadero había
+  quedado sin inflación. Se volvió a inflar, porque está en pesos de los meses base, igual que la base;
+  la prueba se ajustó (commit de Claude en la rama). Mergeada a main (ec7f959).
+- **Instalada**:
+  - crear_cash: solo el bloque de canchada sobre lo instalado;
+  - Código.gs: el bloque de canchada sobre lo instalado, con los `PERMITIDOS` reales y el ID;
+  - las huellas coinciden después de recargar;
+  - aplicación web en versión 7, con el mismo link;
+  - la solapa se rearmó y se cargaron los valores reales en la planilla.
+- **Verificado en la planilla**:
+  - costo de envase por kg y su monto del mes;
+  - comisiones;
+  - las restas de la base (bancos, estampillas, comisiones, secadero inflado);
+  - el total de egresos;
+  - bancos y deuda.
+  Todo cierra con la cuenta aparte.
