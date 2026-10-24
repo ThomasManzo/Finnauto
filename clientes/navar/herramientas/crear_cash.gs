@@ -1129,7 +1129,11 @@ function armarCompraCanchada() {
     if (s[0] === "compras") h.getRange(fila, 2).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(["automáticas", "a mano"], true).setAllowInvalid(false).build());
     if (s[0] === "cobertura" || s[0] === "lista") {
       var min = s[0] === "cobertura" ? 1 : 0, max = s[0] === "cobertura" ? 12 : 8, celda = "B" + fila;
-      h.getRange(fila, 2).setDataValidation(SpreadsheetApp.newDataValidation().requireFormulaSatisfied("=AND(ISNUMBER(" + celda + ")," + celda + "=INT(" + celda + ")," + celda + ">=" + min + "," + celda + "<=" + max + ")").setAllowInvalid(false).build());
+      // La regla con fórmula usaba "," y esta planilla en español pide ";": rompía el armado (24/10).
+      // Se usa el separador que acepta la planilla; el entero lo controlan también el panel y el servidor.
+      var sepV = _separadorDeEstaPlanilla_(h);
+      h.getRange(fila, 2).setDataValidation(SpreadsheetApp.newDataValidation().requireFormulaSatisfied(
+        "=AND(ISNUMBER(" + celda + ")" + sepV + celda + "=INT(" + celda + ")" + sepV + celda + ">=" + min + sepV + celda + "<=" + max + ")").setAllowInvalid(false).build());
     }
     fila++;
   });

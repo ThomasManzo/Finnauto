@@ -14,6 +14,8 @@ let existente=false;
 const ss={getSheetByName:n=>n==='Cash Mensual'?{}:existente?h:null,toast(){}};
 const ctx=vm.createContext({SpreadsheetApp:{getActiveSpreadsheet:()=>ss,BorderStyle:{SOLID_MEDIUM:'medio'},newConditionalFormatRule:()=>{let valores={},p; p=new Proxy(valores,{get:(o,k)=>k==='build'?()=>valores:v=>{o[k]=v;return p;}});return p;},newDataValidation:()=>{let opciones;return {requireValueInList(v){opciones=v;return this;},requireFormulaSatisfied(v){opciones=v;return this;},setAllowInvalid(v){assert.equal(v,false);return this;},build(){return opciones;}};}}});
 vm.runInContext(fs.readFileSync(path.join(__dirname,'../../clientes/navar/herramientas/crear_cash.gs'),'utf8'),ctx);
+// La planilla de juguete acepta coma como separador (la real en español usa punto y coma).
+ctx._separadorDeEstaPlanilla_=()=>',';
 ctx._rangos_=()=>({cuTot:'cuTot',cuVto:'cuVto',cuEstado:'cuEstado',cuAuto:'cuAuto',diImp:'diImp',diVto:'diVto',diEstado:'diEstado',diAuto:'diAuto'});
 ctx._hojaLimpia_=()=>{cells=new Map();formulas=new Map();return h;};ctx._cliente_=()=> 'Ejemplo';ctx._separadorLocal_=()=>{};
 ctx.armarCompraCanchada();
