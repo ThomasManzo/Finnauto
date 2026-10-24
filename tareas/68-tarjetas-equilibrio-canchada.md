@@ -1,5 +1,5 @@
 # Tarea 68 — Panel de canchada: tarjetas de "precio de equilibrio" y "TN de equilibrio"
-Estado: pendiente
+Estado: lista para revisión
 Rama: tarea/68-equilibrio
 
 ## Objetivo
@@ -68,7 +68,50 @@ pague sola** (sin contar la deuda):
 4. Todas las pruebas que ya existen siguen pasando.
 
 ## Qué hice
-(lo completa Codex)
+- Agregué las cuatro filas de equilibrio en los 14 meses, entre resultado operativo y bancos/deuda.
+  Las fórmulas toman los supuestos de costo, el envase por kilo ya calculado, el precio mensual y
+  los gastos operativos sin secadero. Desplacé el bloque de stock seis filas para conservar las
+  referencias de compras, pagos y flete. No cambié el respaldo ni la limpieza de validaciones.
+- Sumé las dos tarjetas y la tabla «Equilibrio (por kg)». Se conserva el criterio de mes típico:
+  desde el mes número `partes` hasta el último. Para comparar las TN actuales uso el promedio de
+  ventas del mismo período, explicado debajo. Precio actual es el supuesto «precio de venta hoy».
+  Los meses sin ventas quedan fuera del promedio de precio; si todos están vacíos dice «sin ventas».
+  Precio cero tiene un aviso sin dividir por cero. Igualar el equilibrio ya cuenta como «ya alcanza».
+- Las siete tarjetas usan la grilla adaptable existente (se acomodan en varias filas y en celular
+  en una columna); agregué ajuste de texto para que el aviso largo no fuerce el ancho.
+- El servidor actual convierte los textos de las filas en `null`. Sin tocar ese archivo (fuera
+  del permiso de esta tarea), recupero «no hay volumen que alcance» cuando el margen de ese mes
+  calculado por la planilla es cero o negativo. Si ocurre en cualquier mes del período promediado,
+  la tarjeta lo muestra en rojo. El panel no calcula costos ni fórmulas de equilibrio.
+- Archivos tocados: `clientes/navar/herramientas/crear_cash.gs` (solo bloque de canchada),
+  `dashboard/app.py` (solo JS_CANCHADA y CSS del panel),
+  `lector/pruebas/probar_canchada_envases.cjs`, `lector/pruebas/test_panel_canchada.py` y esta consigna.
+- Ejemplo inventado pedido: canchada 1200 + flete 30 + envase 200 + comisión 50 = **1480 $/kg**.
+  A precio 2000, margen = 2000 − 1480 = **520 $/kg**. Con gastos fijos $100 M y 200 TN,
+  precio de equilibrio = 1480 + 100.000.000 / 200.000 = **1980 $/kg**;
+  TN de equilibrio = 100.000.000 / 520 / 1000 = **192,3077 TN/mes** (se muestra 192,3).
+- Pruebas: los **13 `.cjs` pasaron** con el Node indicado. La prueba de solapa controla las
+  referencias en los 14 meses, posición de filas, ejemplo numérico, ventas cero y margen cero o
+  negativo; también siguen pasando conservación, migración y simulación de stock sin ciclos.
+  El test del panel ejecuta el JS real con DOM y `google.script.run` simulados: lectura, promedio
+  que excluye los tres primeros meses con partes=4, falta en rojo, ya alcanza, igualdad, precio
+  cero, ventas cero y texto convertido a null como en el servidor real.
+- Suite completa con el Python y PYTHONPATH indicados: **305 pruebas y 52 subpruebas pasaron**;
+  **2 fallaron por el sandbox** (`test_recorrido_completo` y `test_errores_claros`, ambas en
+  `tests/test_bot_generico.py`): Chromium aborta con `bootstrap_check_in: Permission denied`.
+  El intento de revisión visual del panel con Playwright encontró la misma restricción.
+  Las 7 pruebas del panel pasan. `git diff --check` sin errores. Sin dependencias nuevas.
+- Para Claude: instalar el bloque de canchada, rearmar la solapa y regenerar el tablero. Comparar
+  las cuatro filas con una cuenta aparte en Sheets, revisar tarjetas rojas / ya alcanza y el
+  caso margen no positivo. Verificar visualmente escritorio y celular (siete tarjetas y tabla
+  desplazable): esa revisión quedó pendiente por el bloqueo de Chromium. También repetir las dos
+  pruebas del bot fuera del sandbox. No se accedió a Google, datos reales ni archivos privados.
+- Trabajo en `/private/tmp/finnauto-68`, rama `tarea/68-equilibrio`; sin publicar ni tocar main.
+
+
+- Intenté preparar y commitear los cinco archivos, pero el sandbox impidió crear
+  `/Users/thomasmanzo/Documents/Finnauto/.git/worktrees/finnauto-68/index.lock`
+  (`Operation not permitted`). Quedaron sin commit para que lo haga Claude.
 
 ## Revisión
 (lo completa Claude)

@@ -1205,7 +1205,7 @@ function armarCompraCanchada() {
   _seccion_(h, fila++, "2 · Egresos de la operación", "#fce8e6", "#a50e0e", ancho);
   var fGastos = fila++, fBase = fila++, fRestaBancos = fila++, fRestaEstampillas = fila++, fRestaComision = fila++, fSecadero = fila++, fEnvases = fila++, fComisiones = fila++, fCanch = fila++, fFlete = fila++, fTotEgr = fila++;
   // Se reserva lugar para el resultado, bancos y deuda, saldos y el título de canchada.
-  var fTnC = fTotEgr + 17;
+  var fTnC = fTotEgr + 23; // Incluye las seis filas del bloque de equilibrio.
   var inflar = function(c) { return "(1+" + S.inflacion + ")^" + L(c) + "$" + filaN; };
   h.getRange(fGastos, 1).setValue("Gastos operativos sin secadero").setFontWeight("bold");
   porMes(fGastos, function(c) { return "=SUM(" + L(c) + fBase + ":" + L(c) + fSecadero + ")"; });
@@ -1240,6 +1240,19 @@ function armarCompraCanchada() {
   porMes(fRes, function (c) { return "=" + L(c) + fCobro + "-" + L(c) + fTotEgr; });
   h.getRange(fRes, 1, 1, ancho).setBackground("#fff8e1");
   fila = fRes + 2;
+
+  // Mirada por kilo: el costo de comprar se cuenta completo, sin depender de las cuotas.
+  _seccion_(h, fila++, "Equilibrio de la operación (sin deuda)", "#e8f0fe", "#174ea6", ancho);
+  var fVariable = fila++, fMargen = fila++, fPrecioEquilibrio = fila++, fTnEquilibrio = fila++;
+  h.getRange(fVariable, 1).setValue("Costo variable por kg (canchada + flete + envase + comisión)");
+  porMes(fVariable, function(c) { return "=" + [S.pCanch,S.flete,S.costoEnvase,S.comision].join("+"); });
+  h.getRange(fMargen, 1).setValue("Margen por kg");
+  porMes(fMargen, function(c) { return "=" + L(c) + fPrecio + "-" + L(c) + fVariable; });
+  h.getRange(fPrecioEquilibrio, 1).setValue("Precio de equilibrio de la operación ($/kg)");
+  porMes(fPrecioEquilibrio, function(c) { return '=IF(' + L(c) + fTnV + '=0,"",' + L(c) + fVariable + '+' + L(c) + fGastos + '/(' + L(c) + fTnV + '*1000))'; });
+  h.getRange(fTnEquilibrio, 1).setValue("TN de equilibrio por mes");
+  porMes(fTnEquilibrio, function(c) { return '=IF(' + L(c) + fMargen + '<=0,"no hay volumen que alcance",' + L(c) + fGastos + '/' + L(c) + fMargen + '/1000)'; });
+  fila++;
 
   // ---- 3 · deuda: la del Cash Mensual (respeta lo decidido en Plan: lo que se pospone o se
   //      refinancia). Donde el Cash Mensual no llega, el cronograma tal cual, y se avisa.
@@ -1323,7 +1336,7 @@ function armarCompraCanchada() {
   fila = fValorCompra + 2;
   h.getRange(fila, 1, 4, 1).setValues([
     ["Qué no está: el IVA (todo va sin IVA, como el esquema de compra), el atrasado (se decide en Plan) y la merma de molienda (las TN compradas y vendidas se cargan tal cual)."],
-    ["La base de gastos es la plata que salió en los 3 meses cerrados: se restan bancos, estampillas y comisiones de esa base para no contarlos dos veces. Envases y comisiones se calculan por los kilos vendidos; bancos se muestra junto con la deuda."],
+    ["La base de gastos es la plata que salió en los 3 meses cerrados: se restan bancos, estampillas y comisiones de esa base para no contarlos dos veces. Envases y comisiones se calculan por los kilos vendidos; bancos se muestra junto con la deuda. El equilibrio es una mirada por kilo, sin deuda: la canchada se toma a su precio, no según cuándo se paga."],
     ["La deuda es la del Cash Mensual (con lo decidido en Plan) mientras el Cash Mensual llega; después, el cronograma tal cual."],
     ["Se rearma desde finauto → Armar solapa Cash compra canchada: conserva lo amarillo."],
   ]).setFontStyle("italic").setFontColor("#5f6368");
@@ -1341,6 +1354,7 @@ function armarCompraCanchada() {
   h.getRange(fPrecio, 2, 1, nCols).setNumberFormat("#,##0");
   h.getRange(fTnC, 2, 8, nCols).setNumberFormat("#,##0.0");
   h.getRange(fCubre, 2, 1, nCols).setNumberFormat("0.0");
+  h.getRange(fVariable, 2, 4, nCols).setNumberFormat("#,##0.0");
   h.setColumnWidth(1, 430);
   for (var w = 0; w < nCols; w++) h.setColumnWidth(2 + w, 100);
   h.hideRows(filaN);
