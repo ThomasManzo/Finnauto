@@ -1,5 +1,5 @@
 # Tarea 67 — Apartado "Calendario" en el tablero: vencimientos día por día, egresos e ingresos
-Estado: aprobada (falta actualizar la notebook)
+Estado: aprobada e instalada (24/10/2026)
 Rama: tarea/67-calendario
 
 ## Objetivo
@@ -140,4 +140,10 @@ el detalle. La dirección aprobó una maqueta: abajo, la descripción.
 
 ## Revisión
 - Claude (24/10) revisó y aprobó: las reglas del calendario coinciden con lo decidido. Mergeada a main.
-- Falta: actualizar la notebook y rearmar el tablero; comparar los totales de un mes con la planilla.
+- Notebook actualizada por Thomas y tablero rearmado.
+- **Verificado en vivo contra una cuenta aparte con la copia de la planilla del 24/10**, noviembre 2026:
+  - egresos: sí o sí 232 M, por decisión 63 M, día más pesado el 10/11 con 71 M;
+  - ingresos: cheques 6 M (firme), facturas 234 M (esperado);
+  - ya vencido sin pagar: 987,0 M (proveedores 219,5 + impuestos 307,5 + cuotas 460,0);
+  - ya vencido sin cobrar: 113 M.
+  Todo coincide.
