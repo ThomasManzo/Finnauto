@@ -1283,6 +1283,88 @@ def opciones_tablero(cliente):
         return {}
 
 
+def calendario(contrato, unidad, hoy):
+    """Foto de cuatro meses. Cada fuente se lee una sola vez; sus copias del cash no.
+
+    Los cheques viejos necesitan actualizarse en Tango: no prometemos ese dinero.
+    Las demás deudas vencidas quedan fuera de la grilla, en su tarjeta propia.
+    """
+    import calendar
+    desde = datetime.date.fromisoformat(hoy)
+    fuentes = [
+        ("deuda_droguerias", contrato.get("deuda_droguerias", []), "egresos", "Proveedor", False),
+        ("cuotas", (contrato.get("deuda_bancaria") or {}).get("cuotas", []), "egresos", "Cuota", None),
+        ("impuestos", contrato.get("deuda_impositiva", []), "egresos", "Impuesto", None),
+        ("propios", [x for x in contrato.get("egresos_cashflow", []) if x.get("tipo") == "CHEQUE"], "egresos", "Cheque propio", True),
+        ("facturas", contrato.get("cuentas_a_cobrar_droguerias", []), "ingresos", "Factura", False),
+        ("terceros", (contrato.get("cartera_cheques", []) + contrato.get("calendario_cheques_pasados", [])), "ingresos", "Cheque de terceros", True),
+    ]
+    vistas = {v: {"meses": [], "vencido": 0, "cheques_pasados": {"cantidad": 0, "importe": 0},
+                   "atraso_dias": 0} for v in ("egresos", "ingresos")}
+    filas = {v: [] for v in vistas}
+    atraso = peso = 0
+    for fuente, lista, vista, tipo, firme in fuentes:
+        for x in lista:
+            if unidad != GRUPO and x.get("unidad") != unidad:
+                continue
+            estado = str(x.get("estado", "")).strip().casefold()
+            if (x.get("intercompany") or x.get("interno") or x.get("agregado")
+                    or x.get("calendario_revisar") or x.get("es_credito")
+                    or "revisar" in estado or "revisar" in str(x.get("observacion", "")).casefold()
+                    or estado in ("pagado", "cobrado", "cancelado", "anulado")):
+                continue
+            cheque = fuente in ("propios", "terceros")
+            if cheque and estado and estado != "en cartera":
+                continue
+            fecha = x.get("fecha")
+            try:
+                f = datetime.date.fromisoformat(fecha)
+            except (ValueError, TypeError):
+                continue
+            monto = float(x.get("importe") or 0)
+            if monto <= 0:
+                continue
+            if f < desde:
+                if cheque:
+                    vistas[vista]["cheques_pasados"]["cantidad"] += 1
+                    vistas[vista]["cheques_pasados"]["importe"] += monto
+                else:
+                    vistas[vista]["vencido"] += monto
+                    if fuente == "facturas":
+                        atraso += (desde - f).days * monto
+                        peso += monto
+                continue
+            filas[vista].append({"fecha": fecha, "importe": monto, "empresa": x.get("unidad", ""),
+                "tipo": tipo, "fuente": fuente,
+                "detalle": x.get("contraparte") or " · ".join(str(x.get(k) or "") for k in ("banco", "numero", "librador")),
+                "firme": firme if firme is not None else _grupo_debito(x) == "automatico"})
+    vistas["ingresos"]["atraso_dias"] = round(atraso / peso, 1) if peso else None
+    for offset in range(4):
+        n = desde.year * 12 + desde.month - 1 + offset
+        year, month = divmod(n, 12)
+        month += 1
+        for vista, datos in vistas.items():
+            dias = []
+            for day in range(1, calendar.monthrange(year, month)[1] + 1):
+                fecha = datetime.date(year, month, day).isoformat()
+                items = sorted([x for x in filas[vista] if x["fecha"] == fecha],
+                               key=lambda x: (not x["firme"], -x["importe"]))
+                total = sum(x["importe"] for x in items)
+                seguro = sum(x["importe"] for x in items if x["firme"])
+                dias.append({"fecha": fecha, "numero": day, "items": items,
+                             "total": total, "firme": seguro, "decision": total - seguro})
+            mayor = max(dias, key=lambda x: x["total"])
+            for d in dias:
+                d["pesado"] = d["total"] > 0 and d["total"] >= mayor["total"] * .5
+                d["alto"] = 24 * d["total"] / mayor["total"] if mayor["total"] else 0
+                d["porcentaje_firme"] = 100 * d["firme"] / d["total"] if d["total"] else 0
+            datos["meses"].append({"nombre": "%s %s" % (["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"][month-1], year),
+                "inicio": calendar.monthrange(year, month)[0], "dias": dias,
+                "firme": sum(d["firme"] for d in dias), "decision": sum(d["decision"] for d in dias),
+                "mayor": mayor["fecha"] if mayor["total"] else None, "maximo": mayor["total"]})
+    return vistas
+
+
 def armar(contrato, cliente="maga"):
     # La estimación por kg fue dada de baja en NAVAR. Filtramos una copia
     # antes de TODOS los cálculos del tablero; el contrato original no se toca.
@@ -1321,6 +1403,7 @@ def armar(contrato, cliente="maga"):
             "retiro": retiro_por_ventana(contrato, u),
             "ingresos_dia": ingresos_por_dia(contrato, u, hoy),
             "a_cobrar": a_cobrar(contrato, u, hoy),
+            "calendario": calendario(contrato, u, hoy),
             "proyeccion": proyeccion(contrato, u, hoy, modo=modo),
             # El escenario "y ademas le pago a la otra empresa del grupo".
             "proyeccion_ic": proyeccion(contrato, u, hoy, con_intercompany=True, modo=modo),
