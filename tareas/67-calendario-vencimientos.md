@@ -1,5 +1,5 @@
 # Tarea 67 — Apartado "Calendario" en el tablero: vencimientos día por día, egresos e ingresos
-Estado: lista para revisión
+Estado: aprobada (falta actualizar la notebook)
 Rama: tarea/67-calendario
 
 ## Objetivo
@@ -139,4 +139,5 @@ el detalle. La dirección aprobó una maqueta: abajo, la descripción.
   la consigna. No quedaron dudas de alcance.
 
 ## Revisión
-(lo completa Claude: comparar contra la planilla los totales de un mes real)
+- Claude (24/10) revisó y aprobó: las reglas del calendario coinciden con lo decidido. Mergeada a main.
+- Falta: actualizar la notebook y rearmar el tablero; comparar los totales de un mes con la planilla.

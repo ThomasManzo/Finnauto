@@ -1,5 +1,5 @@
 # Tarea 66 — Escenario de canchada: compras automáticas para tener siempre N meses de stock listo
-Estado: lista para revisión
+Estado: aprobada e instalada (24/10/2026)
 Rama: tarea/66-stock-cobertura
 
 ## Objetivo
@@ -170,4 +170,18 @@ Con L = 2: antes de llegar la compra del mes 0 se vendieron 200 TN, por lo que e
   privados, Drive ni planilla del cliente. No cambié main ni publiqué nada.
 
 ## Revisión
-(lo completa Claude)
+- Claude (24/10) revisó y aprobó; mergeada a main junto con la 67.
+- **Al instalar falló el rearmado**: la regla de validación de cobertura y plazo tenía la fórmula con
+  "," y la planilla en español pide ";". Como el armado borra la solapa antes de rearmarla, quedó vacía
+  y el segundo intento perdió los valores cargados.
+- Correcciones de Claude:
+  - separador de la planilla en la regla (28dbe34);
+  - copia de lo cargado en las propiedades de la planilla **antes** de borrar, usada si la solapa vino
+    vacía;
+  - limpieza de las validaciones viejas al rearmar, porque una regla vieja había quedado en otra fila
+    (9185385).
+- Instalada: aplicación web en versión 8; los valores se volvieron a cargar a mano en la planilla.
+- Verificado:
+  - compra del primer mes 500 TN (objetivo 1.000 − 750 + 250 vendidas), después 250 por mes;
+  - stock listo 1.000 TN y 4 meses de cobertura todos los meses;
+  - pago de la canchada 159 / 239 / 319 / 398 / 319 M (partes).
