@@ -8,10 +8,10 @@ ctx.PERMITIDOS=[mail];ctx.CANCHADA_PLANILLA_ID='planilla-de-juguete';
 // Los textos salen de la definición original: si cambia, la prueba avisa.
 const original=vm.createContext({});vm.runInContext(fs.readFileSync(path.join(__dirname,'../../clientes/navar/herramientas/crear_cash.gs'),'utf8'),original);
 assert.equal(JSON.stringify(ctx.PANEL_CC_SUPUESTOS),JSON.stringify(original.CC_SUPUESTOS));
-const vals={mezcla:.5,pagoEnvases:'contado',comision:5,estampillasBase:100,kilosBase:200,precio:1500,suba:.01,mesesSuba:2,dias:30,pCanch:1000,flete:10,partes:4,stock:0,secadero:1000000,inicio:new Date('2027-01-01T03:00:00Z')};
+const vals={cobertura:4,lista:0,compras:'a mano',mezcla:.5,pagoEnvases:'contado',comision:5,estampillasBase:100,kilosBase:200,precio:1500,suba:.01,mesesSuba:2,dias:30,pCanch:1000,flete:10,partes:4,stock:0,secadero:1000000,inicio:new Date('2027-01-01T03:00:00Z')};
 for(const k of ['estampillas','paquetes','pallets','stretch','termo']){vals[k+'1']=10;vals[k+'Medio']=6;}
 rows=Array.from(ctx.PANEL_CC_SUPUESTOS,s=>[s[1],vals[s[0]],...Array(13).fill('')]);
-rows.push(['Mes',...Array.from({length:14},(_,i)=>new Date(Date.UTC(2027,i,1,3)))],['TN vendidas',...Array(14).fill(20)],['TN compradas',...Array(14).fill(30)],['Faltan cargar','ejemplo pendiente'],['Saldo acumulado',...Array(14).fill(42)],['Qué no está: ejemplo de nota']);
+rows.push(['Mes',...Array.from({length:14},(_,i)=>new Date(Date.UTC(2027,i,1,3)))],['TN vendidas',...Array(14).fill(20)],['TN compradas (a mano)',...Array(14).fill(30)],['Faltan cargar','ejemplo pendiente'],['TN compradas (lo que se usa)',...Array(14).fill(600)],['Saldo acumulado',...Array(14).fill(42)],['Qué no está: ejemplo de nota']);
 const plain=x=>JSON.parse(JSON.stringify(x));
 assert.equal(ctx.leerEscenarioCanchada().supuestos.inicio,'2027-01-01');assert.equal(ctx.leerEscenarioCanchada().meses[0],'2027-01-01');assert.equal(ctx.leerEscenarioCanchada().falta,'ejemplo pendiente');
 assert.throws(()=>ctx.volverAlPlanOriginalCanchada(),/no hay un plan/);assert(!locked);
@@ -22,12 +22,13 @@ for(const c of [{supuestos:{partes:0}},{supuestos:{partes:1.5}},{supuestos:{part
  const n=writes;assert.throws(()=>ctx.guardarEscenarioCanchada(c));assert.equal(writes,n);assert(!locked);
 }
 // Las claves nuevas se guardan por texto y vuelven también con el plan original.
-const nuevos={mezcla:1,pagoEnvases:'30 días',comision:0,estampillasBase:0,kilosBase:0};
+const nuevos={cobertura:12,lista:8,compras:'automáticas',mezcla:1,pagoEnvases:'30 días',comision:0,estampillasBase:0,kilosBase:0};
 for(const k of ['estampillas','paquetes','pallets','stretch','termo']){nuevos[k+'1']=20;nuevos[k+'Medio']=12;}
-const guardado=ctx.guardarEscenarioCanchada({supuestos:nuevos});
+const guardado=ctx.guardarEscenarioCanchada({supuestos:nuevos,tnCompradas:Array(14).fill(45)});
+assert.equal(guardado.filas['TN compradas (a mano)'][0],45);assert.equal(guardado.filas['TN compradas (lo que se usa)'][0],600);
 for(const [k,v]of Object.entries(nuevos))assert.equal(guardado.supuestos[k],v);
 for(const k of Object.keys(nuevos)){
- const invalidos=k==='pagoEnvases'?['60 días',0,null]:k==='mezcla'?[-.1,1.01,'0.5',NaN,Infinity]:[-1,'2',NaN,Infinity,null];
+ const invalidos=k==='compras'?['manual','automaticas',0,null]:k==='cobertura'?[0,13,1.5,'4',NaN]:k==='lista'?[-1,9,1.5,'0',Infinity]:k==='pagoEnvases'?['60 días',0,null]:k==='mezcla'?[-.1,1.01,'0.5',NaN,Infinity]:[-1,'2',NaN,Infinity,null];
  for(const v of invalidos){const n=writes;assert.throws(()=>ctx.guardarEscenarioCanchada({supuestos:{[k]:v}}));assert.equal(writes,n);}
 }
 ctx.volverAlPlanOriginalCanchada();assert.deepEqual(plain(ctx._ccFoto_(h)),before);

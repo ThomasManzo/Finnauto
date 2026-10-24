@@ -1,5 +1,5 @@
 # Tarea 66 — Escenario de canchada: compras automáticas para tener siempre N meses de stock listo
-Estado: pendiente (arrancar cuando la 65 esté mergeada: tocan los mismos archivos)
+Estado: lista para revisión
 Rama: tarea/66-stock-cobertura
 
 ## Objetivo
@@ -84,7 +84,90 @@ esta consigna.
 4. Todas las pruebas que ya existen siguen pasando.
 
 ## Qué hice
-(lo completa Codex)
+- Trabajé sobre main con la 65 ya mergeada y su corrección del secadero por inflación intacta.
+  Agregué stock listo hoy (con la misma clave `stock`), cobertura, meses hasta estar lista y modo
+  de compras. Los supuestos nuevos nacen vacíos; cobertura y plazo aceptan solo enteros en sus
+  rangos, y compras tiene la lista «automáticas» / «a mano».
+- Separé las filas «TN compradas (a mano)», «TN compradas (automáticas)» y «TN compradas (lo que
+  se usa)». Pagos en partes y flete siguen usando esta última. Al rearmar, el stock y las compras
+  cargados con los textos viejos se recuperan en los renglones nuevos. Las fotos del plan original
+  siguen guardando la clave `tnCompradas`, ahora correspondiente exclusivamente a la fila manual.
+- La compra automática proyecta el stock antes de que llegue esa compra: stock inicial + todas
+  las compras anteriores − ventas hasta ese momento. Con un plazo fijo, esas compras anteriores
+  ya llegaron entonces. La fórmula no usa stock futuro ni compras actuales o posteriores, así
+  evita ciclos. Suma las próximas N ventas para el objetivo y repite las últimas ventas cuando
+  sale de los catorce meses, tanto para el objetivo como para el consumo hasta la llegada.
+- Agregué llegadas, stock listo, objetivo, meses que cubre y faltante. El faltante positivo tiene
+  formato rojo. Si no hay ventas previstas, la cobertura queda vacía en la planilla y el panel
+  muestra «sin ventas», para no dividir por cero. Una fila adicional trae el valor de la compra
+  del mes (sin flete), calculado en la planilla, para que la tarjeta no calcule plata en JavaScript.
+- El panel agrega los tres controles de stock, cobertura y plazo, y los botones de modo. En
+  automático la barra, el número y los catorce casilleros de compras quedan deshabilitados y
+  muestran la fila calculada. En manual recuperan la fila editable. Se mantiene el guardado por
+  `ccCambio`, el agrupado de 0,8 segundos y la recuperación ante errores.
+- Elegí **agregar una quinta tarjeta** para conservar los cuatro indicadores de caja. Muestra TN
+  y valor de la primera compra; debajo, la menor cobertura con su mes, en rojo si es inferior a
+  la pedida. Aclaré que ese importe es el valor completo sin flete, mientras el pago de caja sigue
+  el esquema de partes. El detalle tiene otra tabla «Canchada (TN)» con las cinco filas pedidas.
+- Archivos tocados: `clientes/navar/herramientas/crear_cash.gs` (solo bloque de canchada),
+  `clientes/navar/herramientas/tablero_web.gs` (supuestos, validación y las dos referencias a la
+  fila manual para guardar y fotografiar), `dashboard/app.py` (JS y CSS del panel),
+  `lector/pruebas/probar_panel_canchada.cjs`, `lector/pruebas/probar_canchada_envases.cjs`,
+  `lector/pruebas/test_panel_canchada.py` y esta consigna. Las dos referencias del servidor son
+  necesarias por el cambio de nombre de la fila; no cambié la mecánica de permisos ni guardado.
+- Comprobaciones: **301 pruebas de Python y 52 subpruebas pasaron**, más los **13 archivos `.cjs`**.
+  La prueba de la hoja controla referencias, conservación y migración, validaciones, faltantes y
+  formato rojo. Un evaluador mínimo ejecuta las fórmulas de stock emitidas, detecta recursión y
+  compara los catorce meses con una simulación aparte: plazos 0/2/8, cobertura 1/4/12, ventas
+  variables, ventas cero, stock insuficiente y compras manuales. El servidor prueba límites,
+  enteros, opciones de modo y que guardar compras manuales no pisa la fila calculada.
+- En Chromium con `google.script.run` simulado comprobé los dos modos, bloqueo de los catorce
+  meses en automático, recuperación de la fila manual, edición mensual, guardado conjunto de
+  stock/cobertura/plazo y rechazo de cobertura fraccionaria. Revisé la quinta tarjeta, el aviso
+  rojo, el contraste del botón seleccionado y la tabla de TN en escritorio y celular. Capturas:
+  `/private/tmp/66-panel-desktop.png` y `/private/tmp/66-panel-mobile.png`.
+  Tras el ajuste visual, volvieron a pasar las seis pruebas de render del panel y las pruebas
+  del navegador. `git diff --check` sin errores. No instalé dependencias nuevas.
+
+### Ejemplo a mano — todos los valores son inventados
+
+Stock listo inicial **500 TN**, ventas **100 TN por mes**, cobertura **4 meses**. El objetivo
+  de fin de mes es siempre **400 TN**.
+
+| Plazo | Mes (desde 0) | Compra de ese mes (TN) | Llegan listas (TN) | Stock listo al cierre (TN) | Meses que cubre |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| L = 0 | 0 | 0 | 0 | 400 | 4 |
+| L = 0 | 1 | 100 | 100 | 400 | 4 |
+| L = 0 | 2 | 100 | 100 | 400 | 4 |
+| L = 2 | 0 | 200 | 0 | 400 | 4 |
+| L = 2 | 1 | 100 | 0 | 300 | 3 |
+| L = 2 | 2 | 100 | 200 | 400 | 4 |
+| L = 2 | 3 | 100 | 100 | 400 | 4 |
+
+Con L = 0: compra(0) = máximo(0, 400 + 100 − 500) = **0**;
+  compra(1) = máximo(0, 400 + 100 − 400) = **100**.
+
+Con L = 2: antes de llegar la compra del mes 0 se vendieron 200 TN, por lo que el stock
+  proyectado antes del mes 2 es 500 − 200 = 300. Se compra máximo(0, 400 + 100 − 300) = **200**.
+  Para la compra del mes 1, antes del mes 3 ya llegó ese pedido: 500 + 200 − 300 = 400;
+  compra(1) = máximo(0, 400 + 100 − 400) = **100**. El mes 1 cubre solo tres meses: no se inventan
+  pedidos pendientes anteriores que eviten esa baja transitoria.
+
+### Para la revisión en vivo
+
+- Instalar el bloque de canchada, rearmar la solapa (conserva stock y compras anteriores) y cargar
+  cobertura, plazo y modo en las celdas nuevas. Instalar el servidor actualizado y generar el
+  tablero nuevo antes de probar el panel: cambiaron los textos de las filas del contrato.
+- Comparar contra una cuenta aparte las compras, llegadas, stock, cobertura y caja (pagos en
+  partes y flete) en ambos modos, especialmente los primeros meses con plazo y el extremo final.
+  Verificar la lista de compras, validaciones de enteros, rojo del faltante, conservación al
+  rearmar y botones del plan original. Una foto vieja no contiene cobertura/plazo/modo: esos
+  campos conservan su valor actual al recuperarla; guardar el plan completo como original una
+  vez cargados los supuestos nuevos.
+- El evaluador local cubre las fórmulas de stock, pero no sustituye al motor de Sheets ni comprueba
+  permisos de la aplicación web real. La instalación y comparación real quedan para Claude.
+- Worktree `/private/tmp/finnauto-66`, rama `tarea/66-stock-cobertura`. Sin datos reales, archivos
+  privados, Drive ni planilla del cliente. No cambié main ni publiqué nada.
 
 ## Revisión
 (lo completa Claude)

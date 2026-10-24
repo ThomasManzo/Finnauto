@@ -209,12 +209,12 @@ CSS += r"""
 .cc-controles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:18px;margin:20px 0}
 .cc-control{min-width:0;padding:14px 16px 16px 0;border-top:1px solid var(--linea)}
 .cc-control label{font-size:12.5px;color:var(--suave);display:block;min-height:34px}.cc-grande{font:600 25px/1 var(--serif);margin:6px 0 10px;font-variant-numeric:tabular-nums}
-.cc-campo{display:block;margin:10px 0}.cc-campo input{display:block;width:100%;box-sizing:border-box}.cc-campo [aria-invalid=true]{border:1px solid var(--rojo);color:var(--rojo)}.cc-pagos{display:flex;gap:8px;flex-wrap:wrap}.cc-pagos [aria-pressed=true]{background:var(--tinta);color:var(--fondo)}.cc-control details{font-size:12px}.cc-panel summary{cursor:pointer}.cc-base{max-width:560px}
+.cc-campo{display:block;margin:10px 0}.cc-campo input{display:block;width:100%;box-sizing:border-box}.cc-campo [aria-invalid=true]{border:1px solid var(--rojo);color:var(--rojo)}.cc-pagos{display:flex;gap:8px;flex-wrap:wrap}.cc-pagos button.mini[aria-pressed=true]{background:var(--tinta);color:var(--fondo)}.cc-control details{font-size:12px}.cc-panel summary{cursor:pointer}.cc-base{max-width:560px}
 .cc-control input[type=range]{width:100%;accent-color:var(--tinta)}.cc-limites{font:400 10.5px var(--mono);color:var(--tenue)}
 .cc-numero{width:100%;box-sizing:border-box;font:600 25px var(--serif)}.cc-numero[aria-invalid=true]{border:1px solid var(--rojo);color:var(--rojo)}.cc-error{color:var(--rojo);font-size:12px}.cc-leyenda{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;margin-bottom:16px}.cc-muestra{display:inline-block;width:28px;margin-right:6px}.cc-cab{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.cc-cab h2{margin-right:auto}
 .cc-estado{font-size:12px}.cc-aviso{background:var(--ambar-piso);color:var(--amarillo);padding:12px 14px}
 .cc-meses{max-height:240px;overflow:auto}.cc-meses input{width:100%;box-sizing:border-box}
-.cc-meses[hidden]{display:none}.cc-total{font-weight:bold}.cc-panel .malo .n{color:var(--rojo)}
+.cc-meses[hidden]{display:none}.cc-total{font-weight:bold}.cc-panel .malo .n{color:var(--rojo)}.cc-panel .kpi .pie.neg{color:var(--rojo)}
 .cc-panel svg{width:100%;height:auto}.cc-panel .envuelve{overflow-x:auto}.cc-panel td{white-space:nowrap}
 @media(max-width:1000px){.cc-controles{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:600px){.cc-controles{grid-template-columns:1fr}}
@@ -226,6 +226,9 @@ var CC = {bueno:null, pendiente:{}, ocupado:false, timer:null, mensaje:'cargando
 var CC_CONTROLES = [
  ['pCanch','Canchada: precio de compra',900,1800,5,'$/kg'],
  ['flete','Canchada: flete',0,100,1,'$/kg'],
+ ['stock','Stock hoy (TN)',0,3000,10,'TN'],
+ ['cobertura','Meses de cobertura',1,12,1,'meses'],
+ ['lista','Meses hasta estar lista',0,8,1,'meses'],
  ['tnCompradas','TN compradas por mes',0,600,10,'TN'],
  ['tnVendidas','TN vendidas por mes',0,600,10,'TN'],
  ['precio','Precio de venta hoy',1000,3000,1,'$/kg'],
@@ -297,13 +300,18 @@ function ccEnvases(grid){
  detalle.append(ccCampo('mezcla','Mezcla: % de kilos en paquetes de 1 kg',100,100),ccTexto('p','sub','El resto se vende en paquetes de ½ kg.'),ccTexto('p','sub','Pago de los envases'));
  var pagos=el('div','cc-pagos');['contado','30 días'].forEach(function(p){var b=ccTexto('button','mini',p);b.setAttribute('aria-pressed',ccSupuesto('pagoEnvases')===p);b.onclick=function(){ccCambio('pagoEnvases',p);pagos.querySelectorAll('button').forEach(function(x){x.setAttribute('aria-pressed',x===b);});};pagos.append(b);});detalle.append(pagos);caja.append(detalle);grid.append(caja);
 }
+function ccCompras(grid){
+ var caja=el('div','cc-control'),botones=el('div','cc-pagos');caja.append(ccTexto('label','','Compras'));
+ ['automáticas','a mano'].forEach(function(p){var b=ccTexto('button','mini',p);b.setAttribute('aria-pressed',ccSupuesto('compras')===p);b.onclick=function(){ccCambio('compras',p);ccControles();};botones.append(b);});
+ caja.append(botones,ccTexto('p','sub','Automáticas: la planilla compra para cubrir las ventas previstas cuando la canchada esté lista. A mano: se conserva tu plan mensual.'));grid.append(caja);
+}
 function ccControles(){
  if(!CC.raiz||!CC.bueno)return;
- var grid=CC.raiz.querySelector('.cc-controles');grid.replaceChildren();
+ var grid=CC.raiz.querySelector('.cc-controles');grid.replaceChildren();ccCompras(grid);
  CC_CONTROLES.forEach(function(c){
-  var k=c[0],tn=k.indexOf('tn')===0,datos=tn?CC.bueno.filas[k==='tnCompradas'?'TN compradas':'TN vendidas']:null;
+  var k=c[0],tn=k.indexOf('tn')===0,automatica=k==='tnCompradas'&&ccSupuesto('compras')!=='a mano',datos=tn?CC.bueno.filas[k==='tnCompradas'?(automatica?'TN compradas (lo que se usa)':'TN compradas (a mano)'):'TN vendidas']:null;
   var raw=tn?datos[0]:CC.bueno.supuestos[k], v=raw;
-  if(tn && CC.pendiente[k]){datos=CC.pendiente[k];v=datos[0];}
+  if(tn && !automatica && CC.pendiente[k]){datos=CC.pendiente[k];v=datos[0];}
   if(!tn && CC.pendiente.supuestos && Object.prototype.hasOwnProperty.call(CC.pendiente.supuestos,k))v=CC.pendiente.supuestos[k];
   if(k==='suba'&&v!=='')v*=100;if(k==='secadero'&&v!=='')v/=1e6;
   var caja=el('div','cc-control'),label=ccTexto('label','',c[1]), grande=ccTexto('div','cc-grande',ccValor(c,v));
@@ -312,19 +320,20 @@ function ccControles(){
   barra.setAttribute('aria-label',c[1]);
   // Si la planilla tiene un valor fuera de la escala habitual, se muestra tal cual hasta moverlo.
   barra.oninput=function(){grande.textContent=ccValor(c,Number(barra.value));};
-  barra.onchange=function(){var n=Number(barra.value);if(k==='suba')n/=100;if(k==='secadero')n*=1e6;
+  barra.onchange=function(){if(automatica)return;var n=Number(barra.value);if(k==='suba')n/=100;if(k==='secadero')n*=1e6;
    ccCambio(k,tn?Array(14).fill(n):n);
    if(tn)caja.querySelectorAll('input[type=number]').forEach(function(x){x.value=n;});
   };
   // El casillero admite el rango del servidor, aunque exceda la escala habitual de la barra.
   var numero=el('input','cc-numero'),aviso=ccTexto('div','cc-error','');numero.type='number';numero.step='any';numero.value=v==null?'':v;
   numero.setAttribute('aria-label',c[1]+' · escribir número');
-  var limites={pCanch:[0,100000],flete:[0,10000],tnCompradas:[0,5000],tnVendidas:[0,5000],precio:[0,100000],suba:[0,50],mesesSuba:[0,14],dias:[0,365],partes:[1,6],secadero:[0,100000],comision:[0,Number.MAX_VALUE]};
+  var limites={pCanch:[0,100000],flete:[0,10000],tnCompradas:[0,5000],tnVendidas:[0,5000],precio:[0,100000],suba:[0,50],mesesSuba:[0,14],dias:[0,365],partes:[1,6],secadero:[0,100000],comision:[0,Number.MAX_VALUE],stock:[0,1000000],cobertura:[1,12],lista:[0,8]};
   numero.min=limites[k][0];numero.max=limites[k][1];
   function escala(n){aviso.textContent=n<c[2]||n>c[3]?'fuera de la escala':'';}
   escala(Number(v));
   function confirmar(){
-   var n=numero.value===''?NaN:Number(numero.value),lim=limites[k],entero=k==='partes'||k==='mesesSuba';
+   if(automatica)return;
+   var n=numero.value===''?NaN:Number(numero.value),lim=limites[k],entero=['partes','mesesSuba','cobertura','lista'].includes(k);
    if(!Number.isFinite(n)||n<lim[0]||n>lim[1]||(entero&&!Number.isInteger(n))){numero.setAttribute('aria-invalid','true');aviso.textContent='Usá '+(entero?'un entero':'un número')+' entre '+lim[0]+' y '+lim[1]+' '+c[5];return;}
    numero.removeAttribute('aria-invalid');barra.value=n;grande.textContent=ccValor(c,n);escala(n);
    if(k==='suba')n/=100;if(k==='secadero')n*=1e6;ccCambio(k,tn?Array(14).fill(n):n);
@@ -334,14 +343,16 @@ function ccControles(){
   var mover=barra.oninput,guardar=barra.onchange;
   barra.oninput=function(){mover();numero.value=barra.value;numero.removeAttribute('aria-invalid');escala(Number(barra.value));};
   barra.onchange=function(){guardar();numero.value=barra.value;escala(Number(barra.value));};
+  barra.disabled=numero.disabled=automatica;
   caja.append(label,grande,numero,aviso,barra,ccTexto('div','cc-limites',c[2].toLocaleString('es-AR')+' — '+c[3].toLocaleString('es-AR')+' '+c[5]));
+  if(automatica)caja.append(ccTexto('p','sub','Calculado en la planilla; cambiar mes por mes muestra las compras sin editarlas.'));
   if(tn){
    var boton=ccTexto('button','mini','cambiar mes por mes'), meses=el('div','cc-meses');meses.hidden=true;
    boton.onclick=function(){meses.hidden=!meses.hidden;boton.setAttribute('aria-expanded',!meses.hidden);};
    if(datos.some(function(x){return x!==datos[0];}))grande.textContent='varía por mes';
-   datos.forEach(function(n,i){var l=ccTexto('label','',ccMes(CC.bueno.meses[i])),x=el('input');x.type='number';x.min=0;x.max=5000;x.step='any';x.value=n===null?'':n;
+   datos.forEach(function(n,i){var l=ccTexto('label','',ccMes(CC.bueno.meses[i])),x=el('input');x.type='number';x.disabled=automatica;x.min=0;x.max=5000;x.step='any';x.value=n===null?'':n;
     x.setAttribute('aria-label',c[1]+' '+ccMes(CC.bueno.meses[i]));
-    x.onchange=function(){var inputs=Array.from(meses.querySelectorAll('input')),a=inputs.map(function(z){return z.value===''?NaN:Number(z.value);});
+    x.onchange=function(){if(automatica)return;var inputs=Array.from(meses.querySelectorAll('input')),a=inputs.map(function(z){return z.value===''?NaN:Number(z.value);});
      if(a.some(function(z){return !Number.isFinite(z)||z<0||z>5000;})){ccError(new Error('Las TN deben estar entre 0 y 5.000 en los 14 meses'));return;}
      grande.textContent='varía por mes';ccCambio(k,a);
     };l.append(x);meses.append(l);
@@ -363,7 +374,11 @@ function ccResultados(){
  var tarjetas=el('div','kpis');
  [[ 'Peor saldo acumulado',pesos(peor,true)+' · '+ccMes(d.meses[a.indexOf(peor)]),peor<0],
  ['Se pasa del descubierto en',primero<0?'no se pasa':ccMes(d.meses[primero]),primero>=0],
- ['Plata que hay que conseguir',pesos(falta,true),falta>0],['Resultado de un mes típico',pesos(prom,true),prom<0]].forEach(function(x){var k=el('div','kpi'+(x[2]?' malo':''));k.append(ccTexto('div','et',x[0]),ccTexto('div','n',x[1]));tarjetas.append(k);});area.append(tarjetas);
+ ['Plata que hay que conseguir',pesos(falta,true),falta>0],['Resultado de un mes típico',pesos(prom,true),prom<0]].forEach(function(x){var k=el('div','kpi'+(x[2]?' malo':''));k.append(ccTexto('div','et',x[0]),ccTexto('div','n',x[1]));tarjetas.append(k);});// Conservamos las cuatro tarjetas de caja y agregamos la compra y la cobertura física.
+ var compradas=fila('TN compradas (lo que se usa)'),valorCompra=fila('Compra de canchada del mes (valor sin flete)'),coberturas=f['Meses que cubre']||[],validas=coberturas.filter(function(v){return typeof v==='number'&&Number.isFinite(v);}),minimo=validas.length?Math.min.apply(null,validas):null;
+ var tarjeta=el('div','kpi'+(minimo!==null&&minimo<Number(d.supuestos.cobertura)?' malo':''));
+ tarjeta.append(ccTexto('div','et','Compra del primer mes'),ccTexto('div','n',compradas[0].toLocaleString('es-AR')+' TN'),ccTexto('div','pie',pesos(valorCompra[0],true)+' · valor sin flete; el pago sigue las partes acordadas'),ccTexto('div','pie'+(minimo!==null&&minimo<Number(d.supuestos.cobertura)?' neg':''),minimo===null?'Sin ventas previstas para medir cobertura':'Cobertura mínima: '+minimo.toLocaleString('es-AR',{maximumFractionDigits:1})+' meses · '+ccMes(d.meses[coberturas.indexOf(minimo)])));
+ tarjetas.append(tarjeta);area.append(tarjetas);
  var graf=el('section','card');graf.append(ccTexto('h2','','Caja mes a mes'));
  var leyenda=el('div','cc-leyenda');
  [['#1B1A17','━●','Saldo acumulado a fin de cada mes (lo que queda después de todo)'],['#B4321F','●','Meses en que ni usando el descubierto alcanza'],['#2F6B45','▥','Barras verdes / rojas: lo que gana o pierde la caja en cada mes'],['#B97A2A','┄┄','Límite del descubierto acordado con los bancos: por debajo falta plata']].forEach(function(x){var item=el('span'),muestra=ccTexto('span','cc-muestra',x[1]);muestra.style.color=x[0];item.append(muestra,document.createTextNode(x[2]));if(x[1]==='▥'){var roja=ccTexto('span','cc-muestra','▥');roja.style.color='#B4321F';item.prepend(roja);}leyenda.append(item);});graf.append(leyenda);
@@ -384,6 +399,9 @@ function ccResultados(){
  var gastos=fila('Gastos operativos sin secadero'),compra=fila('Compra de canchada (lo que se paga en el mes, según las partes)'),flete=fila('Flete de la canchada');
  [['Cobranza',fila('Cobranza de las ventas (según los días de cobro)')],['Gastos operativos sin secadero',gastos],['Gastos de envase',fila('Gastos de envase')],['Comisiones',fila('Comisiones')],['Canchada + flete',compra.map(function(v,i){return v+flete[i];})],['Bancos y deuda',fila('Total bancos y deuda')],['Saldo del mes',m],['Saldo acumulado',a]].forEach(function(r,i){var tr=el('tr',i===7?'cc-total':'');tr.append(ccTexto('th','',r[0]));r[1].forEach(function(v){tr.append(ccTexto('td','',Math.round(v/1e6).toLocaleString('es-AR')));});tabla.append(tr);});
  env.append(tabla);det.append(env);
+ det.append(ccTexto('h2','','Canchada (TN)'),ccTexto('p','sub','El stock listo descuenta las ventas y suma las compras cuando terminan de estacionarse. Sin ventas previstas, la cobertura se muestra como “sin ventas”.'));
+ var envStock=el('div','envuelve'),tablaStock=el('table');tablaStock.append(head.cloneNode(true));
+ [['Vendidas',fila('TN vendidas')],['Compradas',compradas],['Llegan',fila('Llegan listas para moler (TN)')],['Stock listo',fila('Stock listo a fin de mes (TN)')],['Meses que cubre',coberturas]].forEach(function(r){var tr=el('tr');tr.append(ccTexto('th','',r[0]));r[1].forEach(function(v){tr.append(ccTexto('td',typeof v==='number'&&v<0?'neg':'',typeof v==='number'?v.toLocaleString('es-AR',{maximumFractionDigits:1}):'sin ventas'));});tablaStock.append(tr);});envStock.append(tablaStock);det.append(envStock);
  var base=el('details');base.open=!!CC.baseAbierto;base.ontoggle=function(){CC.baseAbierto=base.open;};base.append(ccTexto('summary','mini','ver cómo se arma la base'),el('div','cc-base'));det.append(base);
  (d.notas||[]).forEach(function(n){det.append(ccTexto('p','sub',n));});area.append(det);ccBaseControles();
  }catch(e){area.append(ccTexto('p','cc-aviso',e.message));}

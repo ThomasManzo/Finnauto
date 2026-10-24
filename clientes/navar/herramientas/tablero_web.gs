@@ -178,7 +178,10 @@ var PANEL_CC_SUPUESTOS = [
   ["pCanch",   "Canchada: precio ($/kg, sin IVA)",                 "#,##0", "precio promedio de compra"],
   ["flete",    "Canchada: flete ($/kg)",                           "#,##0", "se paga el mes de la compra"],
   ["partes",   "Canchada: en cuántas partes se paga",              "0",     "una por mes, la primera al comprar (4 = 0/30/60/90 días)"],
-  ["stock",    "Stock de canchada propia al empezar (TN)",         "#,##0", "para seguir el stock total mes a mes"],
+  ["stock",    "Stock de canchada lista para moler hoy (TN)",         "#,##0", "stock ya listo; no se suponen compras anteriores pendientes"],
+  ["cobertura", "Meses de cobertura", "0", "meses de ventas que debe cubrir el stock listo (1 a 12)"],
+  ["lista", "Meses hasta que la canchada comprada está lista", "0", "0 = estacionada, lista para moler; máximo 8 meses"],
+  ["compras", "Compras", "@", "automáticas o a mano"],
   ["secadero", "Gasto por mes del secadero y la hoja verde que deja de estar ($)", "#,##0", "se resta del promedio de gastos: el secadero no corre"],
   ["estampillas1", "Estampillas por paquete de 1 kg ($ sin IVA)", "#,##0.00", "gasto por paquete; se convierte a kilos según la mezcla"],
   ["estampillasMedio", "Estampillas por paquete de ½ kg ($ sin IVA)", "#,##0.00", "gasto por paquete; se convierte a kilos según la mezcla"],
@@ -236,7 +239,7 @@ function leerEscenarioCanchada() {
 function _ccValidar_(c, restaurar) {
   if (!c || typeof c !== "object" || Array.isArray(c)) throw new Error("Cambios inválidos");
   var limites = {precio:[0,100000],suba:[0,.5],mesesSuba:[0,14],dias:[0,365],
-    pCanch:[0,100000],flete:[0,10000],partes:[1,6],stock:[0,1000000],secadero:[0,100000000000]};
+    pCanch:[0,100000],flete:[0,10000],partes:[1,6],stock:[0,1000000],secadero:[0,100000000000],cobertura:[1,12],lista:[0,8]};
   var nuevos = ["estampillas1", "estampillasMedio", "paquetes1", "paquetesMedio", "pallets1", "palletsMedio", "stretch1", "stretchMedio", "termo1", "termoMedio", "comision", "estampillasBase", "kilosBase"];
   nuevos.forEach(function(k){limites[k]=[0,Number.MAX_VALUE];});limites.mezcla=[0,1];
   function numero(v, lim, entero) {
@@ -249,7 +252,10 @@ function _ccValidar_(c, restaurar) {
     if (!c.supuestos || typeof c.supuestos!=="object" || Array.isArray(c.supuestos)) throw new Error("Supuestos inválidos");
     Object.keys(c.supuestos).forEach(function(k) {
       var v=c.supuestos[k];
-      if(k === "pagoEnvases") {
+      if(k === "compras") {
+        if(restaurar && v === "") return;
+        if(v!=="automáticas" && v!=="a mano") throw new Error("Compras inválidas: automáticas o a mano");
+      } else if(k === "pagoEnvases") {
         if(restaurar && v === "") return;
         if(v!=="contado" && v!=="30 días") throw new Error("Pago de envases inválido: contado o 30 días");
       } else if(k === "inicio") {
@@ -257,7 +263,7 @@ function _ccValidar_(c, restaurar) {
         if(typeof v !== "string" || !/^\d{4}-\d{2}-01$/.test(v) || !isFinite(new Date(v).getTime()) || new Date(v).toISOString().slice(0,10)!==v) throw new Error("Primer mes inválido");
       } else {
         if(!Object.prototype.hasOwnProperty.call(limites,k)) throw new Error("Supuesto desconocido");
-        numero(v,limites[k],k==="partes" || k==="mesesSuba");
+        numero(v,limites[k],k==="partes" || k==="mesesSuba" || k==="cobertura" || k==="lista");
       }
     });
   }
@@ -270,7 +276,7 @@ function _ccFoto_(h) {
   var m=_ccMapa_(h), sup={};
   PANEL_CC_SUPUESTOS.forEach(function(s){sup[s[0]]=_ccFecha_(m.valores[_ccFila_(m,s[1])-1][1]);});
   return {supuestos:sup,tnVendidas:m.valores[_ccFila_(m,"TN vendidas")-1].slice(1,15),
-    tnCompradas:m.valores[_ccFila_(m,"TN compradas")-1].slice(1,15)};
+    tnCompradas:m.valores[_ccFila_(m,"TN compradas (a mano)")-1].slice(1,15)};
 }
 function _ccEscribir_(h,c) {
   var m=_ccMapa_(h), escrituras=[];
@@ -280,7 +286,7 @@ function _ccEscribir_(h,c) {
     if(s[0]==="inicio" && v!=="") v=Utilities.parseDate(v,"America/Argentina/Buenos_Aires","yyyy-MM-dd");
     escrituras.push([_ccFila_(m,s[1]),[v]]);
   }});
-  [["tnVendidas","TN vendidas"],["tnCompradas","TN compradas"]].forEach(function(p){if(c[p[0]]!==undefined) escrituras.push([_ccFila_(m,p[1]),c[p[0]]]);});
+  [["tnVendidas","TN vendidas"],["tnCompradas","TN compradas (a mano)"]].forEach(function(p){if(c[p[0]]!==undefined) escrituras.push([_ccFila_(m,p[1]),c[p[0]]]);});
   escrituras.forEach(function(p){h.getRange(p[0],2,1,p[1].length).setValues([p[1]]);});
 }
 function _ccConLock_(accion,c) {
