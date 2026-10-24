@@ -1,5 +1,5 @@
 # Tarea 68 — Panel de canchada: tarjetas de "precio de equilibrio" y "TN de equilibrio"
-Estado: lista para revisión
+Estado: aprobada; instalada en la planilla (24/10/2026; falta actualizar la notebook para el panel)
 Rama: tarea/68-equilibrio
 
 ## Objetivo
@@ -114,4 +114,10 @@ pague sola** (sin contar la deuda):
   (`Operation not permitted`). Quedaron sin commit para que lo haga Claude.
 
 ## Revisión
-(lo completa Claude)
+- Primera tarea lanzada por Claude con el CLI de Codex (`codex exec`, sandbox workspace-write). Codex
+  no pudo commitear (index.lock del worktree fuera del sandbox): lo commiteó Claude.
+- Revisada y aprobada. Las 307 pruebas pasan, incluidas las 2 del bot que en el sandbox no corrían.
+  Mergeada (bb494fe).
+- Instalada en crear_cash (solo el bloque) y solapa rearmada.
+- Verificado en la planilla: precio de equilibrio = costo variable + gastos operativos ÷ kg vendidos;
+  TN de equilibrio = gastos operativos ÷ margen ÷ 1000. Cierra con la cuenta aparte.
