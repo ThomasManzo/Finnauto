@@ -1075,7 +1075,10 @@ var CC_SUPUESTOS = [
   ["pCanch",   "Canchada: precio ($/kg, sin IVA)",                 "#,##0", "precio promedio de compra"],
   ["flete",    "Canchada: flete ($/kg)",                           "#,##0", "se paga el mes de la compra"],
   ["partes",   "Canchada: en cuántas partes se paga",              "0",     "una por mes, la primera al comprar (4 = 0/30/60/90 días)"],
-  ["stock",    "Stock de canchada propia al empezar (TN)",         "#,##0", "para seguir el stock total mes a mes"],
+  ["stock",    "Stock de canchada lista para moler hoy (TN)",         "#,##0", "stock ya listo; no se suponen compras anteriores pendientes"],
+  ["cobertura", "Meses de cobertura", "0", "meses de ventas que debe cubrir el stock listo (1 a 12)"],
+  ["lista", "Meses hasta que la canchada comprada está lista", "0", "0 = estacionada, lista para moler; máximo 8 meses"],
+  ["compras", "Compras", "@", "automáticas o a mano"],
   ["secadero", "Gasto por mes del secadero y la hoja verde que deja de estar ($)", "#,##0", "se resta del promedio de gastos: el secadero no corre"],
   ["estampillas1", "Estampillas por paquete de 1 kg ($ sin IVA)", "#,##0.00", "gasto por paquete; se convierte a kilos según la mezcla"],
   ["estampillasMedio", "Estampillas por paquete de ½ kg ($ sin IVA)", "#,##0.00", "gasto por paquete; se convierte a kilos según la mezcla"],
@@ -1123,6 +1126,11 @@ function armarCompraCanchada() {
     h.getRange(fila, 3).setValue(s[3]).setFontStyle("italic").setFontColor("#5f6368");
     S[s[0]] = "$B$" + fila;
     if (s[0] === "pagoEnvases") h.getRange(fila, 2).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(["contado", "30 días"], true).setAllowInvalid(false).build());
+    if (s[0] === "compras") h.getRange(fila, 2).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(["automáticas", "a mano"], true).setAllowInvalid(false).build());
+    if (s[0] === "cobertura" || s[0] === "lista") {
+      var min = s[0] === "cobertura" ? 1 : 0, max = s[0] === "cobertura" ? 12 : 8, celda = "B" + fila;
+      h.getRange(fila, 2).setDataValidation(SpreadsheetApp.newDataValidation().requireFormulaSatisfied("=AND(ISNUMBER(" + celda + ")," + celda + "=INT(" + celda + ")," + celda + ">=" + min + "," + celda + "<=" + max + ")").setAllowInvalid(false).build());
+    }
     fila++;
   });
   // Los que salen solos de otras solapas (gris: no se tocan acá)
@@ -1265,12 +1273,44 @@ function armarCompraCanchada() {
 
   // ---- canchada: compra y stock
   _seccion_(h, fila, "Canchada (toneladas)", "#e8f0fe", "#174ea6", ancho);
-  var fStock = fTnC + 1;
-  h.getRange(fTnC, 1).setValue("TN compradas"); h.getRange(fTnC, 2, 1, nCols).setBackground("#fff8e1").setNumberFormat("#,##0");
-  h.getRange(fStock, 1).setValue("Stock de canchada a fin de mes (TN): propia + comprada − vendida");
-  porMes(fStock, function (c) { return "=" + (c === 0 ? S.stock : L(c - 1) + fStock) + "+" + L(c) + fTnC + "-" + L(c) + fTnV; });
-  h.getRange(fStock, 2, 1, nCols).setNumberFormat("#,##0");
-  fila = fStock + 2;
+  var fManual = fTnC + 1, fAuto = fTnC + 2, fLlegan = fTnC + 3, fStock = fTnC + 4,
+      fObjetivo = fTnC + 5, fCubre = fTnC + 6, fFalta = fTnC + 7, fValorCompra = fTnC + 8;
+  // Fuera de los 14 meses se repiten las ventas del último. Un objetivo suma hasta 12 meses.
+  var venta = function(m) { return "INDEX(" + rango(fTnV) + ",MIN(" + nCols + ",(" + m + ")+1))"; };
+  var objetivo = function(m) {
+    var partes = [];
+    for (var i = 1; i <= 12; i++) partes.push("IF(" + S.cobertura + ">=" + i + "," + venta("(" + m + ")+" + i) + ",0)");
+    return "SUM(" + partes.join(",") + ")";
+  };
+  h.getRange(fTnC, 1).setValue("TN compradas (lo que se usa)").setFontWeight("bold");
+  porMes(fTnC, function(c) { return '=IF(' + S.compras + '="a mano",' + L(c) + fManual + ',' + L(c) + fAuto + ')'; });
+  h.getRange(fManual, 1).setValue("TN compradas (a mano)");
+  h.getRange(fManual, 2, 1, nCols).setBackground("#fff8e1");
+  h.getRange(fAuto, 1).setValue("TN compradas (automáticas)");
+  porMes(fAuto, function(c) {
+    var llegada = c + "+" + S.lista;
+    // Al llegar esta compra, todas las compras anteriores ya llegaron. Por eso el stock previo
+    // se puede obtener del inicial + compras anteriores - ventas hasta entonces, sin mirar
+    // ningún stock futuro ni esta compra. También funciona si la llegada cae fuera del horizonte.
+    var anteriores = c === 0 ? "0" : "SUM($B$" + fTnC + ":" + L(c-1) + fTnC + ")";
+    var vendidasAntes = "IF((" + llegada + ")=0,0,SUM($B$" + fTnV + ":INDEX(" + rango(fTnV) + ",MAX(1,MIN(" + nCols + "," + llegada + "))))+MAX(0,(" + llegada + ")-" + nCols + ")*$" + L(nCols-1) + "$" + fTnV + ")";
+    return "=MAX(0," + objetivo(llegada) + "+" + venta(llegada) + "-(" + S.stock + "+" + anteriores + "-" + vendidasAntes + "))";
+  });
+  h.getRange(fLlegan, 1).setValue("Llegan listas para moler (TN)");
+  porMes(fLlegan, function(c) { return "=IF(" + c + "-" + S.lista + "<0,0,INDEX(" + rango(fTnC) + ",MAX(1," + (c+1) + "-" + S.lista + ")))"; });
+  h.getRange(fStock, 1).setValue("Stock listo a fin de mes (TN)");
+  porMes(fStock, function(c) { return "=" + (c === 0 ? S.stock : L(c-1) + fStock) + "+" + L(c) + fLlegan + "-" + L(c) + fTnV; });
+  h.getRange(fObjetivo, 1).setValue("Objetivo de stock listo (TN)");
+  porMes(fObjetivo, function(c) { return "=" + objetivo(String(c)); });
+  h.getRange(fCubre, 1).setValue("Meses que cubre");
+  // Sin ventas previstas no hay un número finito de meses que mostrar: queda vacío.
+  porMes(fCubre, function(c) { return '=IF(' + L(c) + fObjetivo + '=0,"",' + L(c) + fStock + '/(' + L(c) + fObjetivo + '/' + S.cobertura + '))'; });
+  h.getRange(fFalta, 1).setValue("Falta canchada para moler (TN)");
+  porMes(fFalta, function(c) { return "=MAX(0,-" + L(c) + fStock + ")"; });
+  h.setConditionalFormatRules([SpreadsheetApp.newConditionalFormatRule().whenNumberGreaterThan(0).setBackground("#fce8e6").setFontColor("#a50e0e").setRanges([h.getRange(fFalta,2,1,nCols)]).build()]);
+  h.getRange(fValorCompra, 1).setValue("Compra de canchada del mes (valor sin flete)");
+  porMes(fValorCompra, function(c) { return "=" + L(c) + fTnC + "*1000*" + S.pCanch; });
+  fila = fValorCompra + 2;
   h.getRange(fila, 1, 4, 1).setValues([
     ["Qué no está: el IVA (todo va sin IVA, como el esquema de compra), el atrasado (se decide en Plan) y la merma de molienda (las TN compradas y vendidas se cargan tal cual)."],
     ["La base de gastos es la plata que salió en los 3 meses cerrados: se restan bancos, estampillas y comisiones de esa base para no contarlos dos veces. Envases y comisiones se calculan por los kilos vendidos; bancos se muestra junto con la deuda."],
@@ -1281,22 +1321,23 @@ function armarCompraCanchada() {
   // ---- qué falta cargar (los supuestos vacíos dan cero y eso no se tiene que leer como dato)
   var faltan = CC_SUPUESTOS.map(function (s, i) {
     return "IF(ISBLANK($B$" + (4 + i) + "),\"" + s[1].replace(/"/g, "") + "\",\"\")";
-  }).concat(["IF(COUNT(" + rango(fTnV) + ")=0,\"TN vendidas\",\"\")", "IF(COUNT(" + rango(fTnC) + ")=0,\"TN compradas\",\"\")"]);
+  }).concat(["IF(COUNT(" + rango(fTnV) + ")=0,\"TN vendidas\",\"\")", 'IF(AND(' + S.compras + '="a mano",COUNT(' + rango(fManual) + ')=0),"TN compradas (a mano)","")' ]);
   h.getRange(filaFaltan, 1).setValue("Faltan cargar").setFontWeight("bold").setFontColor("#a50e0e");
   h.getRange(filaFaltan, 2).setFormula("=IF(TEXTJOIN(\" · \",TRUE," + faltan.join(",") + ")=\"\",\"nada: el escenario está completo\",TEXTJOIN(\" · \",TRUE," + faltan.join(",") + "))").setFontColor("#a50e0e");
 
   // ---- formato
-  h.getRange(filaMes + 2, 2, fStock - filaMes - 1, nCols).setNumberFormat(FORMATO_NUM);
+  h.getRange(filaMes + 2, 2, fValorCompra - filaMes - 1, nCols).setNumberFormat(FORMATO_NUM);
   h.getRange(fTnV, 2, 1, nCols).setNumberFormat("#,##0");
   h.getRange(fPrecio, 2, 1, nCols).setNumberFormat("#,##0");
-  h.getRange(fTnC, 2, 2, nCols).setNumberFormat("#,##0");
+  h.getRange(fTnC, 2, 8, nCols).setNumberFormat("#,##0.0");
+  h.getRange(fCubre, 2, 1, nCols).setNumberFormat("0.0");
   h.setColumnWidth(1, 430);
   for (var w = 0; w < nCols; w++) h.setColumnWidth(2 + w, 100);
   h.hideRows(filaN);
   h.setFrozenRows(filaMes);
   h.setFrozenColumns(1);
 
-  _ccReponerEditable_(h, guardado, { tnVendidas: fTnV, tnCompradas: fTnC });
+  _ccReponerEditable_(h, guardado, { tnVendidas: fTnV, tnCompradas: fManual });
   _separadorLocal_(ss, h);
   try { ss.toast("Solapa " + CC_HOJA + " armada", "finauto", 8); } catch (e) {}
 }
@@ -1310,8 +1351,9 @@ function _ccLeerEditable_(h) {
   datos.forEach(function (r) {
     var texto = String(r[0] || "");
     CC_SUPUESTOS.forEach(function (s) { if (texto === s[1] && r[1] !== "") out.sup[s[0]] = r[1]; });
+    if (texto === "Stock de canchada propia al empezar (TN)" && r[1] !== "" && !Object.prototype.hasOwnProperty.call(out.sup,"stock")) out.sup.stock = r[1];
     if (texto === "TN vendidas") out.filas.tnVendidas = r.slice(1, 1 + CC_MESES);
-    if (texto === "TN compradas") out.filas.tnCompradas = r.slice(1, 1 + CC_MESES);
+    if (texto === "TN compradas (a mano)" || (texto === "TN compradas" && !out.filas.tnCompradas)) out.filas.tnCompradas = r.slice(1, 1 + CC_MESES);
   });
   return out;
 }

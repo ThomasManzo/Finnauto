@@ -61,3 +61,22 @@ def test_envases_comisiones_y_base_en_el_panel():
     assert "fila('Total bancos y deuda')" in html
     assert "fila('Total deuda del mes')" not in html
     assert '<script src=' not in html
+
+
+
+def test_stock_cobertura_y_compras_en_panel():
+    html = render(paquete(True))
+    assert "['stock','Stock hoy (TN)',0,3000" in html
+    assert "['cobertura','Meses de cobertura',1,12" in html
+    assert "['lista','Meses hasta estar lista',0,8" in html
+    assert "['automáticas','a mano']" in html
+    assert "barra.disabled=numero.disabled=automatica" in html
+    assert "x.disabled=automatica" in html
+    assert "TN compradas (lo que se usa)" in html
+    assert "TN compradas (a mano)" in html
+    assert 'Compra del primer mes' in html
+    assert 'Cobertura mínima:' in html
+    assert 'Canchada (TN)' in html
+    assert 'Llegan listas para moler (TN)' in html
+    assert 'Sin ventas previstas para medir cobertura' in html
+    assert '<script src=' not in html
