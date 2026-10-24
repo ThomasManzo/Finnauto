@@ -42,3 +42,22 @@ def test_entrada_numerica_y_leyenda():
     assert "!/^nada/i.test" in html
     assert "cc-leyenda" in html
     assert "por debajo falta plata" in html
+
+
+def test_envases_comisiones_y_base_en_el_panel():
+    html = render(paquete(True))
+    assert 'Gastos de envase' in html
+    assert 'Comisión de los vendedores ($/kg)' in html
+    assert "['termo','Termocontraíble']" in html
+    assert "ccCampo('mezcla','Mezcla: % de kilos en paquetes de 1 kg',100,100)" in html
+    assert "['contado','30 días']" in html
+    assert "ccCambio('pagoEnvases',p)" in html
+    assert 'ver cómo se arma la base' in html
+    assert "ccCampo('estampillasBase'" in html
+    assert "ccCampo('kilosBase'" in html
+    assert "fila('Gastos operativos sin secadero')" in html
+    assert "fila('Gastos de envase')" in html
+    assert "fila('Comisiones')" in html
+    assert "fila('Total bancos y deuda')" in html
+    assert "fila('Total deuda del mes')" not in html
+    assert '<script src=' not in html

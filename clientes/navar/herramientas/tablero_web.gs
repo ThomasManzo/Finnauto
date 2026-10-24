@@ -180,6 +180,21 @@ var PANEL_CC_SUPUESTOS = [
   ["partes",   "Canchada: en cuántas partes se paga",              "0",     "una por mes, la primera al comprar (4 = 0/30/60/90 días)"],
   ["stock",    "Stock de canchada propia al empezar (TN)",         "#,##0", "para seguir el stock total mes a mes"],
   ["secadero", "Gasto por mes del secadero y la hoja verde que deja de estar ($)", "#,##0", "se resta del promedio de gastos: el secadero no corre"],
+  ["estampillas1", "Estampillas por paquete de 1 kg ($ sin IVA)", "#,##0.00", "gasto por paquete; se convierte a kilos según la mezcla"],
+  ["estampillasMedio", "Estampillas por paquete de ½ kg ($ sin IVA)", "#,##0.00", "gasto por paquete; se convierte a kilos según la mezcla"],
+  ["paquetes1", "Paquetes por paquete de 1 kg ($ sin IVA)", "#,##0.00", "gasto por paquete; se convierte a kilos según la mezcla"],
+  ["paquetesMedio", "Paquetes por paquete de ½ kg ($ sin IVA)", "#,##0.00", "gasto por paquete; se convierte a kilos según la mezcla"],
+  ["pallets1", "Pallets por paquete de 1 kg ($ sin IVA)", "#,##0.00", "gasto por paquete; se convierte a kilos según la mezcla"],
+  ["palletsMedio", "Pallets por paquete de ½ kg ($ sin IVA)", "#,##0.00", "gasto por paquete; se convierte a kilos según la mezcla"],
+  ["stretch1", "Stretch por paquete de 1 kg ($ sin IVA)", "#,##0.00", "gasto por paquete; se convierte a kilos según la mezcla"],
+  ["stretchMedio", "Stretch por paquete de ½ kg ($ sin IVA)", "#,##0.00", "gasto por paquete; se convierte a kilos según la mezcla"],
+  ["termo1", "Termocontraíble por paquete de 1 kg ($ sin IVA)", "#,##0.00", "gasto por paquete; se convierte a kilos según la mezcla"],
+  ["termoMedio", "Termocontraíble por paquete de ½ kg ($ sin IVA)", "#,##0.00", "gasto por paquete; se convierte a kilos según la mezcla"],
+  ["mezcla", "Mezcla de venta: % de kilos en paquetes de 1 kg", "0%", "el resto se vende en paquetes de ½ kg"],
+  ["pagoEnvases", "Pago de los envases", "@", "contado o 30 días"],
+  ["comision", "Comisión de los vendedores ($ por kg vendido)", "#,##0.00", "se paga en el mes de la venta"],
+  ["estampillasBase", "Estampillas pagadas por mes en la base ($)", "#,##0", "se restan de la base para no contarlas dos veces"],
+  ["kilosBase", "Kilos vendidos por mes en la base", "#,##0", "la base resta estos kilos por la comisión por kilo"],
   ["inicio",   "Primer mes del plan",                              "mmm yyyy", "primer día del mes"],
 ];
 function _ccPermiso_() {
@@ -222,6 +237,8 @@ function _ccValidar_(c, restaurar) {
   if (!c || typeof c !== "object" || Array.isArray(c)) throw new Error("Cambios inválidos");
   var limites = {precio:[0,100000],suba:[0,.5],mesesSuba:[0,14],dias:[0,365],
     pCanch:[0,100000],flete:[0,10000],partes:[1,6],stock:[0,1000000],secadero:[0,100000000000]};
+  var nuevos = ["estampillas1", "estampillasMedio", "paquetes1", "paquetesMedio", "pallets1", "palletsMedio", "stretch1", "stretchMedio", "termo1", "termoMedio", "comision", "estampillasBase", "kilosBase"];
+  nuevos.forEach(function(k){limites[k]=[0,Number.MAX_VALUE];});limites.mezcla=[0,1];
   function numero(v, lim, entero) {
     if (restaurar && v === "") return;
     if (typeof v !== "number" || !isFinite(v) || v < lim[0] || v > lim[1] || (entero && Math.floor(v)!==v))
@@ -232,7 +249,10 @@ function _ccValidar_(c, restaurar) {
     if (!c.supuestos || typeof c.supuestos!=="object" || Array.isArray(c.supuestos)) throw new Error("Supuestos inválidos");
     Object.keys(c.supuestos).forEach(function(k) {
       var v=c.supuestos[k];
-      if(k === "inicio") {
+      if(k === "pagoEnvases") {
+        if(restaurar && v === "") return;
+        if(v!=="contado" && v!=="30 días") throw new Error("Pago de envases inválido: contado o 30 días");
+      } else if(k === "inicio") {
         if(restaurar && v === "") return;
         if(typeof v !== "string" || !/^\d{4}-\d{2}-01$/.test(v) || !isFinite(new Date(v).getTime()) || new Date(v).toISOString().slice(0,10)!==v) throw new Error("Primer mes inválido");
       } else {
