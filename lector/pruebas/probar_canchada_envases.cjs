@@ -180,7 +180,9 @@ for(let n=1;n<=5;n++){
 }
 cells.delete(at(179,1));cells.delete(at(179,2));
 const ctrl=formulas.get(at(row('Plazos de canchada')+1,7));assert(ctrl.includes('No suma 100 %'));
-const evaluarControl=suma=>Function('IF','ABS','SUM','return '+ctrl.slice(1).replace(/A\d+/g,'"contado"').replace(/B\d+:F\d+/g,String(suma)).replace(/(?<![<>=!])=(?!=)/g,'==='))((c,a,b)=>c?a:b,Math.abs,x=>x);
+// En la planilla en español no puede haber decimales con punto ni "0,-" en una fórmula.
+assert(!/\d\.\d/.test(ctrl) && !/0,-/.test(formulas.get(at(row('Falta canchada comprada para la mezcla (TN)'),2))));
+const evaluarControl=suma=>Function('IF','ABS','SUM','ROUND','return '+ctrl.slice(1).replace(/A\d+/g,'"contado"').replace(/B\d+:F\d+/g,String(suma)).replace(/(?<![<>=!])=(?!=)/g,'==='))((c,a,b)=>c?a:b,Math.abs,x=>x,(x,d)=>Math.round(x*10**d)/10**d);
 assert.equal(evaluarControl(.9),'No suma 100 %');assert.equal(evaluarControl(1),'OK');
 for(let c=2;c<=15;c++)assert.equal(formula('Resultado de la operación acumulado (sin deuda)',c),'=SUM($B$'+row('Resultado de la operación (antes de la deuda)')+':'+String.fromCharCode(64+c)+row('Resultado de la operación (antes de la deuda)')+')');
 console.log('Tramos: reparto, pagos, migración 1–5, control del 100 % y acumulado sin bancos OK');

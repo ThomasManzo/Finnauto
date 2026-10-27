@@ -1153,42 +1153,6 @@ function armarCompraCanchada() {
     }
     fila++;
   });
-  // Diez lugares para plazos: el desplegable lee el rango, así incorpora nombres nuevos.
-  var fPlazos = fila + 1;
-  h.getRange(fila++, 1, 1, 7).setValues([["Plazos de canchada", "Mes 0", "Mes 1", "Mes 2", "Mes 3", "Mes 4", "Control"]]);
-  var plazos = guardado.filas.plazos || [
-    ["contado",1,0,0,0,0], ["30 días",0,1,0,0,0], ["60 días",0,0,1,0,0],
-    ["90 días",0,0,0,1,0], ["0/30/90",.3333,.3333,0,.3334,0],
-    ["0/30/60/90",.25,.25,.25,.25,0], ["30/60/90/120",0,.25,.25,.25,.25],
-    ["",0,0,0,0,0], ["",0,0,0,0,0], ["",0,0,0,0,0]
-  ];
-  // Si el plan viejo usaba dos, tres o cinco cuotas, agregamos su plazo en un lugar libre.
-  var plazoAnterior=guardado.sup.plazoResto;
-  if(plazoAnterior && !plazos.some(function(r){return r[0]===plazoAnterior;})) {
-    var cuotas=plazoAnterior.split("/");
-    if(cuotas.length>=2 && cuotas.length<=5 && cuotas.every(function(v,i){return Number(v)===i*30;})) {
-      var libre=plazos.findIndex(function(r){return !r[0];});
-      if(libre>=0)plazos[libre]=[plazoAnterior].concat(Array.from({length:5},function(_,i){return i<cuotas.length?1/cuotas.length:0;}));
-    }
-  }
-  h.getRange(fPlazos,1,10,6).setValues(plazos).setBackground("#fff8e1");
-  h.getRange(fPlazos,1,10,1).setNumberFormat("@");
-  h.getRange(fPlazos,2,10,5).setNumberFormat("0.00%").setDataValidation(SpreadsheetApp.newDataValidation()
-    .requireNumberBetween(0,1).setAllowInvalid(false).build());
-  for (var pi=0; pi<10; pi++) {
-    var pr=fila++;
-    h.getRange(pr,7).setFormula('=IF(A'+pr+'="","",IF(ABS(SUM(B'+pr+':F'+pr+')-1)<0.000001,"OK","No suma 100 %"))');
-  }
-  ["plazo1","plazo2","plazoResto"].forEach(function(k) {
-    h.getRange(Number(S[k].replace("$B$","")),2).setDataValidation(SpreadsheetApp.newDataValidation()
-      .requireValueInRange(h.getRange(fPlazos,1,10,1),true).setAllowInvalid(false).build());
-  });
-  var sepBlend=_separadorDeEstaPlanilla_(h);
-  h.getRange(Number(S.blend.replace("$B$","")),2).setDataValidation(SpreadsheetApp.newDataValidation()
-    .requireFormulaSatisfied("=AND(ISNUMBER("+S.blend+")"+sepBlend+S.blend+">=0"+sepBlend+S.blend+"<=1)").setAllowInvalid(false).build());
-  ["tramo1","tramo2"].forEach(function(k){h.getRange(Number(S[k].replace("$B$","")),2)
-    .setDataValidation(SpreadsheetApp.newDataValidation().requireNumberBetween(0,5000).setAllowInvalid(false).build());});
-  fila++;
   // Los que salen solos de otras solapas (gris: no se tocan acá)
   var finAnterior = "EOMONTH(" + S.inicio + ",-2)+1";            // el mes anterior al primero
   // El total de egresos no tiene "Prom. base" (ese promedio está solo en los renglones que se
@@ -1252,6 +1216,44 @@ function armarCompraCanchada() {
   var fGastos = fila++, fBase = fila++, fRestaBancos = fila++, fRestaEstampillas = fila++, fRestaComision = fila++, fSecadero = fila++, fEnvases = fila++, fComisiones = fila++, fCanch = fila++, fFlete = fila++, fTotEgr = fila++;
   // Se reserva lugar para el resultado, bancos y deuda, saldos y el título de canchada.
   var fTnC = fTotEgr + 24; // Incluye las seis filas del bloque de equilibrio.
+  var fPlazos = fTnC + 23; // encabezado en fTnC+22, después de las 4 notas (fTnC+17 a +20)
+  // Tabla de plazos: diez lugares; el desplegable lee el rango, así incorpora nombres nuevos.
+  // Va abajo de todo (después de las notas): arriba del renglón de meses quedaría dentro de las
+  // filas fijas y en una pantalla chica la solapa no se podría desplazar.
+  // En las fórmulas, nada de decimales con punto ni "0,-": la planilla está en español.
+  h.getRange(fPlazos - 1, 1, 1, 7).setValues([["Plazos de canchada", "Mes 0", "Mes 1", "Mes 2", "Mes 3", "Mes 4", "Control"]]);
+  var plazos = guardado.filas.plazos || [
+    ["contado",1,0,0,0,0], ["30 días",0,1,0,0,0], ["60 días",0,0,1,0,0],
+    ["90 días",0,0,0,1,0], ["0/30/90",.3333,.3333,0,.3334,0],
+    ["0/30/60/90",.25,.25,.25,.25,0], ["30/60/90/120",0,.25,.25,.25,.25],
+    ["",0,0,0,0,0], ["",0,0,0,0,0], ["",0,0,0,0,0]
+  ];
+  // Si el plan viejo usaba dos, tres o cinco cuotas, agregamos su plazo en un lugar libre.
+  var plazoAnterior=guardado.sup.plazoResto;
+  if(plazoAnterior && !plazos.some(function(r){return r[0]===plazoAnterior;})) {
+    var cuotas=plazoAnterior.split("/");
+    if(cuotas.length>=2 && cuotas.length<=5 && cuotas.every(function(v,i){return Number(v)===i*30;})) {
+      var libre=plazos.findIndex(function(r){return !r[0];});
+      if(libre>=0)plazos[libre]=[plazoAnterior].concat(Array.from({length:5},function(_,i){return i<cuotas.length?1/cuotas.length:0;}));
+    }
+  }
+  h.getRange(fPlazos,1,10,6).setValues(plazos).setBackground("#fff8e1");
+  h.getRange(fPlazos,1,10,1).setNumberFormat("@");
+  h.getRange(fPlazos,2,10,5).setNumberFormat("0.00%").setDataValidation(SpreadsheetApp.newDataValidation()
+    .requireNumberBetween(0,1).setAllowInvalid(false).build());
+  for (var pi=0; pi<10; pi++) {
+    var pr=fPlazos+pi;
+    h.getRange(pr,7).setFormula('=IF(A'+pr+'="","",IF(ROUND(SUM(B'+pr+':F'+pr+'),6)=1,"OK","No suma 100 %"))');
+  }
+  ["plazo1","plazo2","plazoResto"].forEach(function(k) {
+    h.getRange(Number(S[k].replace("$B$","")),2).setDataValidation(SpreadsheetApp.newDataValidation()
+      .requireValueInRange(h.getRange(fPlazos,1,10,1),true).setAllowInvalid(false).build());
+  });
+  var sepBlend=_separadorDeEstaPlanilla_(h);
+  h.getRange(Number(S.blend.replace("$B$","")),2).setDataValidation(SpreadsheetApp.newDataValidation()
+    .requireFormulaSatisfied("=AND(ISNUMBER("+S.blend+")"+sepBlend+S.blend+">=0"+sepBlend+S.blend+"<=1)").setAllowInvalid(false).build());
+  ["tramo1","tramo2"].forEach(function(k){h.getRange(Number(S[k].replace("$B$","")),2)
+    .setDataValidation(SpreadsheetApp.newDataValidation().requireNumberBetween(0,5000).setAllowInvalid(false).build());});
   var inflar = function(c) { return "(1+" + S.inflacion + ")^" + L(c) + "$" + filaN; };
   h.getRange(fGastos, 1).setValue("Gastos operativos sin secadero").setFontWeight("bold");
   porMes(fGastos, function(c) { return "=SUM(" + L(c) + fBase + ":" + L(c) + fSecadero + ")"; });
@@ -1388,7 +1390,8 @@ function armarCompraCanchada() {
   // Sin ventas previstas no hay un número finito de meses que mostrar: queda vacío.
   porMes(fCubre, function(c) { return '=IF(' + L(c) + fObjetivo + '=0,"",' + L(c) + fStock + '/(' + L(c) + fObjetivo + '/' + S.cobertura + '))'; });
   h.getRange(fFalta, 1).setValue("Falta canchada comprada para la mezcla (TN)");
-  porMes(fFalta, function(c) { return "=MAX(0,-" + L(c) + fStockComprado + ")"; });
+  // "MAX(0,-X)" en una planilla en español se lee como MAX(0-X): por eso va al revés.
+  porMes(fFalta, function(c) { return "=MAX(-" + L(c) + fStockComprado + ",0)"; });
   h.setConditionalFormatRules([SpreadsheetApp.newConditionalFormatRule().whenNumberGreaterThan(0).setBackground("#fce8e6").setFontColor("#a50e0e").setRanges([h.getRange(fFalta,2,1,nCols)]).build()]);
   h.getRange(fValorCompra, 1).setValue("Compra de canchada del mes (valor sin flete)");
   porMes(fValorCompra, function(c) { return "=" + L(c) + fTnC + "*1000*" + S.pCanch; });
