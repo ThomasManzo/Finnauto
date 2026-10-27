@@ -1,5 +1,5 @@
 # Tarea 69 — Canchada: tramos de pago, blend con canchada comprada, escenarios guardados y la operación sin bancos
-Estado: consigna, lanzada a Codex (27/10/2026)
+Estado: lista para revisión
 Rama: tarea/69-escenarios-canchada
 
 ## Objetivo
@@ -153,7 +153,84 @@ panel "Compra de canchada" del tablero:
 4. Todas las pruebas que ya existen siguen pasando. Sin `<script src=` nuevos ni librerías.
 
 ## Qué hice
-(Codex)
+- Trabajé en este worktree, rama `tarea/69-escenarios-canchada`. Toqué únicamente los bloques
+  permitidos de `crear_cash.gs`, `tablero_web.gs`, `dashboard/app.py`, las tres pruebas de canchada
+  existentes y esta consigna. Sin dependencias nuevas, Google, archivos privados ni datos reales.
+- La solapa tiene los siete plazos iniciales y tres lugares libres, porcentajes editables, control
+  del 100 % y desplegables que incorporan los nombres nuevos. Cada compra llena primero el tramo 1,
+  después el 2 y el resto. Los pagos recorren el mes de compra y los cuatro siguientes; el flete
+  sigue al contado. Las TN de los tramos quedan agrupadas y cerradas, para abrirlas con el +.
+  La tabla de plazos también se conserva al rearmar y se guarda dentro de cada escenario.
+- Migré el stock de los dos textos anteriores y los planes de una a cinco cuotas, incluidos los
+  plazos de dos, tres y cinco cuotas que no están entre los siete iniciales. Los tramos arrancan
+  en cero y el resto usa el plazo anterior. No modifiqué `_ccRespaldo_` ni la limpieza de validaciones.
+  Las validaciones nuevas respetan el separador español y admiten blend de 0 a 100 %.
+- Separé propia usada, comprada usada y sus stocks. La cobertura incluye lo comprado que todavía
+  está estacionándose; el stock comprado listo y el faltante de mezcla se muestran aparte.
+  La compra automática toma el mayor de dos faltantes: cobertura total al cierre del mes y
+  comprada necesaria cuando ese pedido esté listo. Usa solo ventas y pedidos anteriores, sin ciclos.
+- Agregué el acumulado operativo desde cero. El panel abre en «Solo la operación», muestra sus
+  cuatro indicadores, barras y acumulado; permite pasar a bancos y deuda y recuerda la elección.
+  Conservé las tarjetas de compra/cobertura y equilibrio. Los costos, pagos, stock y resultados
+  siguen calculándose en la planilla; el panel resume y presenta esas filas.
+- Agregué guardar con nombre, listar, abrir, borrar y comparar. El servidor mantiene permisos y
+  candado, pide confirmación para reemplazar y admite hasta 20 fotos. Cada foto guarda supuestos,
+  filas manuales, plazos, fecha, resultados mensuales y valores de tarjetas. Al abrir recalcula;
+  editar el plan abierto no cambia las fotos guardadas. Cada foto usa una propiedad y se controla
+  su tamaño antes de escribirla.
+- El original viejo se convierte en «Plan original»: se aplica su entrada, se toma la foto
+  recalculada y se repone lo que estaba abierto, incluso si falla el guardado. Como antes no había
+  foto de resultados, los resultados del original migrado son los del día de la migración.
+  Los supuestos que no existían en esa foto se completan con los actuales.
+- La comparación agrega línea punteada, diferencia mensual y referencia en las tarjetas.
+  Empareja meses por fecha, no por posición; si no hay mes comparable lo dice. La tabla de
+  escenarios se ordena por acumulado operativo y avisa que las fotos no se actualizan solas.
+
+### Ejemplos a mano — todos inventados
+
+- **Tramos:** compra de 300 TN a $1.000/kg; 100 TN contado y 200 TN en 0/30/60/90.
+  Mes 1: $100 M + $50 M = **$150 M**. Mes 2: $100 M + $50 M + $50 M = **$200 M**.
+  Mes 3: **$250 M**. Desde el mes 4: $100 M + cuatro cuotas de $50 M = **$300 M**.
+  Si se compran solo 50 TN con tramo 1 de 100, las 50 van al tramo 1 y los otros quedan en cero.
+- **Blend:** stock propio 500 TN, tope 60 %, ventas 200 TN mensuales, lista en cero meses.
+  En los primeros cuatro meses se usan **120 propias + 80 compradas**; la propia cierra en
+  380, 260, 140 y 20 TN. El quinto mes usa **20 propias + 180 compradas**; desde el sexto,
+  **0 propias + 200 compradas**. Las compras automáticas no dejan negativo el stock comprado
+  con plazo cero, aunque haya mucha propia almacenada.
+- **Acumulado operativo:** resultados de +$12 M, −$5 M y +$9 M dan acumulados de
+  **$12 M, $7 M y $16 M**. El saldo inicial del banco y su descubierto no entran en esa suma.
+
+### Pruebas y revisión pendiente
+
+- Suite completa con el Python, PYTHONPATH y opciones indicados: **305 pruebas y 52 subpruebas
+  pasaron**. Fallaron las dos del bot (`test_recorrido_completo` y `test_errores_claros`), porque
+  Chromium no puede arrancar en este sandbox: `bootstrap_check_in: Permission denied`.
+  Los **13 archivos .cjs** pasaron con el Node indicado. Las pruebas específicas se repitieron
+  después de los últimos ajustes y pasan. `git diff --check` sin errores.
+- La prueba de solapa ejecuta las fórmulas emitidas y las compara con una simulación aparte:
+  blend 0/60/100 %, plazos de maduración 0/2/8, cobertura 1/4/12, ventas variables y cero,
+  compras manuales, reparto de tramos, migración 1–5, aviso del 100 %, conservación y ausencia
+  de ciclos. También controla las referencias del acumulado y las reglas con separador español.
+- El servidor se prueba con hoja y propiedades inventadas: permisos, rangos, filas movidas,
+  recalculado, migración del original sin dejar cambios en el plan abierto, fotos que no cambian,
+  reemplazo confirmado, límite de 20, borrado y restauración de la tabla de plazos.
+  El JS real del panel corre con DOM y `google.script.run` simulados: guardar, listar, abrir,
+  cancelar/confirmar reemplazo y borrado, comparación, línea punteada, diferencias, tarjetas,
+  límite y cambio de vista con memoria local. No agregué librerías ni `<script src=`.
+- **Caso que necesita decisión en la revisión:** el sistema anterior aceptaba seis cuotas, pero
+  la tabla pedida solo permite mes 0 a mes 4 (cinco vencimientos). No se pueden conservar seis
+  cuotas iguales dentro de esos cinco meses. Si encuentra seis, frena antes de borrar la solapa;
+  una foto original con seis también queda intacta y avisa. Hace falta decidir si se amplía la
+  tabla al mes 5 o se cambia ese plazo a mano. No comprimí ni adelanté pagos silenciosamente.
+- Queda para la revisión en vivo instalar los bloques y regenerar el tablero; revisar escritorio
+  y celular, validaciones y desplegables en Sheets, comparación de las fórmulas con una cuenta
+  aparte y permisos de la aplicación web. La revisión visual y las dos pruebas que necesitan
+  Chromium deben hacerse fuera de este sandbox. No instalé ni publiqué nada.
+
+
+- Intenté preparar los archivos y commitear. El sandbox rechazó la creación de
+  `/Users/thomasmanzo/Documents/Finnauto/.git/worktrees/finnauto-69/index.lock`
+  con `Operation not permitted`. Los siete archivos quedaron **sin commit**, para la revisión.
 
 ## Revisión
 (Claude)

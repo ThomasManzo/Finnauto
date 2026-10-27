@@ -177,9 +177,14 @@ var PANEL_CC_SUPUESTOS = [
   ["dias",     "Días promedio de cobro",                           "0",     "ponderado por importe; corre la cobranza respecto de la venta"],
   ["pCanch",   "Canchada: precio ($/kg, sin IVA)",                 "#,##0", "precio promedio de compra"],
   ["flete",    "Canchada: flete ($/kg)",                           "#,##0", "se paga el mes de la compra"],
-  ["partes",   "Canchada: en cuántas partes se paga",              "0",     "una por mes, la primera al comprar (4 = 0/30/60/90 días)"],
-  ["stock",    "Stock de canchada lista para moler hoy (TN)",         "#,##0", "stock ya listo; no se suponen compras anteriores pendientes"],
-  ["cobertura", "Meses de cobertura", "0", "meses de ventas que debe cubrir el stock listo (1 a 12)"],
+  ["tramo1", "Tramo 1: TN por mes", "#,##0.0", "primero se llena este tramo"],
+  ["plazo1", "Tramo 1: plazo", "@", "elegir un nombre de la tabla de plazos"],
+  ["tramo2", "Tramo 2: TN por mes", "#,##0.0", "se llena después del tramo 1"],
+  ["plazo2", "Tramo 2: plazo", "@", "elegir un nombre de la tabla de plazos"],
+  ["plazoResto", "El resto de la compra: plazo", "@", "lo que excede ambos tramos"],
+  ["stock", "Stock de canchada propia hoy (TN)", "#,##0", "no se repone: no hay secadero"],
+  ["blend", "Máximo de canchada propia en la mezcla (%)", "0%", "el resto necesita canchada comprada"],
+  ["cobertura", "Meses de cobertura", "0", "meses de ventas que debe cubrir el stock total (1 a 12)"],
   ["lista", "Meses hasta que la canchada comprada está lista", "0", "0 = estacionada, lista para moler; máximo 8 meses"],
   ["compras", "Compras", "@", "automáticas o a mano"],
   ["secadero", "Gasto por mes del secadero y la hoja verde que deja de estar ($)", "#,##0", "se resta del promedio de gastos: el secadero no corre"],
@@ -200,6 +205,7 @@ var PANEL_CC_SUPUESTOS = [
   ["kilosBase", "Kilos vendidos por mes en la base", "#,##0", "la base resta estos kilos por la comisión por kilo"],
   ["inicio",   "Primer mes del plan",                              "mmm yyyy", "primer día del mes"],
 ];
+
 function _ccPermiso_() {
   var mail = (Session.getActiveUser().getEmail() || "").toLowerCase().trim();
   if (PERMITIDOS.indexOf(mail) < 0) throw new Error("Sin acceso al escenario");
@@ -212,7 +218,8 @@ function _ccHoja_() {
 }
 function _ccMapa_(h) {
   var valores = h.getDataRange().getValues(), mapa = Object.create(null);
-  valores.forEach(function(r, i) { if (r[0]) mapa[String(r[0])] = i + 1; });
+  var tabla=valores.findIndex(function(r){return r[0]==="Plazos de canchada";});
+  valores.forEach(function(r, i) { if(tabla>=0 && i>tabla && i<=tabla+10)return; if (r[0]) mapa[String(r[0])] = i + 1; });
   return {valores: valores, mapa: mapa};
 }
 function _ccFila_(m, texto) {
@@ -226,20 +233,22 @@ function leerEscenarioCanchada() {
   _ccPermiso_();
   var m = _ccMapa_(_ccHoja_()), sup = {}, filas = {};
   PANEL_CC_SUPUESTOS.forEach(function(s) { sup[s[0]] = _ccFecha_(m.valores[_ccFila_(m, s[1])-1][1]); });
-  m.valores.forEach(function(r) {
+  m.valores.forEach(function(r,i) {
+    var tabla=_ccFila_(m,"Plazos de canchada");if(i>=tabla && i<tabla+10)return;
     if (r[0]) filas[String(r[0])] = Array.from({length:14}, function(_,i) {
       return typeof r[i+1] === "number" && isFinite(r[i+1]) ? r[i+1] : null;
     });
   });
   var meses = m.valores[_ccFila_(m, "Mes")-1].slice(1,15).map(_ccFecha_);
-  return {supuestos:sup, meses:meses, filas:filas, hora:new Date().toISOString(),
+  return {supuestos:sup, plazos:_ccPlazos_(m), avisosPlazos:m.valores.slice(_ccFila_(m,"Plazos de canchada"),_ccFila_(m,"Plazos de canchada")+10)
+      .filter(function(r){return r[0]&&r[6]&&r[6]!=="OK";}).map(function(r){return r[0]+": "+r[6];}), meses:meses, filas:filas, hora:new Date().toISOString(),
     falta:String(m.valores[_ccFila_(m,"Faltan cargar")-1][1] || ""),
     notas:m.valores.filter(function(r){return /^(Qué no está:|La base de gastos|La deuda es)/.test(r[0]);}).map(function(r){return String(r[0]);})};
 }
 function _ccValidar_(c, restaurar) {
   if (!c || typeof c !== "object" || Array.isArray(c)) throw new Error("Cambios inválidos");
   var limites = {precio:[0,100000],suba:[0,.5],mesesSuba:[0,14],dias:[0,365],
-    pCanch:[0,100000],flete:[0,10000],partes:[1,6],stock:[0,1000000],secadero:[0,100000000000],cobertura:[1,12],lista:[0,8]};
+    pCanch:[0,100000],flete:[0,10000],tramo1:[0,5000],tramo2:[0,5000],blend:[0,1],stock:[0,1000000],secadero:[0,100000000000],cobertura:[1,12],lista:[0,8]};
   var nuevos = ["estampillas1", "estampillasMedio", "paquetes1", "paquetesMedio", "pallets1", "palletsMedio", "stretch1", "stretchMedio", "termo1", "termoMedio", "comision", "estampillasBase", "kilosBase"];
   nuevos.forEach(function(k){limites[k]=[0,Number.MAX_VALUE];});limites.mezcla=[0,1];
   function numero(v, lim, entero) {
@@ -247,12 +256,25 @@ function _ccValidar_(c, restaurar) {
     if (typeof v !== "number" || !isFinite(v) || v < lim[0] || v > lim[1] || (entero && Math.floor(v)!==v))
       throw new Error("Valor fuera de rango");
   }
-  Object.keys(c).forEach(function(k) { if (["supuestos","tnVendidas","tnCompradas"].indexOf(k)<0) throw new Error("Cambio desconocido: " + k); });
+  Object.keys(c).forEach(function(k) { if (["supuestos","tnVendidas","tnCompradas","plazos"].indexOf(k)<0) throw new Error("Cambio desconocido: " + k); });
+  if(c.plazos!==undefined) {
+    if(!Array.isArray(c.plazos)||c.plazos.length!==10) throw new Error("Se necesitan diez lugares de plazos");
+    var nombres=[];
+    c.plazos.forEach(function(r){
+      if(!Array.isArray(r)||r.length!==6||typeof r[0]!=="string"||r[0].length>80) throw new Error("Tabla de plazos inválida");
+      if(r[0] && (r[0]!==r[0].trim() || /^[=+@]/.test(r[0]) || nombres.indexOf(r[0])>=0)) throw new Error("Los plazos deben tener nombres únicos");
+      if(r[0])nombres.push(r[0]);
+      r.slice(1).forEach(function(v){if(v!=="")numero(v,[0,1],false);});
+    });
+  }
   if (c.supuestos !== undefined) {
     if (!c.supuestos || typeof c.supuestos!=="object" || Array.isArray(c.supuestos)) throw new Error("Supuestos inválidos");
     Object.keys(c.supuestos).forEach(function(k) {
       var v=c.supuestos[k];
-      if(k === "compras") {
+      if(["plazo1","plazo2","plazoResto"].indexOf(k)>=0) {
+        if(restaurar && v === "") return;
+        if(typeof v!=="string" || !v.trim() || v.length>80) throw new Error("Plazo inválido");
+      } else if(k === "compras") {
         if(restaurar && v === "") return;
         if(v!=="automáticas" && v!=="a mano") throw new Error("Compras inválidas: automáticas o a mano");
       } else if(k === "pagoEnvases") {
@@ -263,7 +285,7 @@ function _ccValidar_(c, restaurar) {
         if(typeof v !== "string" || !/^\d{4}-\d{2}-01$/.test(v) || !isFinite(new Date(v).getTime()) || new Date(v).toISOString().slice(0,10)!==v) throw new Error("Primer mes inválido");
       } else {
         if(!Object.prototype.hasOwnProperty.call(limites,k)) throw new Error("Supuesto desconocido");
-        numero(v,limites[k],k==="partes" || k==="mesesSuba" || k==="cobertura" || k==="lista");
+        numero(v,limites[k],k==="mesesSuba" || k==="cobertura" || k==="lista");
       }
     });
   }
@@ -275,8 +297,12 @@ function _ccValidar_(c, restaurar) {
 function _ccFoto_(h) {
   var m=_ccMapa_(h), sup={};
   PANEL_CC_SUPUESTOS.forEach(function(s){sup[s[0]]=_ccFecha_(m.valores[_ccFila_(m,s[1])-1][1]);});
-  return {supuestos:sup,tnVendidas:m.valores[_ccFila_(m,"TN vendidas")-1].slice(1,15),
+  return {supuestos:sup,plazos:_ccPlazos_(m),tnVendidas:m.valores[_ccFila_(m,"TN vendidas")-1].slice(1,15),
     tnCompradas:m.valores[_ccFila_(m,"TN compradas (a mano)")-1].slice(1,15)};
+}
+function _ccPlazos_(m) {
+  var fila=_ccFila_(m,"Plazos de canchada");
+  return m.valores.slice(fila,fila+10).map(function(r){return r.slice(0,6);});
 }
 function _ccEscribir_(h,c) {
   var m=_ccMapa_(h), escrituras=[];
@@ -287,25 +313,116 @@ function _ccEscribir_(h,c) {
     escrituras.push([_ccFila_(m,s[1]),[v]]);
   }});
   [["tnVendidas","TN vendidas"],["tnCompradas","TN compradas (a mano)"]].forEach(function(p){if(c[p[0]]!==undefined) escrituras.push([_ccFila_(m,p[1]),c[p[0]]]);});
+  var plazos=c.plazos||_ccPlazos_(m), disponibles=plazos.map(function(r){return r[0];});
+  ["plazo1","plazo2","plazoResto"].forEach(function(k){
+    var valor=c.supuestos&&Object.prototype.hasOwnProperty.call(c.supuestos,k)?c.supuestos[k]:m.valores[_ccFila_(m,PANEL_CC_SUPUESTOS.find(function(s){return s[0]===k;})[1])-1][1];
+    if(valor!=="" && disponibles.indexOf(valor)<0)throw new Error("El plazo no está en la tabla: "+valor);
+  });
+  if(c.plazos)h.getRange(_ccFila_(m,"Plazos de canchada")+1,1,10,6).setValues(c.plazos);
   escrituras.forEach(function(p){h.getRange(p[0],2,1,p[1].length).setValues([p[1]]);});
+}
+// Cada foto ocupa una propiedad. Guardamos solo las filas necesarias para comparar, no toda
+// la hoja: las propiedades de Google tienen un límite de tamaño por valor.
+var PANEL_CC_PREFIJO="canchada_escenario_";
+function _ccClaveEscenario_(nombre) {
+  if(typeof nombre!=="string" || !nombre.trim() || nombre.trim().length>80)throw new Error("Escribí un nombre de hasta 80 caracteres");
+  return PANEL_CC_PREFIJO+encodeURIComponent(nombre.trim());
+}
+function _ccResultadosFoto_(d) {
+  var textos=["Resultado de la operación (antes de la deuda)","Resultado de la operación acumulado (sin deuda)",
+    "Saldo del mes pagando la deuda que vence","Saldo acumulado",
+    "Saldo disponible (acumulado + descubierto): si da negativo, eso es lo que falta financiar",
+    "TN compradas (lo que se usa)","Compra de canchada del mes (valor sin flete)","Meses que cubre",
+    "Precio de equilibrio de la operación ($/kg)","TN de equilibrio por mes","Margen por kg"];
+  var filas={};textos.forEach(function(t){filas[t]=d.filas[t];});
+  return {meses:d.meses,filas:filas};
+}
+// Las tarjetas resumen las filas ya calculadas: no se vuelven a calcular costos ni pagos.
+function _ccTarjetasFoto_(entrada,resultados) {
+  var f=resultados.filas,desde=0;
+  (entrada.plazos||[]).forEach(function(r){if([entrada.supuestos.plazo1,entrada.supuestos.plazo2,entrada.supuestos.plazoResto].indexOf(r[0])>=0)r.slice(1).forEach(function(v,i){if(v>0)desde=Math.max(desde,i);});});
+  function numeros(t){return (f[t]||[]).filter(function(v){return typeof v==="number"&&isFinite(v);});}
+  function promedio(t){var ns=(f[t]||[]).slice(desde).filter(function(v){return typeof v==="number"&&isFinite(v);});return ns.length?ns.reduce(function(a,b){return a+b;},0)/ns.length:null;}
+  function minimo(t){var ns=numeros(t);return ns.length?Math.min.apply(null,ns):null;}
+  var disp=minimo("Saldo disponible (acumulado + descubierto): si da negativo, eso es lo que falta financiar");
+  var primero=(f["Saldo disponible (acumulado + descubierto): si da negativo, eso es lo que falta financiar"]||[]).findIndex(function(v){return typeof v==="number"&&v<0;});
+  return {"Se pasa del descubierto en":primero<0?null:resultados.meses[primero],"Resultado de un mes típico":promedio("Resultado de la operación (antes de la deuda)"),
+    "Resultado típico con deuda":promedio("Saldo del mes pagando la deuda que vence"),
+    "Acumulado de la operación":(f["Resultado de la operación acumulado (sin deuda)"]||[])[13]||0,
+    "Peor mes":minimo("Resultado de la operación (antes de la deuda)"),
+    "Meses en pérdida":numeros("Resultado de la operación (antes de la deuda)").filter(function(v){return v<0;}).length,
+    "Peor saldo acumulado":minimo("Saldo acumulado"),"Plata que hay que conseguir":disp===null?null:Math.max(0,-disp),
+    "Compra del primer mes":(f["Compra de canchada del mes (valor sin flete)"]||[])[0],
+    "Cobertura mínima":minimo("Meses que cubre"),
+    "Precio de equilibrio":promedio("Precio de equilibrio de la operación ($/kg)"),
+    "TN de equilibrio":(f["Margen por kg"]||[]).slice(desde).some(function(v){return typeof v==="number"&&v<=0;})?null:promedio("TN de equilibrio por mes")};
+}
+function _ccListaEscenarios_(props) {
+  var todas=props.getProperties();
+  return Object.keys(todas).filter(function(k){return k.indexOf(PANEL_CC_PREFIJO)===0;}).map(function(k){return JSON.parse(todas[k]);});
+}
+function _ccGuardarFoto_(props,nombre,entrada,resultados) {
+  var foto={nombre:nombre.trim(),fecha:new Date().toISOString(),entrada:entrada,resultados:resultados,tarjetas:_ccTarjetasFoto_(entrada,resultados)};
+  var texto=JSON.stringify(foto);
+  if(unescape(encodeURIComponent(texto)).length>9000)throw new Error("El escenario es demasiado grande para guardarlo; acortá los nombres de los plazos");
+  props.setProperty(_ccClaveEscenario_(nombre),texto);
+  return foto;
+}
+function _ccMigrarOriginal_(props,h) {
+  var clave=_ccClaveEscenario_("Plan original"),viejo=props.getProperty("canchada_plan_original");
+  if(!viejo)return;
+  if(!props.getProperty(clave)) {
+    if(_ccListaEscenarios_(props).length>=20)throw new Error("Hay 20 escenarios: liberar un lugar para migrar el Plan original");
+    var entrada=JSON.parse(viejo),actual=_ccFoto_(h);
+    if(entrada.supuestos && entrada.supuestos.partes!==undefined) {
+      var n=Number(entrada.supuestos.partes)||1;
+      if(n>5)throw new Error("El plan original tiene seis partes: revisar su migración antes de continuar");
+      entrada.supuestos.plazoResto=n===1?"contado":Array.from({length:n},function(_,i){return i*30;}).join("/");
+      entrada.supuestos.tramo1=entrada.supuestos.tramo2=0;delete entrada.supuestos.partes;
+    }
+    // Una foto vieja no tenía todos los campos: se completa con los actuales. Nunca se le
+    // atribuyen los resultados del plan abierto: se recalcula la foto y luego se repone la hoja.
+    entrada={supuestos:Object.assign({},actual.supuestos,entrada.supuestos),tnVendidas:entrada.tnVendidas,
+      tnCompradas:entrada.tnCompradas,plazos:entrada.plazos||JSON.parse(JSON.stringify(actual.plazos))};
+    var resto=entrada.supuestos.plazoResto;
+    if(resto && !entrada.plazos.some(function(r){return r[0]===resto;})) {
+      var cuotas=resto.split("/"),libre=entrada.plazos.findIndex(function(r){return !r[0];});
+      if(libre>=0&&cuotas.length>=2&&cuotas.length<=5&&cuotas.every(function(v,i){return Number(v)===i*30;}))
+        entrada.plazos[libre]=[resto].concat(Array.from({length:5},function(_,i){return i<cuotas.length?1/cuotas.length:0;}));
+    }
+    _ccValidar_(entrada,true);
+    try {_ccEscribir_(h,entrada);SpreadsheetApp.flush();_ccGuardarFoto_(props,"Plan original",entrada,_ccResultadosFoto_(leerEscenarioCanchada()));}
+    finally {_ccEscribir_(h,actual);SpreadsheetApp.flush();}
+  }
+  props.deleteProperty("canchada_plan_original");
 }
 function _ccConLock_(accion,c) {
   _ccPermiso_();
-  if(accion==="guardar") _ccValidar_(c,false);
-  var lock=LockService.getScriptLock(); lock.waitLock(30000);
+  if(accion==="guardar")_ccValidar_(c,false);
+  var lock=LockService.getScriptLock();lock.waitLock(30000);
   try {
-    var h=_ccHoja_(), props=PropertiesService.getScriptProperties(), clave="canchada_plan_original", foto=props.getProperty(clave);
-    if(accion==="original") props.setProperty(clave,JSON.stringify(_ccFoto_(h)));
-    else {
-      if(accion==="volver") {
-        if(!foto) throw new Error("Todavía no hay un plan original guardado");
-        c=JSON.parse(foto); _ccValidar_(c,true);
-      } else if(!foto) props.setProperty(clave,JSON.stringify(_ccFoto_(h)));
-      _ccEscribir_(h,c); SpreadsheetApp.flush();
+    var h=_ccHoja_(),props=PropertiesService.getScriptProperties();
+    _ccMigrarOriginal_(props,h);
+    if(accion==="listar")return _ccListaEscenarios_(props);
+    if(accion==="guardar") {_ccEscribir_(h,c);SpreadsheetApp.flush();return leerEscenarioCanchada();}
+    var nombre=c&&c.nombre,clave=_ccClaveEscenario_(nombre),existe=props.getProperty(clave);
+    if(accion==="nombrar") {
+      if(existe&&c.reemplazar!==true)return {confirmar:true,nombre:nombre.trim()};
+      if(!existe&&_ccListaEscenarios_(props).length>=20)throw new Error("Ya hay 20 escenarios. Borrá uno antes de guardar otro.");
+      SpreadsheetApp.flush();
+      _ccGuardarFoto_(props,nombre,_ccFoto_(h),_ccResultadosFoto_(leerEscenarioCanchada()));
+      return _ccListaEscenarios_(props);
     }
-    return leerEscenarioCanchada();
+    if(!existe)throw new Error("Ese escenario ya no existe");
+    if(accion==="borrar") {props.deleteProperty(clave);return _ccListaEscenarios_(props);}
+    if(accion==="abrir") {
+      var entrada=JSON.parse(existe).entrada;_ccValidar_(entrada,true);_ccEscribir_(h,entrada);SpreadsheetApp.flush();return leerEscenarioCanchada();
+    }
+    throw new Error("Acción desconocida");
   } finally {lock.releaseLock();}
 }
 function guardarEscenarioCanchada(cambios) {return _ccConLock_("guardar",cambios);}
-function guardarPlanOriginalCanchada() {return _ccConLock_("original");}
-function volverAlPlanOriginalCanchada() {return _ccConLock_("volver");}
+function listarEscenariosCanchada() {return _ccConLock_("listar");}
+function guardarEscenarioConNombreCanchada(pedido) {return _ccConLock_("nombrar",pedido);}
+function abrirEscenarioCanchada(nombre) {return _ccConLock_("abrir",{nombre:nombre});}
+function borrarEscenarioCanchada(nombre) {return _ccConLock_("borrar",{nombre:nombre});}

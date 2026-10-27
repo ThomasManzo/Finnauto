@@ -99,19 +99,25 @@ def test_equilibrio_render_y_puente_simulado(tmp_path):
     prueba.write_text(r"""
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
 class Elemento {
+ querySelectorAll(s){let out=[];for(const x of this.children){if(x.className&&x.className.split(' ').includes(s.slice(1)))out.push(x);if(x.querySelectorAll)out.push(...x.querySelectorAll(s));}return out;}
  constructor(tag,cls=''){this.tag=tag;this.className=cls;this.children=[];this.style={};this.textContent='';}
  append(...xs){this.children.push(...xs);} prepend(...xs){this.children.unshift(...xs);}
  replaceChildren(...xs){this.children=xs;} setAttribute(k,v){this[k]=v;}
- querySelector(s){return this.children.find(x=>x.className===s.slice(1));}
+ querySelector(s){return this.querySelectorAll(s)[0];}
  cloneNode(){return this;} get texto(){return this.textContent+this.children.map(x=>x.texto||'').join(' ');}
 }
-const fixture={supuestos:{precio:1800,partes:4,cobertura:4},filas:{},meses:Array(14).fill('2027-01-01'),hora:new Date().toISOString(),falta:'nada',notas:[]};
-for(const t of ['Saldo acumulado','Saldo del mes pagando la deuda que vence','Saldo disponible (acumulado + descubierto): si da negativo, eso es lo que falta financiar','Descubierto acordado con los bancos','TN compradas (lo que se usa)','Compra de canchada del mes (valor sin flete)','Meses que cubre','Gastos operativos sin secadero','Compra de canchada (lo que se paga en el mes, según las partes)','Flete de la canchada','Cobranza de las ventas (según los días de cobro)','Gastos de envase','Comisiones','Total bancos y deuda','Llegan listas para moler (TN)','Stock listo a fin de mes (TN)'])fixture.filas[t]=Array(14).fill(100);
-let lecturas=0;
+const fixture={supuestos:{precio:1800,plazoResto:'0/30/60/90',cobertura:4},plazos:[['0/30/60/90',.25,.25,.25,.25,0]],filas:{},meses:Array.from({length:14},(_,i)=>new Date(Date.UTC(2027,i,1)).toISOString().slice(0,10)),hora:new Date().toISOString(),falta:'nada',notas:[]};
+for(const t of ['Saldo acumulado','Saldo del mes pagando la deuda que vence','Saldo disponible (acumulado + descubierto): si da negativo, eso es lo que falta financiar','Descubierto acordado con los bancos','TN compradas (lo que se usa)','Compra de canchada del mes (valor sin flete)','Meses que cubre','Gastos operativos sin secadero','Compra de canchada (lo que se paga en el mes)','Flete de la canchada','Cobranza de las ventas (según los días de cobro)','Gastos de envase','Comisiones','Total bancos y deuda','Llegan listas para moler (TN)','TN del tramo 1','TN del tramo 2','TN del resto','Stock total a fin de mes (TN)','Stock propio a fin de mes (TN)','Stock comprado a fin de mes (TN)','Canchada propia usada (TN)','Canchada comprada usada (TN)','Falta canchada comprada para la mezcla (TN)','Resultado de la operación (antes de la deuda)','Resultado de la operación acumulado (sin deuda)'])fixture.filas[t]=Array(14).fill(100);
+let lecturas=0,escenarios=[],confirmaciones=[],respuestaConfirmacion=true,nombrePedido='Ensayo',memoria={};
 const ctx=vm.createContext({console,Date,setInterval(){},setTimeout,clearTimeout,
+ prompt:()=>nombrePedido,confirm:txt=>{confirmaciones.push(txt);return respuestaConfirmacion;},localStorage:{getItem:k=>memoria[k],setItem:(k,v)=>memoria[k]=v},
  el:(t,c)=>new Elemento(t,c),pesos:v=>'$'+v,
  document:{createElementNS:(ns,t)=>new Elemento(t),createTextNode:t=>({texto:t})},
- google:{script:{get run(){let ok;return {withSuccessHandler(f){ok=f;return this;},withFailureHandler(){return this;},leerEscenarioCanchada(){lecturas++;ok(structuredClone(fixture));}};}}}
+ google:{script:{get run(){let ok,mal;return {withSuccessHandler(f){ok=f;return this;},withFailureHandler(f){mal=f;return this;},listarEscenariosCanchada(){ok(structuredClone(escenarios));},
+ guardarEscenarioConNombreCanchada(p){let i=escenarios.findIndex(e=>e.nombre===p.nombre);if(i>=0&&!p.reemplazar){ok({confirmar:true,nombre:p.nombre});return;}if(i<0&&escenarios.length>=20){mal(new Error('Ya hay 20 escenarios'));return;}
+ const e={nombre:p.nombre,fecha:new Date().toISOString(),entrada:{supuestos:structuredClone(fixture.supuestos),plazos:fixture.plazos},resultados:structuredClone(fixture)};if(i<0)escenarios.push(e);else escenarios[i]=e;ok(structuredClone(escenarios));},
+ abrirEscenarioCanchada(nombre){fixture.supuestos=structuredClone(escenarios.find(e=>e.nombre===nombre).entrada.supuestos);ok(structuredClone(fixture));},
+ borrarEscenarioCanchada(nombre){escenarios=escenarios.filter(e=>e.nombre!==nombre);ok(structuredClone(escenarios));},leerEscenarioCanchada(){lecturas++;ok(structuredClone(fixture));}};}}}
 });
 vm.runInContext(fs.readFileSync(process.argv[2],'utf8'),ctx);
 // Estos controles no forman parte del cambio; se ejercita completa la pintura de resultados.
@@ -141,6 +147,29 @@ p=pintar(1480,200,1980,'no hay volumen que alcance',0);assert.match(p.card('TN d
 p=pintar(0,0,null,null,-1480);assert.match(p.card('Precio de equilibrio').texto,/sin ventas/);assert(!/NaN|Infinity/.test(p.area.texto));
 p=pintar(0,200,1980,192.3);assert.match(p.card('Precio de equilibrio').texto,/hoy es cero/);
 assert.match(p.area.texto,/Equilibrio \(por kg\)/);assert.equal(lecturas,8);
+// El panel completo: acciones por sus botones, confirmaciones, comparación y cambio de vista.
+const box=ctx.CC.raiz.querySelector('.cc-cab').querySelector('.cc-escenarios');
+function boton(texto){return box.children.find(e=>e.tag==='button'&&e.textContent===texto);}
+function selector(texto){return box.children.find(e=>e.tag==='label'&&e.textContent===texto).children[0];}
+boton('Guardar como…').onclick();assert.equal(escenarios.length,1);assert.equal(ctx.CC.abierto,'Ensayo');
+respuestaConfirmacion=false;boton('Guardar como…').onclick();assert.equal(confirmaciones.length,1);assert.equal(escenarios.length,1);
+respuestaConfirmacion=true;boton('Guardar como…').onclick();assert.equal(confirmaciones.length,2);
+fixture.supuestos.precio=2345;ctx.CC.bueno=structuredClone(fixture);
+let sel=selector('Escenario');sel.value='Ensayo';sel.onchange();assert.equal(ctx.CC.bueno.supuestos.precio,0);
+sel=selector('Comparar con…');sel.value='Ensayo';sel.onchange();
+let area=ctx.CC.raiz.querySelector('.cc-resultados');assert.match(area.texto,/Diferencia contra «Ensayo»/);assert.match(area.texto,/vs «Ensayo»/);
+function recorrer(n){return [n,...(n.children||[]).flatMap(recorrer)];}
+assert(recorrer(area).some(e=>e['stroke-dasharray']==='6 4'));
+assert(!recorrer(area).some(e=>e['stroke-dasharray']==='5 4'));
+assert(!area.texto.includes('Límite del descubierto acordado'));
+let vista=recorrer(area).find(e=>e['aria-label']==='Vista del gráfico');vista.value='deuda';vista.onchange();
+assert.equal(memoria['cc-vista'],'deuda');assert(recorrer(area).some(e=>e['stroke-dasharray']==='5 4'));assert.match(area.texto,/Bancos y deuda/);
+vista=recorrer(area).find(e=>e['aria-label']==='Vista del gráfico');vista.value='operacion';vista.onchange();assert.equal(memoria['cc-vista'],'operacion');
+respuestaConfirmacion=false;boton('Borrar').onclick();assert.equal(escenarios.length,1);
+respuestaConfirmacion=true;boton('Borrar').onclick();assert.equal(escenarios.length,0);assert.equal(ctx.CC.comparar,'');
+for(let i=0;i<20;i++){nombrePedido='Prueba '+i;boton('Guardar como…').onclick();}assert.equal(escenarios.length,20);
+nombrePedido='Excede';boton('Guardar como…').onclick();assert.match(ctx.CC.mensaje,/20 escenarios/);
+
 """)
     node = os.environ.get('NODE') or shutil.which('node') or '/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node'
     resultado = subprocess.run([node, str(prueba), str(codigo)], capture_output=True, text=True)
