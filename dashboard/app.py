@@ -220,7 +220,7 @@ button.mini:hover{color:var(--tinta);border-color:var(--tinta)}
 
 CSS += r"""
 .wrap:has(.cc-panel){min-width:0;width:100%}
-.cc-panel{min-width:0;max-width:100%}
+.cc-panel{min-width:0;max-width:100%}.cc-escenarios{display:flex;gap:12px;align-items:end;flex-wrap:wrap;width:100%}.cc-escenarios label{display:grid;gap:4px;max-width:100%}.cc-panel select{max-width:100%;font:inherit;padding:6px;border:1px solid var(--linea);background:var(--fondo);color:var(--tinta)}
 .cc-panel table{min-width:1000px}
 .cc-controles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:18px;margin:20px 0}
 .cc-control{min-width:0;padding:14px 16px 16px 0;border-top:1px solid var(--linea)}
@@ -251,7 +251,8 @@ var CC_CONTROLES = [
  ['suba','Suba del precio por mes',0,20,.5,'%'],
  ['mesesSuba','Durante cuántos meses sube',0,14,1,'meses'],
  ['dias','Días promedio de cobro',0,90,1,'días'],
- ['partes','Canchada: partes de pago',1,6,1,'partes'],
+ ['tramo1','Tramo 1: TN por mes',0,600,10,'TN'],
+ ['tramo2','Tramo 2: TN por mes',0,600,10,'TN'],
  ['comision','Comisión de los vendedores ($/kg)',0,200,1,'$/kg'],
  ['secadero','Secadero y hoja verde que dejan de estar',0,400,1,'M $ por mes']
 ];
@@ -272,7 +273,7 @@ function ccCambio(k,v){
 }
 function ccError(e){
  CC.ocupado=false; CC.pendiente={};clearTimeout(CC.timer);
- CC.mensaje='No se guardó: '+(e.message||String(e));ccControles();ccEstado();
+ CC.mensaje='No se guardó: '+(e.message||String(e));ccControles();ccEscenariosControles();ccEstado();
 }
 function ccGuardar(){
  if(CC.ocupado || !Object.keys(CC.pendiente).length)return;
@@ -287,7 +288,6 @@ function ccGuardar(){
 }
 function ccValor(c,v){
  if(v===''||v===null||v===undefined)return 'sin cargar';
- if(c[0]==='partes')return v+' ('+Array.from({length:v},function(_,i){return i*30;}).join('/')+')';
  return Number(v).toLocaleString('es-AR')+' '+c[5];
 }
 // Los importes de envases los calcula la planilla. Acá solo editamos sus supuestos.
@@ -343,13 +343,13 @@ function ccControles(){
   // El casillero admite el rango del servidor, aunque exceda la escala habitual de la barra.
   var numero=el('input','cc-numero'),aviso=ccTexto('div','cc-error','');numero.type='number';numero.step='any';numero.value=v==null?'':v;
   numero.setAttribute('aria-label',c[1]+' · escribir número');
-  var limites={pCanch:[0,100000],flete:[0,10000],tnCompradas:[0,5000],tnVendidas:[0,5000],precio:[0,100000],suba:[0,50],mesesSuba:[0,14],dias:[0,365],partes:[1,6],secadero:[0,100000],comision:[0,Number.MAX_VALUE],stock:[0,1000000],cobertura:[1,12],lista:[0,8]};
+  var limites={pCanch:[0,100000],flete:[0,10000],tnCompradas:[0,5000],tnVendidas:[0,5000],precio:[0,100000],suba:[0,50],mesesSuba:[0,14],dias:[0,365],secadero:[0,100000],comision:[0,Number.MAX_VALUE],stock:[0,1000000],tramo1:[0,5000],tramo2:[0,5000],cobertura:[1,12],lista:[0,8]};
   numero.min=limites[k][0];numero.max=limites[k][1];
   function escala(n){aviso.textContent=n<c[2]||n>c[3]?'fuera de la escala':'';}
   escala(Number(v));
   function confirmar(){
    if(automatica)return;
-   var n=numero.value===''?NaN:Number(numero.value),lim=limites[k],entero=['partes','mesesSuba','cobertura','lista'].includes(k);
+   var n=numero.value===''?NaN:Number(numero.value),lim=limites[k],entero=['mesesSuba','cobertura','lista'].includes(k);
    if(!Number.isFinite(n)||n<lim[0]||n>lim[1]||(entero&&!Number.isInteger(n))){numero.setAttribute('aria-invalid','true');aviso.textContent='Usá '+(entero?'un entero':'un número')+' entre '+lim[0]+' y '+lim[1]+' '+c[5];return;}
    numero.removeAttribute('aria-invalid');barra.value=n;grande.textContent=ccValor(c,n);escala(n);
    if(k==='suba')n/=100;if(k==='secadero')n*=1e6;ccCambio(k,tn?Array(14).fill(n):n);
@@ -375,25 +375,32 @@ function ccControles(){
    });caja.append(boton,meses);
   } grid.append(caja);
  });
- ccEnvases(grid);ccBaseControles();
+ ccEnvases(grid);grid.append(ccCampo('blend','Máximo de canchada propia en la mezcla (%)',100,100));
+ ['plazo1','plazo2','plazoResto'].forEach(function(k,i){var label=ccTexto('label','cc-control',['Tramo 1: plazo','Tramo 2: plazo','El resto de la compra: plazo'][i]),sel=el('select');
+  sel.setAttribute('aria-label',label.textContent);(CC.bueno.plazos||[]).filter(function(r){return r[0];}).forEach(function(r){var o=ccTexto('option','',r[0]);o.value=r[0];sel.append(o);});sel.value=ccSupuesto(k)||'';sel.onchange=function(){ccCambio(k,sel.value);};label.append(sel);grid.append(label);
+ });ccBaseControles();
 }
 function ccMes(iso){if(!iso)return 'sin mes';return new Date(iso+'T12:00:00').toLocaleDateString('es-AR',{month:'short',year:'2-digit'});}
 function ccResultados(){
  if(!CC.bueno||!CC.raiz)return;
  var d=CC.bueno,f=d.filas,area=CC.raiz.querySelector('.cc-resultados');area.replaceChildren();
+ (d.avisosPlazos||[]).forEach(function(aviso){area.append(ccTexto('p','cc-aviso',aviso));});
  if(String(d.falta||'').trim()&&!/^nada/i.test(String(d.falta).trim()))area.append(ccTexto('p','cc-aviso',d.falta));
  var nombres={acum:'Saldo acumulado',mes:'Saldo del mes pagando la deuda que vence',disp:'Saldo disponible (acumulado + descubierto): si da negativo, eso es lo que falta financiar',desc:'Descubierto acordado con los bancos'};
  function fila(txt){var a=f[txt];if(!a||a.length!==14||a.some(function(v){return typeof v!=='number'||!Number.isFinite(v);}))throw new Error('La planilla todavía no devuelve números en: '+txt);return a;}
  try {
+ var operacion=CC.vista!=='deuda';if(operacion){nombres.acum='Resultado de la operación acumulado (sin deuda)';nombres.mes='Resultado de la operación (antes de la deuda)';}
  var a=fila(nombres.acum),m=fila(nombres.mes),dis=fila(nombres.disp),desc=fila(nombres.desc);
- var peor=Math.min.apply(null,a),primero=dis.findIndex(function(v){return v<0;}),falta=Math.max(0,-Math.min.apply(null,dis)),desde=Math.max(0,(Number(d.supuestos.partes)||1)-1),tip=m.slice(desde),prom=tip.reduce(function(x,y){return x+y;},0)/tip.length;
+ var peor=Math.min.apply(null,a),primero=dis.findIndex(function(v){return v<0;}),falta=Math.max(0,-Math.min.apply(null,dis)),desde=ccDesde(d),tip=m.slice(desde),prom=tip.reduce(function(x,y){return x+y;},0)/tip.length;
  var tarjetas=el('div','kpis');
- [[ 'Peor saldo acumulado',pesos(peor,true)+' · '+ccMes(d.meses[a.indexOf(peor)]),peor<0],
+ var peormes=Math.min.apply(null,m),comparado=(CC.escenarios||[]).find(function(e){return e.nombre===CC.comparar;}),foto=comparado&&comparado.resultados;
+ var comparacion=foto?d.meses.map(function(mes){var i=foto.meses.indexOf(mes);return i<0?null:foto.filas[nombres.acum][i];}):[];
+ var principales=operacion?[[ 'Resultado de un mes típico',pesos(prom,true),prom<0],['Peor mes',pesos(peormes,true)+' · '+ccMes(d.meses[m.indexOf(peormes)]),peormes<0],['Acumulado de la operación',pesos(a[13],true),a[13]<0],['Meses en pérdida',String(m.filter(function(v){return v<0;}).length),m.some(function(v){return v<0;})]]:[[ 'Peor saldo acumulado',pesos(peor,true)+' · '+ccMes(d.meses[a.indexOf(peor)]),peor<0],
  ['Se pasa del descubierto en',primero<0?'no se pasa':ccMes(d.meses[primero]),primero>=0],
- ['Plata que hay que conseguir',pesos(falta,true),falta>0],['Resultado de un mes típico',pesos(prom,true),prom<0]].forEach(function(x){var k=el('div','kpi'+(x[2]?' malo':''));k.append(ccTexto('div','et',x[0]),ccTexto('div','n',x[1]));tarjetas.append(k);});// Conservamos las cuatro tarjetas de caja y agregamos la compra y la cobertura física.
+ ['Plata que hay que conseguir',pesos(falta,true),falta>0],['Resultado de un mes típico',pesos(prom,true),prom<0]];principales.forEach(function(x){var k=el('div','kpi'+(x[2]?' malo':''));k.append(ccTexto('div','et',x[0]),ccTexto('div','n',x[1]));tarjetas.append(k);});// Conservamos las cuatro tarjetas de caja y agregamos la compra y la cobertura física.
  var compradas=fila('TN compradas (lo que se usa)'),valorCompra=fila('Compra de canchada del mes (valor sin flete)'),coberturas=f['Meses que cubre']||[],validas=coberturas.filter(function(v){return typeof v==='number'&&Number.isFinite(v);}),minimo=validas.length?Math.min.apply(null,validas):null;
  var tarjeta=el('div','kpi'+(minimo!==null&&minimo<Number(d.supuestos.cobertura)?' malo':''));
- tarjeta.append(ccTexto('div','et','Compra del primer mes'),ccTexto('div','n',compradas[0].toLocaleString('es-AR')+' TN'),ccTexto('div','pie',pesos(valorCompra[0],true)+' · valor sin flete; el pago sigue las partes acordadas'),ccTexto('div','pie'+(minimo!==null&&minimo<Number(d.supuestos.cobertura)?' neg':''),minimo===null?'Sin ventas previstas para medir cobertura':'Cobertura mínima: '+minimo.toLocaleString('es-AR',{maximumFractionDigits:1})+' meses · '+ccMes(d.meses[coberturas.indexOf(minimo)])));
+ tarjeta.append(ccTexto('div','et','Compra del primer mes'),ccTexto('div','n',compradas[0].toLocaleString('es-AR')+' TN'),ccTexto('div','pie',pesos(valorCompra[0],true)+' · valor sin flete; el pago sigue los plazos acordados'),ccTexto('div','pie'+(minimo!==null&&minimo<Number(d.supuestos.cobertura)?' neg':''),minimo===null?'Sin ventas previstas para medir cobertura':'Cobertura mínima: '+minimo.toLocaleString('es-AR',{maximumFractionDigits:1})+' meses · '+ccMes(d.meses[coberturas.indexOf(minimo)])));
  tarjetas.append(tarjeta);
  // Promediamos solo resultados de la planilla; los vacíos no representan un precio cero.
  var eqNombres=['Costo variable por kg (canchada + flete + envase + comisión)','Margen por kg','Precio de equilibrio de la operación ($/kg)','TN de equilibrio por mes'];
@@ -411,46 +418,92 @@ function ccResultados(){
  tarjetaEq('TN de equilibrio',sinVolumen?'no hay volumen que alcance':tnEq===null?'sin datos':numeroEq(tnEq)+' TN/mes',
    'hoy '+numeroEq(tnHoy)+' TN/mes · '+(sinVolumen?'el margen por kg no es positivo':tnEq===null?'sin datos':tnEq>tnHoy?'faltan '+numeroEq(tnEq-tnHoy)+' TN':'ya alcanza'),sinVolumen||(tnEq!==null&&tnEq>tnHoy));
  area.append(tarjetas);
- var graf=el('section','card');graf.append(ccTexto('h2','','Caja mes a mes'));
+ var graf=el('section','card');graf.append(ccTexto('h2','',operacion?'Operación mes a mes':'Caja mes a mes'));
+ graf.append(ccSelectorVista());
  var leyenda=el('div','cc-leyenda');
- [['#1B1A17','━●','Saldo acumulado a fin de cada mes (lo que queda después de todo)'],['#B4321F','●','Meses en que ni usando el descubierto alcanza'],['#2F6B45','▥','Barras verdes / rojas: lo que gana o pierde la caja en cada mes'],['#B97A2A','┄┄','Límite del descubierto acordado con los bancos: por debajo falta plata']].forEach(function(x){var item=el('span'),muestra=ccTexto('span','cc-muestra',x[1]);muestra.style.color=x[0];item.append(muestra,document.createTextNode(x[2]));if(x[1]==='▥'){var roja=ccTexto('span','cc-muestra','▥');roja.style.color='#B4321F';item.prepend(roja);}leyenda.append(item);});graf.append(leyenda);
- var ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');svg.setAttribute('viewBox','0 0 960 330');svg.setAttribute('role','img');svg.setAttribute('aria-label','Saldo acumulado, saldo del mes y límite del descubierto');
- var todos=a.concat(m,desc.map(function(v){return -v;}),[0]),lo=Math.min.apply(null,todos),hi=Math.max.apply(null,todos);if(hi===lo)hi=lo+1;
+ (operacion?[[ '#1B1A17','━●','Acumulado de la operación desde cero'],['#2F6B45','▥','Resultado de la operación de cada mes']]:[['#1B1A17','━●','Saldo acumulado a fin de cada mes (lo que queda después de todo)'],['#B4321F','●','Meses en que ni usando el descubierto alcanza'],['#2F6B45','▥','Barras verdes / rojas: lo que gana o pierde la caja en cada mes'],['#B97A2A','┄┄','Límite del descubierto acordado con los bancos: por debajo falta plata']]).forEach(function(x){var item=el('span'),muestra=ccTexto('span','cc-muestra',x[1]);muestra.style.color=x[0];item.append(muestra,document.createTextNode(x[2]));if(x[1]==='▥'){var roja=ccTexto('span','cc-muestra','▥');roja.style.color='#B4321F';item.prepend(roja);}leyenda.append(item);});graf.append(leyenda);
+ var ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');svg.setAttribute('viewBox','0 0 960 330');svg.setAttribute('role','img');svg.setAttribute('aria-label',operacion?'Resultado mensual y acumulado de la operación sin bancos ni deuda':'Saldo acumulado, saldo del mes y límite del descubierto');
+ var todos=a.concat(m,operacion?[]:desc.map(function(v){return -v;}),comparacion.filter(function(v){return typeof v==='number';}),[0]),lo=Math.min.apply(null,todos),hi=Math.max.apply(null,todos);if(hi===lo)hi=lo+1;
  function X(i){return 65+i*65;}function Y(v){return 270-(v-lo)/(hi-lo)*235;}
  function forma(t,attrs){var n=document.createElementNS(ns,t);Object.keys(attrs).forEach(function(k){n.setAttribute(k,attrs[k]);});svg.append(n);return n;}
  forma('line',{x1:50,x2:930,y1:Y(0),y2:Y(0),stroke:'#aaa'});
  [hi,lo].forEach(function(v){forma('text',{x:0,y:Y(v),'font-size':11}).textContent=pesos(v,true);});
  m.forEach(function(v,i){forma('rect',{x:X(i)-13,y:Math.min(Y(0),Y(v)),width:26,height:Math.max(1,Math.abs(Y(v)-Y(0))),fill:v<0?'#B4321F':'#2F6B45',opacity:.35});
  forma('text',{x:X(i),y:300,'text-anchor':'middle','font-size':11}).textContent=ccMes(d.meses[i]);});
- forma('polyline',{points:desc.map(function(v,i){return X(i)+','+Y(-v);}).join(' '),fill:'none',stroke:'#B97A2A','stroke-width':1.4,'stroke-dasharray':'5 4'});
- forma('text',{x:65,y:320,fill:'#B97A2A','font-size':11}).textContent='límite del descubierto';
+ if(!operacion){forma('polyline',{points:desc.map(function(v,i){return X(i)+','+Y(-v);}).join(' '),fill:'none',stroke:'#B97A2A','stroke-width':1.4,'stroke-dasharray':'5 4'});
+ forma('text',{x:65,y:320,fill:'#B97A2A','font-size':11}).textContent='límite del descubierto';}
  forma('polyline',{points:a.map(function(v,i){return X(i)+','+Y(v);}).join(' '),fill:'none',stroke:'#1B1A17','stroke-width':2.2});
- a.forEach(function(v,i){forma('circle',{cx:X(i),cy:Y(v),r:4,fill:dis[i]<0?'#B4321F':'#1B1A17'});});graf.append(svg,ccTexto('p','sub','Línea: saldo acumulado · barras: saldo del mes · puntos rojos: falta financiar'));area.append(graf);
+ a.forEach(function(v,i){forma('circle',{cx:X(i),cy:Y(v),r:4,fill:(operacion?m[i]<0:dis[i]<0)?'#B4321F':'#1B1A17'});});if(foto){
+  // Los meses se emparejan por fecha; no comparamos noviembre contra diciembre por posición.
+  comparacion.forEach(function(v,i){if(i&&typeof v==='number'&&typeof comparacion[i-1]==='number')forma('line',{x1:X(i-1),y1:Y(comparacion[i-1]),x2:X(i),y2:Y(v),stroke:'#8567A5','stroke-width':2,'stroke-dasharray':'6 4'});});
+  graf.append(ccTexto('p','sub','Línea punteada: '+comparado.nombre));
+ }graf.append(svg,ccTexto('p','sub',operacion?'Línea: acumulado de la operación · barras: resultado operativo del mes':'Línea: saldo acumulado · barras: saldo del mes · puntos rojos: falta financiar'));area.append(graf);ccTablaEscenarios(area);
+ ccCompararTarjetas(tarjetas,d,comparado,operacion);
  var det=el('section','card');det.append(ccTexto('h2','','El detalle'),ccTexto('p','sub','En millones de pesos, sin decimales'));
  var env=el('div','envuelve'),tabla=el('table'),head=el('tr');head.append(ccTexto('th','','Concepto'));d.meses.forEach(function(v){head.append(ccTexto('th','',ccMes(v)));});tabla.append(head);
- var gastos=fila('Gastos operativos sin secadero'),compra=fila('Compra de canchada (lo que se paga en el mes, según las partes)'),flete=fila('Flete de la canchada');
- [['Cobranza',fila('Cobranza de las ventas (según los días de cobro)')],['Gastos operativos sin secadero',gastos],['Gastos de envase',fila('Gastos de envase')],['Comisiones',fila('Comisiones')],['Canchada + flete',compra.map(function(v,i){return v+flete[i];})],['Bancos y deuda',fila('Total bancos y deuda')],['Saldo del mes',m],['Saldo acumulado',a]].forEach(function(r,i){var tr=el('tr',i===7?'cc-total':'');tr.append(ccTexto('th','',r[0]));r[1].forEach(function(v){tr.append(ccTexto('td','',Math.round(v/1e6).toLocaleString('es-AR')));});tabla.append(tr);});
+ var gastos=fila('Gastos operativos sin secadero'),compra=fila('Compra de canchada (lo que se paga en el mes)'),flete=fila('Flete de la canchada');
+ [['Cobranza',fila('Cobranza de las ventas (según los días de cobro)')],['Gastos operativos sin secadero',gastos],['Gastos de envase',fila('Gastos de envase')],['Comisiones',fila('Comisiones')],['Canchada + flete',compra.map(function(v,i){return v+flete[i];})],['Bancos y deuda',fila('Total bancos y deuda')],[operacion?'Resultado de la operación':'Saldo del mes',m],[operacion?'Acumulado de la operación':'Saldo acumulado',a]].filter(function(r){return !operacion||r[0]!=='Bancos y deuda';}).forEach(function(r,i){var tr=el('tr',i===7?'cc-total':'');tr.append(ccTexto('th','',r[0]));r[1].forEach(function(v){tr.append(ccTexto('td','',Math.round(v/1e6).toLocaleString('es-AR')));});tabla.append(tr);});
+ if(foto){var tr=el('tr');tr.append(ccTexto('th','','Diferencia contra «'+comparado.nombre+'»'));d.meses.forEach(function(mes,i){var idx=foto.meses.indexOf(mes),v=idx<0?null:foto.filas[nombres.mes][idx];tr.append(ccTexto('td','',typeof v==='number'?Math.round((m[i]-v)/1e6).toLocaleString('es-AR'):'sin mes comparable'));});tabla.append(tr);}
  env.append(tabla);det.append(env);
  det.append(ccTexto('h2','','Equilibrio (por kg)'),ccTexto('p','sub','Sin deuda. Canchada a su precio, sin depender de cuándo se paga. Tarjetas: promedio desde la compra a pleno; TN actuales del mismo período. Los meses sin ventas no entran en el promedio de precio.'));
  var envEq=el('div','envuelve'),tablaEq=el('table');tablaEq.append(head.cloneNode(true));
  eqNombres.forEach(function(nombre,i){var tr=el('tr');tr.append(ccTexto('th','',nombre));eqFilas[i].forEach(function(v){tr.append(ccTexto('td','',typeof v==='number'?numeroEq(v):v||'sin ventas'));});tablaEq.append(tr);});envEq.append(tablaEq);det.append(envEq);
- det.append(ccTexto('h2','','Canchada (TN)'),ccTexto('p','sub','El stock listo descuenta las ventas y suma las compras cuando terminan de estacionarse. Sin ventas previstas, la cobertura se muestra como “sin ventas”.'));
+ det.append(ccTexto('h2','','Canchada (TN)'),ccTexto('p','sub','La cobertura cuenta todo el stock, incluso en estacionamiento. La mezcla necesita canchada comprada lista; los faltantes se muestran aparte. Sin ventas previstas, la cobertura se muestra como “sin ventas”.'));
  var envStock=el('div','envuelve'),tablaStock=el('table');tablaStock.append(head.cloneNode(true));
- [['Vendidas',fila('TN vendidas')],['Compradas',compradas],['Llegan',fila('Llegan listas para moler (TN)')],['Stock listo',fila('Stock listo a fin de mes (TN)')],['Meses que cubre',coberturas]].forEach(function(r){var tr=el('tr');tr.append(ccTexto('th','',r[0]));r[1].forEach(function(v){tr.append(ccTexto('td',typeof v==='number'&&v<0?'neg':'',typeof v==='number'?v.toLocaleString('es-AR',{maximumFractionDigits:1}):'sin ventas'));});tablaStock.append(tr);});envStock.append(tablaStock);det.append(envStock);
+ [['Vendidas',fila('TN vendidas')],['Compradas',compradas],['Llegan',fila('Llegan listas para moler (TN)')],['Propia usada',fila('Canchada propia usada (TN)')],['Comprada usada',fila('Canchada comprada usada (TN)')],['Stock propio',fila('Stock propio a fin de mes (TN)')],['Stock comprado listo',fila('Stock comprado a fin de mes (TN)')],['Stock total',fila('Stock total a fin de mes (TN)')],['Falta comprada para la mezcla',fila('Falta canchada comprada para la mezcla (TN)')],['Tramo 1',fila('TN del tramo 1')],['Tramo 2',fila('TN del tramo 2')],['Resto',fila('TN del resto')],['Meses que cubre',coberturas]].forEach(function(r){var tr=el('tr');tr.append(ccTexto('th','',r[0]));r[1].forEach(function(v){tr.append(ccTexto('td',typeof v==='number'&&(v<0||(r[0]==='Falta comprada para la mezcla'&&v>0))?'neg':'',typeof v==='number'?v.toLocaleString('es-AR',{maximumFractionDigits:1}):'sin ventas'));});tablaStock.append(tr);});envStock.append(tablaStock);det.append(envStock);
  var base=el('details');base.open=!!CC.baseAbierto;base.ontoggle=function(){CC.baseAbierto=base.open;};base.append(ccTexto('summary','mini','ver cómo se arma la base'),el('div','cc-base'));det.append(base);
  (d.notas||[]).forEach(function(n){det.append(ccTexto('p','sub',n));});area.append(det);ccBaseControles();
  }catch(e){area.append(ccTexto('p','cc-aviso',e.message));}
 }
+// La vista se recuerda solo en este navegador; si no permite almacenamiento, sigue funcionando.
+try{CC.vista=localStorage.getItem('cc-vista')||'operacion';}catch(e){CC.vista='operacion';}
+function ccSelectorVista(){var sel=el('select');sel.setAttribute('aria-label','Vista del gráfico');[['operacion','Solo la operación'],['deuda','Con bancos y deuda']].forEach(function(p){var o=ccTexto('option','',p[1]);o.value=p[0];sel.append(o);});sel.value=CC.vista;sel.onchange=function(){CC.vista=sel.value;try{localStorage.setItem('cc-vista',CC.vista);}catch(e){}ccResultados();};return sel;}
+function ccDesde(d){
+ var desde=0;(d.plazos||[]).forEach(function(r){if([d.supuestos.plazo1,d.supuestos.plazo2,d.supuestos.plazoResto].includes(r[0]))r.slice(1).forEach(function(v,i){if(v>0)desde=Math.max(desde,i);});});return desde;
+}
+function ccResumen(d){
+ var f=d.filas,desde=ccDesde(d),avg=function(t){var v=(f[t]||[]).slice(desde).filter(function(n){return typeof n==='number';});return v.length?v.reduce(function(a,b){return a+b;},0)/v.length:null;},min=function(t){return Math.min.apply(null,f[t]||[]);};
+ return {'Resultado de un mes típico':avg('Resultado de la operación (antes de la deuda)'),
+  'Resultado típico con deuda':avg('Saldo del mes pagando la deuda que vence'),
+  'Peor mes':min('Resultado de la operación (antes de la deuda)'),
+  'Acumulado de la operación':(f['Resultado de la operación acumulado (sin deuda)']||[])[13],
+  'Meses en pérdida':(f['Resultado de la operación (antes de la deuda)']||[]).filter(function(v){return v<0;}).length,
+  'Peor saldo acumulado':min('Saldo acumulado'),
+  'Plata que hay que conseguir':Math.max(0,-min('Saldo disponible (acumulado + descubierto): si da negativo, eso es lo que falta financiar')),
+  'Compra del primer mes':(f['Compra de canchada del mes (valor sin flete)']||[])[0],
+  'Precio de equilibrio':avg('Precio de equilibrio de la operación ($/kg)'),
+  'TN de equilibrio':(f['Margen por kg']||[]).slice(desde).some(function(v){return typeof v==='number'&&v<=0;})?null:avg('TN de equilibrio por mes')};
+}
+function ccResumenGuardado(e){return e.tarjetas||ccResumen({filas:e.resultados.filas,supuestos:e.entrada.supuestos,plazos:e.entrada.plazos});}
+function ccCompararTarjetas(tarjetas,d,e,operacion){if(!e)return;var actual=ccResumen(d),antes=e.tarjetas||ccResumenGuardado(e);
+ tarjetas.querySelectorAll('.kpi').forEach(function(k){var nombre=k.querySelector('.et').textContent,clave=nombre==='Resultado de un mes típico'&&!operacion?'Resultado típico con deuda':nombre,a=actual[clave],b=antes[clave],texto='sin dato comparable';
+  if(typeof a==='number'&&Number.isFinite(a)&&typeof b==='number'&&Number.isFinite(b)){var dif=a-b,unidad=nombre==='Precio de equilibrio'?' $/kg':nombre==='TN de equilibrio'?' TN':nombre==='Meses en pérdida'?' meses':' M';texto=(dif>=0?'+':'')+(unidad===' M'?dif/1e6:dif).toLocaleString('es-AR',{maximumFractionDigits:1})+unidad;}
+  if(nombre==='Se pasa del descubierto en'){var idx=(e.resultados.filas['Saldo disponible (acumulado + descubierto): si da negativo, eso es lo que falta financiar']||[]).findIndex(function(v){return v<0;});texto=idx<0?'no se pasa':ccMes(e.resultados.meses[idx]);}
+  k.append(ccTexto('div','pie','vs «'+e.nombre+'»: '+texto));
+ });}
+function ccTablaEscenarios(area){var sec=el('section','card'),env=el('div','envuelve'),t=el('table'),head=el('tr');sec.append(ccTexto('h2','','Escenarios guardados'));
+ ['Nombre','Guardado el','Mes típico (operación)','Acumulado operación','Peor saldo con deuda','Plata que hay que conseguir','Precio de equilibrio','TN de equilibrio'].forEach(function(txt){head.append(ccTexto('th','',txt));});t.append(head);
+ (CC.escenarios||[]).slice().sort(function(a,b){return ccResumenGuardado(b)['Acumulado de la operación']-ccResumenGuardado(a)['Acumulado de la operación'];}).forEach(function(e){var r=ccResumenGuardado(e),tr=el('tr');[e.nombre,new Date(e.fecha).toLocaleString('es-AR')].forEach(function(v){tr.append(ccTexto('td','',v));});['Resultado de un mes típico','Acumulado de la operación','Peor saldo acumulado','Plata que hay que conseguir','Precio de equilibrio','TN de equilibrio'].forEach(function(k,i){var v=r[k];tr.append(ccTexto('td','',typeof v==='number'&&Number.isFinite(v)?(i<4?pesos(v,true):v.toLocaleString('es-AR',{maximumFractionDigits:1})):k==='TN de equilibrio'?'no hay volumen que alcance':'sin datos'));});t.append(tr);});env.append(t);sec.append(env,ccTexto('p','sub','Los números de cada escenario son los del día en que se guardó. Para actualizarlos, abrirlo y volver a guardarlo.'));area.append(sec);}
+function ccActualizarEscenarios(){ccRpc('listarEscenariosCanchada',undefined,function(lista){CC.escenarios=lista;ccEscenariosControles();ccResultados();},function(e){CC.mensaje=e.message||String(e);ccEstado();});}
+function ccEscenariosControles(){var box=CC.raiz.querySelector('.cc-escenarios');if(!box)return;box.replaceChildren();
+ function selector(titulo,valor,accion){var l=ccTexto('label','',titulo),sel=el('select','cc-plan');sel.setAttribute('aria-label',titulo);var vacio=ccTexto('option','','—');vacio.value='';sel.append(vacio);(CC.escenarios||[]).forEach(function(e){var o=ccTexto('option','',e.nombre);o.value=e.nombre;sel.append(o);});sel.value=valor||'';sel.onchange=function(){accion(sel.value);};l.append(sel);box.append(l);return sel;}
+ selector('Escenario',CC.abierto,function(nombre){if(!nombre)return;ccAccionEscenario('abrirEscenarioCanchada',nombre,function(d){CC.abierto=nombre;CC.bueno=d;ccControles();ccResultados();});});
+ var guardar=ccTexto('button','mini cc-plan','Guardar como…');guardar.onclick=function(){var nombre=prompt('Nombre del escenario',CC.abierto||'');if(!nombre||!nombre.trim())return;
+  function enviar(reemplazar){ccAccionEscenario('guardarEscenarioConNombreCanchada',{nombre:nombre.trim(),reemplazar:reemplazar},function(r){if(r.confirmar){if(confirm('Ya existe «'+r.nombre+'». ¿Reemplazarlo?'))enviar(true);return;}CC.abierto=nombre.trim();CC.escenarios=r;ccEscenariosControles();ccResultados();});}enviar(false);};box.append(guardar);
+ var borrar=ccTexto('button','mini cc-plan','Borrar');borrar.onclick=function(){if(!CC.abierto||!confirm('¿Borrar «'+CC.abierto+'»?'))return;ccAccionEscenario('borrarEscenarioCanchada',CC.abierto,function(lista){if(CC.comparar===CC.abierto)CC.comparar='';CC.abierto='';CC.escenarios=lista;ccEscenariosControles();ccResultados();});};box.append(borrar);
+ selector('Comparar con…',CC.comparar,function(nombre){CC.comparar=nombre;ccResultados();});ccEstado();
+}
+function ccAccionEscenario(metodo,arg,ok){if(CC.ocupado||Object.keys(CC.pendiente).length)return;CC.ocupado=true;ccEstado();ccRpc(metodo,arg,function(r){CC.ocupado=false;CC.mensaje='guardado en la planilla · recalculado hace 0 s';ok(r);ccEstado();if(Object.keys(CC.pendiente).length){clearTimeout(CC.timer);CC.timer=setTimeout(ccGuardar,800);}},ccError);}
 function verCanchada(){
  var root=el('div','cc-panel');CC.raiz=root;
  root.append(ccTexto('p','sub','Escenario conectado a la solapa Cash compra canchada de la planilla: movés un control, se guarda ahí y vuelve el número que calcula la planilla.'));
  if(typeof google==='undefined'||!google.script||!google.script.run){root.append(ccTexto('p','','este apartado funciona desde el link del tablero'));return [root];}
  var cab=el('div','cc-cab');cab.append(ccTexto('h2','','Supuestos'),ccTexto('span','cc-estado','cargando…'));
- [['Volver al plan original','volverAlPlanOriginalCanchada'],['Guardar como plan original','guardarPlanOriginalCanchada']].forEach(function(p){var b=ccTexto('button','mini cc-plan',p[0]);b.onclick=function(){if(CC.ocupado)return;CC.ocupado=true;ccEstado();ccRpc(p[1],undefined,function(d){CC.bueno=d;CC.ocupado=false;CC.mensaje='guardado en la planilla · recalculado hace 0 s';ccControles();ccResultados();ccEstado();if(Object.keys(CC.pendiente).length){clearTimeout(CC.timer);CC.timer=setTimeout(ccGuardar,800);}},ccError);};cab.append(b);});
+ cab.append(el('div','cc-escenarios'));
  root.append(cab,el('div','cc-controles'),el('div','cc-resultados'));
  if(CC.bueno){ccControles();ccResultados();}
  if(!CC.ocupado&&!Object.keys(CC.pendiente).length){CC.ocupado=true;ccRpc('leerEscenarioCanchada',undefined,function(d){CC.bueno=d;CC.ocupado=false;CC.mensaje='guardado en la planilla · recalculado hace 0 s';ccControles();ccResultados();ccEstado();if(Object.keys(CC.pendiente).length){clearTimeout(CC.timer);CC.timer=setTimeout(ccGuardar,800);}},ccError);}
- ccEstado();return [root];
+ ccActualizarEscenarios();ccEstado();return [root];
 }
 setInterval(function(){if(CC.bueno&&!CC.ocupado&&!Object.keys(CC.pendiente).length&&CC.mensaje.indexOf('guardado en')===0){CC.mensaje='guardado en la planilla · recalculado hace '+Math.max(0,Math.floor((Date.now()-Date.parse(CC.bueno.hora))/1000))+' s';ccEstado();}},1000);
 """
