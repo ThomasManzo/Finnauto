@@ -233,4 +233,20 @@ panel "Compra de canchada" del tablero:
   con `Operation not permitted`. Los siete archivos quedaron **sin commit**, para la revisión.
 
 ## Revisión
-(Claude)
+- Claude revisó y aprobó: las 307 pruebas de Python y los 13 `.cjs` pasan fuera del sandbox. Mergeada
+  (2585afe).
+- Al instalarla aparecieron tres cosas que las pruebas no veían, porque la planilla está en español. Las
+  corrigió Claude (d8fdf79) y sumó un control a la prueba:
+  - el control de la tabla de plazos usaba un decimal con punto (`0.000001`) y daba `#ERROR!`. Ahora usa
+    `ROUND(...;6)=1`;
+  - `MAX(0,-X)` en "Falta canchada comprada" quedaba como `MAX(0-X)`: Sheets toma "0,-" como decimal y
+    mostraba negativos. Ahora es `MAX(-X,0)`. **Regla: en fórmulas, nada de "número,-" ni decimales con
+    punto**;
+  - la tabla de plazos estaba arriba del renglón de meses, dentro de las filas fijas: en una pantalla chica
+    la solapa no se podía desplazar. Pasó abajo de todo, después de las notas.
+- Instalada: crear_cash (solo el bloque) y tablero_web (desde el ID de canchada; el ID se conserva). Solapa
+  rearmada y aplicación web en versión 10.
+  - Los valores cargados se conservaron: el stock pasó a "stock propio" y las 4 partes a "0/30/60/90".
+  - Comparado con una cuenta aparte: precio, cuotas de la compra (95,6 / 191 / 287 / 382 M), blend 180 + 120
+    TN, stock propio y comprado, resultado y acumulado de la operación. Todo coincide.
+- Copia en Drive `Scripts/crear_cash.gs.txt` actualizada: es igual a la instalada.
