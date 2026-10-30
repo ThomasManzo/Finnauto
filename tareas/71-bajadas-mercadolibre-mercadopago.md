@@ -1,5 +1,5 @@
 # Tarea 71 — Bajadas diarias de Mercado Libre (ventas) y Mercado Pago (liquidaciones) a CSV
-Estado: pendiente
+Estado: aprobada
 Rama: tarea/71-bajadas-meli
 
 ## Objetivo
@@ -233,4 +233,56 @@ corrida buena en un archivo de esa carpeta.
 
 ## Qué hice
 
+- Agregué `ingestas/meli_ventas.py`: función pura `armar_venta`, cálculos con decimales,
+  agrupación por paquete, estados y fechas argentinas, búsquedas mensuales paginadas,
+  actualización por fecha de cambio y caché por orden/pago/envío/costos. Las consultas son
+  secuenciales (un pedido a la vez, dentro del máximo de cuatro). La tasa Flex quedó en
+  `IMPUESTO_BONIFICACION_FLEX`.
+- Agregué `ingestas/mp_liquidaciones.py`: función pura `leer_reporte`, lectura CSV/Excel,
+  vinculación con ventas, comparación de filas originales completas para quitar duplicados,
+  reportes por mes, pedidos y espera hasta diez minutos. Solo hace GET a configuración;
+  guarda una copia de la configuración de lectura junto a cada archivo cacheado. Si un
+  pedido aceptado no aparece, no lo repite ese día y puede reintentarlo al día siguiente.
+- Agregué `ingestas/mercado_datos.py`: CLI, sesión compartida con un token por fuente
+  (se vuelve a pedir solamente ante 401), temporales y `os.replace`, control conservando
+  fuentes ajenas y avance separado por fuente dentro de `mercadopago/liquidaciones/`.
+  Con `--solo` se conserva también el control de la fuente no ejecutada. Ante reportes
+  pendientes se guarda lo disponible en caché, se informa el mes faltante y se conserva
+  el CSV anterior completo. Si falla solamente el guardado del avance después de publicar
+  un CSV, se avisa y la próxima corrida repite la búsqueda.
+- Agregué `tests/test_meli_ventas.py` y `tests/test_mp_liquidaciones.py`, con datos
+  inventados, HTTP falso y llavero falso. Cubren A–H, múltiples ítems, descuadres,
+  reintentos 429/401, paginación, caché histórica, autorización fallida, reportes existentes
+  y pedidos, espera agotada, respuesta 203, columnas faltantes, zonas horarias, duplicados,
+  vínculo con ventas, control ajeno y reemplazo atómico (también cuando falla).
+- Pruebas: `python3 tests/test_meli_ventas.py` (9 OK),
+  `python3 tests/test_mp_liquidaciones.py` (5 OK y Excel omitido por falta de openpyxl
+  en ese intérprete), `python3 tests/test_meli_oauth.py` (9 OK). Además corrí
+  `/Users/thomasmanzo/Documents/Finnauto/.venv/bin/python3 tests/test_mp_liquidaciones.py`:
+  las 6 pruebas OK, incluida Excel, usando la dependencia ya instalada. Sin pytest ni
+  dependencias nuevas. También pasó la ayuda del CLI y `git diff --check`.
+- Criterios para revisar: una orden con varios ítems lleva cabecera con dinero y una hija
+  por ítem para evitar duplicar importes. Si un paquete trae varios envíos distintos,
+  la fuente queda en error: la consigna define un envío compartido y no alcanza para
+  inventar el reparto. Los filtros de fechas de MP se aplican por liquidación (o por
+  transacción si no trae fecha de liquidación).
+- No pude commitear: `git add` falló porque el sandbox no permite crear
+  `/Users/thomasmanzo/Documents/Finnauto/.git/worktrees/tarea-71/index.lock`
+  (`Operation not permitted`). Dejé los seis archivos en este worktree, sin staging,
+  para que Claude los revise y commitee.
+- No usé datos reales ni hice consultas a las API reales. Queda para Claude comparar
+  números y formatos contra los reportes del vendedor en la Mac del cliente.
+
+
 ## Revisión
+
+- 30/10/2026 (Claude): revisado el diff y las pruebas (9 + 6 + 9 OK). Retoques de Claude en `meli_ventas.py`:
+  (1) reintentos también ante errores 5xx y cortes de red (antes un corte en una corrida de horas tiraba todo);
+  (2) cada orden se guarda en la caché apenas se bajan sus detalles, y una orden vieja que no cambió y ya tiene
+  todo en la caché no se vuelve a bajar: si la primera corrida (un año, horas) se corta, la siguiente sigue desde
+  ahí. Antes se guardaba todo recién al final.
+- Prueba real en la Mac (fuera del repo): dos meses bajan en ~18 min; el total por venta coincide con el reporte
+  del vendedor en el mismo porcentaje que el prototipo (las diferencias son devoluciones que el reporte todavía
+  mostraba en revisión). Los movimientos de liquidación quedan vinculados a su venta.
+- Nota menor: una orden sola con varios ítems arma cabecera e hijas con el mismo `id_venta` (no hay `pack_id`);
+  se distinguen por `estado` = `Paquete de N productos`. Es raro en Mercado Libre; queda así.

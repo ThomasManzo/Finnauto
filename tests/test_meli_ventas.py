@@ -1,0 +1,178 @@
+"""Datos inventados, sin red ni llavero: python3 tests/test_meli_ventas.py."""
+import contextlib
+import copy
+import datetime as dt
+import io
+import json
+from pathlib import Path
+import sys
+import tempfile
+import time
+import unittest
+from unittest.mock import patch
+import urllib.error
+import urllib.parse
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from ingestas import meli_ventas as M, meli_oauth as O, mercado_datos as CLI
+
+
+def cargo(tipo, nombre, valor, de='collector'):
+    return dict(type=tipo, name=nombre, accounts={'from': de}, amounts={'original': valor})
+
+
+def ejemplo(flex=False):
+    orden = dict(id=2000000000000001, pack_id=None if flex else 2000000000000101, status='paid',
+        date_closed='2026-09-10T11:06:30.000-04:00', date_last_updated='2026-09-10T15:00:00Z',
+        order_items=[dict(item=dict(id='MLA1000000001', title='Lámpara de escritorio', seller_sku='AB 100', variation_attributes=[dict(name='Color', value_name='Negro')]), quantity=1 if flex else 2, unit_price=30000 if flex else 10000)],
+        payments=[{'id': 90000000001}], shipping={'id': 70001})
+    cargos = [cargo('fee', 'meli_percentage_fee', 4000), cargo('tax', 'debitos_creditos', 180)] if flex else [cargo('fee', 'meli_percentage_fee', 2600), cargo('fee', 'flat_fee', 400), cargo('tax', 'debitos_creditos', 120), cargo('tax', 'sirtac', 100), cargo('shipping', 'shp_cross_docking', 5000), cargo('coupon', 'coupon_fee', 300), cargo('coupon', 'coupon_rebate', 300, 'ml')]
+    pago = dict(id=90000000001, status='approved', installments=1, transaction_amount=30000 if flex else 20000,
+        transaction_amount_refunded=0, transaction_details={'net_received_amount': 25820 if flex else 11480}, charges_details=cargos)
+    envio = dict(logistic_type='self_service' if flex else 'xd_drop_off', status='delivered', receiver_address={'state': {'name': 'Córdoba'}}, status_history={'date_delivered': '2026-09-12T15:20:00.000-04:00'})
+    costos = dict(receiver={'cost': 0}, senders=[dict(cost=0 if flex else 5000, save=0)], gross_amount=5000)
+    return orden, pago, envio, costos
+
+
+class VentasTests(unittest.TestCase):
+    def fila(self, datos):
+        o, p, e, c = datos
+        filas, descuadre = M.armar_venta([o], [p], e, c)
+        self.assertFalse(descuadre)
+        return filas[0]
+
+    def test_a(self):
+        f = self.fila(ejemplo())
+        self.assertEqual([f[c] for c in M.IMPORTES], ['20000.00', '-3220.00', '0.00', '-5000.00', '0.00', '0.00', '-300.00', '11480.00'])
+        self.assertEqual([f[c] for c in ('id_venta', 'id_pack', 'fecha_venta', 'estado', 'tiene_cuotas', 'forma_entrega', 'provincia_comprador', 'fecha_entregado', 'id_pago_mp', 'variante', 'sku')], ['2000000000000101', '', '2026-09-10 12:06', 'Entregada', 'no', 'correo', 'Córdoba', '2026-09-12 16:20', '90000000001', 'Color : Negro', 'AB 100'])
+
+    def test_b_c_d_e_f(self):
+        datos = ejemplo(True)
+        f = self.fila(datos)
+        self.assertEqual((f['cargo_venta_impuestos'], f['costos_envio'], f['descuentos_bonificaciones'], f['total'], f['forma_entrega']), ('-4210.00', '0.00', '5000.00', '30790.00', 'flex'))
+        datos[3]['senders'] = [dict(cost=4500, save=500)]
+        datos[3]['gross_amount'] = 10000
+        f = self.fila(datos)
+        self.assertEqual((f['descuentos_bonificaciones'], f['cargo_venta_impuestos'], f['total']), ('500.00', '-4183.00', '26317.00'))
+        datos = ejemplo(True)
+        datos[2]['logistic_type'] = 'drop_off'
+        datos[3]['receiver']['cost'] = 3000
+        f = self.fila(datos)
+        self.assertEqual((f['ingresos_envio'], f['costos_envio']), ('3000.00', '-3000.00'))
+        for estado, total, anulacion, etiqueta in [('cancelled', '0.00', '-30790.00', 'Cancelada'), ('delivered', '4970.00', '-25820.00', 'Devuelta')]:
+            o, p, e, c = ejemplo(True)
+            o['status'], p['status'], p['transaction_amount_refunded'], e['status'] = 'cancelled', 'refunded', 30000, estado
+            f = self.fila((o, p, e, c))
+            self.assertEqual((f['total'], f['anulaciones_reembolsos'], f['estado']), (total, anulacion, etiqueta))
+
+    def test_g_h_multiitem_y_descuadre(self):
+        o, p, e, c = ejemplo(True)
+        o['pack_id'] = 2000000000000101
+        otra, otro = copy.deepcopy(o), copy.deepcopy(p)
+        otra['id'], otro['id'] = 2000000000000002, 90000000002
+        filas, des = M.armar_venta([o, otra], [p, otro], e, c)
+        self.assertFalse(des)
+        self.assertEqual(len(filas), 3)
+        self.assertEqual(filas[0]['estado'], 'Paquete de 2 productos')
+        self.assertEqual(filas[0]['total'], '56610.00')
+        for fila in filas[1:]:
+            self.assertTrue(all(fila[k] == '' for k in M.IMPORTES))
+            self.assertEqual(fila['forma_entrega'], 'flex')
+        rechazado = dict(otro, status='rejected')
+        self.assertEqual(M.armar_venta([o], [rechazado, p], e, c), M.armar_venta([o], [p], e, c))
+        p['charges_details'].append(cargo('fee', 'financing_add_on_fee', 100))
+        filas, des = M.armar_venta([o], [p], e, c)
+        self.assertTrue(des)
+        self.assertEqual(filas[0]['tiene_cuotas'], 'sí')
+        o['order_items'] *= 2
+        self.assertEqual(len(M.armar_venta([o], [p], e, c)[0]), 3)
+
+    def test_http_reintentos_y_token(self):
+        error = lambda codigo, headers={}: urllib.error.HTTPError('https://example.org', codigo, '', headers, io.BytesIO())
+        with patch.object(O, 'access_token', return_value='inventado') as token, patch.object(M.time, 'sleep') as dormir:
+            sesion = M.Sesion('ejemplo')
+            with patch.object(M, '_http', side_effect=[error(429, {'Retry-After': '7'}), (200, b'{}'), error(401), (200, b'{}')]):
+                for _ in range(2): sesion.pedir('mercadolibre', 'https://example.org', M._http)
+            dormir.assert_called_once_with(7)
+            self.assertEqual(token.call_count, 2)
+        with patch.object(O, 'access_token', return_value='inventado'), patch.object(M.time, 'sleep') as dormir:
+            with patch.object(M, '_http', side_effect=error(429)):
+                with self.assertRaises(M.ErrorDatos): M.Sesion('ejemplo').pedir('mercadolibre', 'https://example.org', M._http)
+            self.assertEqual([c.args[0] for c in dormir.call_args_list], [2, 4, 8, 16, 32])
+
+    def test_cache_busqueda_y_llavero_falso(self):
+        o, p, e, c = ejemplo()
+        def responder(req):
+            ruta = urllib.parse.urlsplit(req.full_url).path
+            dato = {'results': [o], 'paging': {'total': 1}} if ruta == '/orders/search' else p if '/payments/' in ruta else c if ruta.endswith('/costs') else e
+            return 200, json.dumps(dato).encode()
+        class Llavero:
+            def get_password(self, *args):
+                return json.dumps(dict(access_token='inventado', refresh_token='inventado', scope='read', vence=time.time()+10000, user_id=123))
+        with tempfile.TemporaryDirectory() as tmp, patch.object(O, '_llavero', return_value=Llavero()), patch.object(M, '_http', side_effect=responder) as http:
+            filas, des = M.bajar(M.Sesion('ejemplo'), Path(tmp), dt.date(2026, 9, 1), dt.date(2026, 9, 30))
+            self.assertEqual(filas[0]['total'], '11480.00')
+            self.assertEqual(http.call_count, 4)
+            self.assertEqual(len(list(Path(tmp).glob('*.json'))), 4)
+            M.bajar(M.Sesion('ejemplo'), Path(tmp), dt.date(2026, 9, 1), dt.date(2026, 9, 30), '2026-09-29T10:00:00-03:00')
+            self.assertTrue(any('date_last_updated.from' in llamada.args[0].full_url for llamada in http.call_args_list))
+
+    def test_paginacion_y_cache_historica(self):
+        o, p, e, c = ejemplo()
+        consultas = []
+        def http(req):
+            ruta = urllib.parse.urlsplit(req.full_url)
+            if ruta.path == '/orders/search':
+                params = urllib.parse.parse_qs(ruta.query)
+                consultas.append(params)
+                if 'order.date_last_updated.from' in params:
+                    dato = {'results': [], 'paging': {'total': 0}}
+                elif params['order.date_created.from'][0].startswith('2026-09'):
+                    # Dos páginas, la segunda vuelve a traer la misma orden.
+                    dato = {'results': [o], 'paging': {'total': 2}}
+                else:
+                    dato = {'results': [], 'paging': {'total': 0}}
+            else:
+                dato = p if '/payments/' in ruta.path else c if ruta.path.endswith('/costs') else e
+            return 200, json.dumps(dato).encode()
+        with tempfile.TemporaryDirectory() as tmp, patch.object(O, 'access_token', return_value='inventado'), patch.object(O, 'estado', return_value={'user_id': 123}), patch.object(M, '_http', side_effect=http):
+            filas, _ = M.bajar(M.Sesion('ejemplo'), Path(tmp), dt.date(2026, 9, 1), dt.date(2026, 9, 30))
+            self.assertEqual(len(filas), 1)
+            self.assertEqual([q['offset'] for q in consultas], [['0'], ['1']])
+            consultas.clear()
+            filas, _ = M.bajar(M.Sesion('ejemplo'), Path(tmp), dt.date(2026, 9, 1), dt.date(2027, 1, 10), '2027-01-09T10:00:00-03:00')
+            self.assertEqual(len(filas), 1)
+            self.assertEqual(consultas[0]['order.date_created.from'][0][:10], '2026-11-01')
+            self.assertEqual(consultas[-1]['order.date_last_updated.from'][0][:10], '2027-01-07')
+
+    def test_cli_error_conserva_csv_y_control(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(O, 'BASE_REPO', Path(tmp)), patch.object(O, 'estado', return_value={'user_id': 123}), patch.object(O, 'access_token', side_effect=O.ErrorAutorizacion('hay que volver a autorizar')), contextlib.redirect_stdout(io.StringIO()):
+            ruta = Path(tmp)
+            (ruta / 'ml_ventas.csv').write_text('anterior')
+            (ruta / 'control.json').write_text(json.dumps({'fuentes': {'banco': {'ok': True}}}))
+            self.assertEqual(CLI.main(['--cliente', 'ejemplo', '--salida', tmp, '--solo', 'mercadolibre']), 1)
+            self.assertEqual((ruta / 'ml_ventas.csv').read_text(), 'anterior')
+            control = json.loads((ruta / 'control.json').read_text())
+            self.assertTrue(control['fuentes']['banco']['ok'])
+            self.assertIn('autorizar', control['fuentes']['mercadolibre']['motivo'])
+
+    def test_reemplazo_fallido_conserva_anterior(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = Path(tmp) / 'salida.csv'
+            ruta.write_text('anterior')
+            with patch.object(M.os, 'replace', side_effect=OSError('ocupado')):
+                with self.assertRaises(OSError): M.atomico(ruta, b'nuevo')
+            self.assertEqual(ruta.read_text(), 'anterior')
+            self.assertEqual(list(Path(tmp).iterdir()), [ruta])
+
+    def test_cli_exito_atomico(self):
+        filas = M.armar_venta([ejemplo()[0]], [ejemplo()[1]], *ejemplo()[2:])[0]
+        with tempfile.TemporaryDirectory() as tmp, patch.object(O, 'BASE_REPO', Path(tmp)), patch.object(M, 'bajar', return_value=(filas, 0)), patch.object(M.os, 'replace', wraps=M.os.replace) as reemplazo, contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(CLI.main(['--cliente', 'ejemplo', '--salida', tmp, '--solo', 'mercadolibre']), 0)
+            self.assertEqual(len(reemplazo.call_args_list), 3)
+            for llamada in reemplazo.call_args_list:
+                self.assertEqual(Path(llamada.args[0]).parent, Path(llamada.args[1]).parent)
+            control = json.loads((Path(tmp) / 'control.json').read_text())['fuentes']['mercadolibre']
+            self.assertEqual((control['filas'], control['desde'], control['hasta']), (1, '2026-09-10', '2026-09-10'))
+
+
+if __name__ == '__main__': unittest.main()
