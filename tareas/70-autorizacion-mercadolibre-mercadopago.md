@@ -1,5 +1,5 @@
 # Tarea 70 — Autorización por link de Mercado Libre y Mercado Pago (canje del código y renovación de tokens)
-Estado: pendiente
+Estado: lista para revisión
 Rama: tarea/70-autorizacion-meli
 
 ## Objetivo
@@ -135,4 +135,49 @@ Se corre con `python tests/test_meli_oauth.py`, sin pytest. Con un llavero falso
 
 ## Qué hice
 
+- Creé `ingestas/meli_oauth.py`: links por fuente, limpieza y comprobación del prefijo,
+  canje, renovación con margen, estado sin tokens y los cuatro comandos de consola.
+  Las credenciales se leen con `nucleo.credenciales.cargar`; los tokens se guardan
+  únicamente en el llavero. No se instalaron dependencias.
+- El canje y la renovación comparten candado por cliente/fuente, recuperan candados
+  de más de dos minutos y vuelven a leer el permiso después de esperar. El refresh
+  nuevo se guarda antes de devolver el acceso. Los pedidos tienen timeout de 20 s,
+  sin reintentos automáticos ni redirecciones que puedan reenviar secretos.
+- `limpiar_codigo(texto, fuente=None)` conserva el uso con un argumento y permite
+  validar el prefijo cuando se llama desde el canje. `--redirect` se admite antes
+  o después del subcomando. Fechas con UTC-3, sin necesitar tzdata en Windows.
+- Creé `tests/test_meli_oauth.py`: 9 pruebas con HTTP y llavero falsos, datos inventados
+  y carpetas temporales. Cubren ambos formatos, renovación, rotación del refresh,
+  errores, salidas sin secretos, fallo al guardar, candado viejo, espera, timeout y
+  dos bajadas concurrentes que hacen una sola renovación. Pasan con Python 3 del
+  sistema y con el entorno virtual existente del repo.
+- Comprobaciones con `/Users/thomasmanzo/Documents/Finnauto/.venv/bin/python`:
+  `test_lector.py` pasa; `test_motor.py` falla en «un punto por dia con movimiento» y
+  «una transferencia entre empresas del grupo no entra al grafico». Reproduje las
+  mismas dos fallas en una copia limpia de `main` (22f98f1).
+  `test_bot_generico.py` no logra iniciar Chromium: `bootstrap_check_in ... Permission
+  denied (1100)`; reproduje el mismo bloqueo en esa copia de `main`.
+- El comando `python` no está en PATH; usé `python3` y el intérprete del entorno
+  virtual. Con Python del sistema faltan openpyxl y Playwright; no instalé nada.
+- `python3 -m ingestas.meli_oauth --help` muestra los cuatro comandos.
+  `git diff --check` pasa. La búsqueda solicitada con `git grep` no encontró tokens
+  con pinta de reales; también revisé los archivos nuevos con la misma expresión.
+- No hice pedidos reales ni accedí a datos privados. Queda pendiente la prueba con
+  autorización real en la Mac después del merge, tal como indica la consigna.
+
+- No pude commitear: `git add` y `git commit` no pueden crear
+  `/Users/thomasmanzo/Documents/Finnauto/.git/worktrees/tarea-70/index.lock`
+  (`Operation not permitted`). Dejé los tres archivos sin commitear para revisión.
+
 ## Revisión
+Claude, 30/10/2026:
+- Leí `ingestas/meli_oauth.py` entero contra la consigna: links con los parámetros de cada documentación y la
+  `redirect_uri` codificada; canje en form (ML) y JSON (MP); el refresh nuevo se guarda en el llavero antes de
+  devolver el token; candado con espera, recuperación del abandonado y relectura; errores en criollo sin secretos;
+  sin redirecciones que reenvíen claves. Bien.
+- Corrí `python tests/test_meli_oauth.py` (9 pruebas, OK), `link` sin credenciales (motivo claro, sale con 1) y
+  `estado` sin token (JSON sin secretos). No dejó carpetas de prueba en `clientes/`.
+- Las fallas de `test_motor.py` y `test_bot_generico.py` ya estaban en `main`: no son de esta tarea.
+- Falta (después del merge, en la Mac): `link` y `estado` con las credenciales reales; `canjear` y `probar` cuando
+  autorice el cliente. Si el canje de MP rechaza el JSON, cambiar `formato` a `"form"` en `FUENTES`.
+- Commit de Claude por Codex (el sandbox no le dejó crear el `index.lock`).
