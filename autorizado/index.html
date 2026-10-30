@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Que ningún buscador la guarde y que el código no viaje a otra página. -->
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Finauto · Autorización</title>
+<!--
+  Página de vuelta de Mercado Libre y Mercado Pago.
+
+  Cuando un cliente autoriza a Finauto con el link que le mandamos, Mercado Libre (o Mercado Pago)
+  lo trae de vuelta acá con un código en la dirección (?code=...). Esta página SOLO muestra ese
+  código para que el cliente lo copie y se lo mande a Thomas. No lo guarda ni lo manda a ningún
+  lado: no hay servidor, ni estadísticas, ni archivos de afuera.
+
+  El código solo no sirve para nada: hace falta la clave secreta de la aplicación, que está
+  únicamente en el llavero de la Mac de Thomas. Y vence a los 10 minutos.
+
+  El parámetro "state" lo arma Finauto en el link: si empieza con "ml" es Mercado Libre y si
+  empieza con "mp" es Mercado Pago. Se usa solo para poner el título correcto.
+-->
+<style>
+  :root { --fondo: #f5f2e9; --tarjeta: #fffdf8; --texto: #1f1d1a; --suave: #6b665c; --marca: #8b2635; --borde: #e8e0d0; --ok: #2f6b3a; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fondo: #1b1a17; --tarjeta: #24221e; --texto: #f2efe6; --suave: #b3ad9f; --marca: #d0707c; --borde: #3a362f; --ok: #7fbf8a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--fondo); color: var(--texto); font: 17px/1.5 "Libre Franklin", Arial, sans-serif; }
+  main { max-width: 560px; margin: 0 auto; padding: 40px 16px; }
+  .marca { font-family: Georgia, "Fraunces", serif; font-size: 22px; color: var(--marca); letter-spacing: .02em; }
+  .tarjeta { background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 14px; padding: 24px 20px; margin-top: 20px; }
+  h1 { font-family: Georgia, "Fraunces", serif; font-weight: 600; font-size: 26px; line-height: 1.25; margin: 0 0 8px; }
+  p { margin: 10px 0; }
+  .codigo { font: 600 18px/1.4 ui-monospace, Menlo, Consolas, monospace; word-break: break-all; background: var(--fondo); border: 1px dashed var(--borde); border-radius: 10px; padding: 14px; margin: 16px 0 12px; user-select: all; }
+  button { font: inherit; font-weight: 600; color: #fff; background: var(--marca); border: 0; border-radius: 10px; padding: 12px 18px; width: 100%; cursor: pointer; }
+  .aviso { color: var(--suave); font-size: 15px; }
+  .ok { color: var(--ok); font-weight: 600; min-height: 1.5em; }
+  ol { padding-left: 22px; margin: 8px 0; }
+</style>
+</head>
+<body>
+<main>
+  <div class="marca">finauto</div>
+
+  <!-- Caso normal: volvió con un código. -->
+  <div class="tarjeta" id="conCodigo" hidden>
+    <h1 id="titulo">¡Listo! Autorizaste a Finauto</h1>
+    <p>Último paso: mandale este código a Thomas por WhatsApp.</p>
+    <div class="codigo" id="codigo"></div>
+    <button id="copiar" type="button">Copiar el código</button>
+    <p class="ok" id="copiado"></p>
+    <ol>
+      <li>Tocá <b>Copiar el código</b>.</li>
+      <li>Pegalo en el WhatsApp con Thomas y mandalo.</li>
+    </ol>
+    <p class="aviso">Hacelo ahora: el código vence a los 10 minutos. Si vence, no pasa nada: se vuelve a tocar el link y sale uno nuevo. El código solo no sirve para entrar a tu cuenta.</p>
+  </div>
+
+  <!-- Volvió con un error (por ejemplo, tocó "Cancelar"). -->
+  <div class="tarjeta" id="conError" hidden>
+    <h1>No se completó la autorización</h1>
+    <p>Mercado Libre / Mercado Pago avisó: <b id="error"></b></p>
+    <p>Si fue sin querer, volvé a tocar el link y aceptá. Si se repite, mandale una captura de esta pantalla a Thomas.</p>
+    <p class="aviso">Ojo: hay que entrar con la cuenta principal (la dueña), no con la de un colaborador.</p>
+  </div>
+
+  <!-- Alguien entró a la página directo, sin pasar por el link. -->
+  <div class="tarjeta" id="sinNada" hidden>
+    <h1>Esta página no tiene nada para mostrar</h1>
+    <p class="aviso">Se usa solo después de tocar el link de autorización que manda Finauto.</p>
+  </div>
+</main>
+<script>
+  // Lee lo que vino en la dirección: ?code=...&state=... o ?error=...
+  var p = new URLSearchParams(window.location.search);
+  var codigo = p.get("code");
+  var estado = (p.get("state") || "").toLowerCase();
+  var error = p.get("error_description") || p.get("error");
+
+  if (codigo) {
+    if (estado.indexOf("ml") === 0) document.getElementById("titulo").textContent = "¡Listo! Autorizaste a Finauto en Mercado Libre";
+    if (estado.indexOf("mp") === 0) document.getElementById("titulo").textContent = "¡Listo! Autorizaste a Finauto en Mercado Pago";
+    // Se copia con la marca adelante (ML: / MP:) para que Thomas sepa de cuál es.
+    var marca = estado.indexOf("mp") === 0 ? "MP: " : (estado.indexOf("ml") === 0 ? "ML: " : "");
+    document.getElementById("codigo").textContent = marca + codigo;
+    document.getElementById("conCodigo").hidden = false;
+    document.getElementById("copiar").addEventListener("click", function () {
+      var texto = marca + codigo;
+      var avisar = function () { document.getElementById("copiado").textContent = "Copiado. Ahora pegalo en WhatsApp."; };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(texto).then(avisar, function () { seleccionar(); });
+      } else { seleccionar(); }
+    });
+  } else if (error) {
+    document.getElementById("error").textContent = error;
+    document.getElementById("conError").hidden = false;
+  } else {
+    document.getElementById("sinNada").hidden = false;
+  }
+
+  // Si el navegador no deja copiar solo, se selecciona el texto para copiarlo a mano.
+  function seleccionar() {
+    var r = document.createRange();
+    r.selectNodeContents(document.getElementById("codigo"));
+    var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+    document.getElementById("copiado").textContent = "Quedó marcado: copialo y pegalo en WhatsApp.";
+  }
+</script>
+</body>
+</html>
