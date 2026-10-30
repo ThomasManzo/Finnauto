@@ -1,5 +1,5 @@
 # Tarea 70 — Autorización por link de Mercado Libre y Mercado Pago (canje del código y renovación de tokens)
-Estado: lista para revisión
+Estado: aprobada
 Rama: tarea/70-autorizacion-meli
 
 ## Objetivo
