@@ -109,6 +109,20 @@ def bajar(sesion, carpeta, desde, hasta, ventas=()):
         return datos
     listado = listar()
     pendientes, archivos = {}, {}
+    # Reportes que el vendedor bajó a mano desde la web: vienen con columnas en castellano
+    # ("ID DE OPERACIÓN…") y no sirven; para ese mes se pide uno propio con la configuración.
+    inservibles = set()
+    hoy = dt.datetime.now(meli_oauth.HORA_BA).date().isoformat()
+    def candidato(a, b):
+        return next((r for r in listado if r.get('status') == 'processed' and r.get('id') not in inservibles
+                     and instante(r['begin_date']) == a and instante(r['end_date']) == b), None)
+    def pedir_reporte(clave, a, b):
+        # Dejar constancia del pedido aceptado para no repetirlo en la misma fecha.
+        marca = carpeta / (clave + '.pedido.json')
+        if not marca.exists() or json.loads(marca.read_text()).get('fecha') != hoy:
+            utc = lambda f: f.astimezone(dt.timezone.utc).isoformat().replace('+00:00', 'Z')
+            pedir(cuerpo={'begin_date': utc(a), 'end_date': utc(b)})
+            atomico(marca, json.dumps({'fecha': hoy}).encode())
     for inicio, fin in meses(desde, hasta):
         a, b = limites(inicio, fin)
         clave = inicio.isoformat() + '_' + fin.isoformat()
@@ -117,29 +131,30 @@ def bajar(sesion, carpeta, desde, hasta, ventas=()):
             archivos[clave] = existentes[0]
             continue
         pendientes[clave] = (a, b)
-        coincidencias = [r for r in listado if r.get('status') == 'processed' and instante(r['begin_date']) == a and instante(r['end_date']) == b]
-        if not coincidencias:
-            # Dejar constancia del pedido aceptado para no repetirlo en la misma fecha.
-            marca = carpeta / (clave + '.pedido.json')
-            hoy = dt.datetime.now(meli_oauth.HORA_BA).date().isoformat()
-            if not marca.exists() or json.loads(marca.read_text()).get('fecha') != hoy:
-                utc = lambda f: f.astimezone(dt.timezone.utc).isoformat().replace('+00:00', 'Z')
-                pedir(cuerpo={'begin_date': utc(a), 'end_date': utc(b)})
-                atomico(marca, json.dumps({'fecha': hoy}).encode())
+        if not candidato(a, b):
+            pedir_reporte(clave, a, b)
     for vuelta in range(21):
         for clave, (a, b) in list(pendientes.items()):
-            reporte = next((r for r in listado if r.get('status') == 'processed' and instante(r['begin_date']) == a and instante(r['end_date']) == b), None)
-            if reporte:
+            reporte = candidato(a, b)
+            while reporte:
                 formato = reporte.get('format') or Path(reporte['file_name']).suffix.lstrip('.')
                 if formato.upper() not in {'CSV', 'XLSX'}: raise ErrorDatos('el reporte no es CSV ni Excel')
                 contenido = pedir('/' + urllib.parse.quote(reporte['file_name'], safe=''), crudo=True)
                 # Validar antes de guardar: una respuesta rota no debe quedar congelada en caché.
-                leer_archivo(contenido, formato, configuracion, ventas)
+                try:
+                    leer_archivo(contenido, formato, configuracion, ventas)
+                except ErrorDatos:
+                    inservibles.add(reporte.get('id'))
+                    reporte = candidato(a, b)
+                    if not reporte:
+                        pedir_reporte(clave, a, b)
+                    continue
                 ruta = carpeta / (clave + '.' + formato.lower())
                 atomico(ruta.with_suffix('.config.json'), json.dumps(configuracion).encode())
                 atomico(ruta, contenido)
                 archivos[clave] = ruta
                 del pendientes[clave]
+                break
         if not pendientes or vuelta == 20: break
         time.sleep(30)
         listado = listar()

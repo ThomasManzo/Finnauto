@@ -286,3 +286,9 @@ corrida buena en un archivo de esa carpeta.
   mostraba en revisión). Los movimientos de liquidación quedan vinculados a su venta.
 - Nota menor: una orden sola con varios ítems arma cabecera e hijas con el mismo `id_venta` (no hay `pack_id`);
   se distinguen por `estado` = `Paquete de N productos`. Es raro en Mercado Libre; queda así.
+- 30/10/2026 (Claude, después de la primera corrida del año): los reportes de liquidación que el vendedor bajó a
+  mano desde la web vienen en Excel con columnas en castellano y otros textos ("Pago aprobado" en vez de
+  `SETTLEMENT`), y la fuente quedaba en error. Ahora un reporte existente sin las columnas de la API se descarta y
+  se pide uno propio para ese mes (la configuración del vendedor sigue sin tocarse). Prueba ajustada.
+- Ojo para clientes con más historia: la búsqueda de órdenes de Mercado Libre podría devolver solo los últimos
+  12 meses (sin confirmar: en la prueba la cuenta no tenía ventas más viejas).

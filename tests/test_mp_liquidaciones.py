@@ -72,14 +72,20 @@ class LiquidacionesTests(unittest.TestCase):
         self.assertEqual(filas[0]['fecha_liquidacion'], '2026-09-12 12:20')
 
     def test_203_y_columna_faltante_no_se_guardan(self):
-        reporte = dict(begin_date='2026-09-01T03:00:00Z', end_date='2026-10-01T02:59:59Z', status='processed', format='CSV', file_name='mes.csv')
+        # Un reporte bajado a mano desde la web (otras columnas) no se usa: se pide uno propio.
+        reporte = dict(id=1, begin_date='2026-09-01T03:00:00Z', end_date='2026-10-01T02:59:59Z', status='processed', format='CSV', file_name='mes.csv')
+        posts = []
         def http(req):
             if req.full_url.endswith('/config'): return 200, b'{}'
             if req.full_url.endswith('/list'): return 200, json.dumps([reporte]).encode()
-            return 200, b'SOURCE_ID\n1\n'
-        with tempfile.TemporaryDirectory() as tmp, patch.object(O, 'access_token', return_value='inventado'), patch.object(M, '_http', side_effect=http):
-            with self.assertRaisesRegex(ML.ErrorDatos, 'faltan'):
-                M.bajar(ML.Sesion('ejemplo'), Path(tmp), dt.date(2026, 9, 1), dt.date(2026, 9, 30))
+            if req.get_method() == 'POST':
+                posts.append(json.loads(req.data))
+                return 202, b''
+            return 200, b'ID DE OPERACION\n1\n'
+        with tempfile.TemporaryDirectory() as tmp, patch.object(O, 'access_token', return_value='inventado'), patch.object(M, '_http', side_effect=http), patch.object(M.time, 'sleep'):
+            filas, motivo = M.bajar(ML.Sesion('ejemplo'), Path(tmp), dt.date(2026, 9, 1), dt.date(2026, 9, 30))
+            self.assertEqual((filas, motivo), ([], 'faltan liquidaciones de: 2026-09-01_2026-09-30'))
+            self.assertEqual(posts, [{'begin_date': '2026-09-01T03:00:00Z', 'end_date': '2026-10-01T02:59:59Z'}])
             self.assertFalse(list(Path(tmp).glob('*.csv')))
         with patch.object(O, 'access_token', return_value='inventado'):
             with self.assertRaisesRegex(ML.ErrorDatos, 'más tarde'):
