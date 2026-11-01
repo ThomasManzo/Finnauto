@@ -282,7 +282,7 @@ def leer_pdf_galicia(ruta):
                     if acuerdo else ""}
 
 
-def leer_planilla_galicia(ruta):
+def leer_planilla_galicia(ruta, cuenta="0005459-5 070-1"):
     filas = _filas_planilla(ruta)
     n, ix = _columnas(filas, {
         "Fecha": ("Fecha",), "Descripción": ("Descripción", "Concepto"),
@@ -302,8 +302,8 @@ def leer_planilla_galicia(ruta):
         con = " ".join(str(_celda(r, ix, k) or "") for k in ("Descripción", "Extra1", "Extra2"))
         saldo = _celda(r, ix, "Saldo")
         movs.append(_mov(f, con, importe, _numero(saldo) if saldo not in (None, "") else None,
-                         "0005459-5 070-1", "xlsx", ref=_celda(r, ix, "Referencia")))
-    return {"cuenta": "0005459-5 070-1", "movimientos": movs, "archivo": os.path.basename(ruta)}
+                         cuenta, "xlsx", ref=_celda(r, ix, "Referencia")))
+    return {"cuenta": cuenta, "movimientos": movs, "archivo": os.path.basename(ruta)}
 
 
 # ================================================================== MACRO

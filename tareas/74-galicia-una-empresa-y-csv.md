@@ -1,5 +1,5 @@
 # Tarea 74 — Galicia para cualquier cliente de una sola empresa, y movimientos a CSV
-Estado: pendiente
+Estado: lista para revisión
 Rama: tarea/74-galicia-una-empresa
 
 ## Objetivo
@@ -109,4 +109,47 @@ false con el motivo.
 
 ## Qué hice
 
+- `nucleo/config.py`: busca el perfil privado cuando no existe el de la raíz;
+  conserva la prioridad de la raíz y nombra ambas rutas si no encuentra ninguno.
+- `bots/galicia/una_empresa.py`: hereda el recorrido completo, usa los nombres y
+  la cuenta del perfil y tolera espacios, puntos y variantes de sociedad anónima.
+  En `navar.py` solo extraje atributos de nombre/patrón y un método de lectura;
+  sus valores y mensajes siguen iguales. `lector/extractos.py` solo agrega la
+  cuenta opcional, conservando el valor anterior por defecto.
+- `orquestador/correr.py`: selecciona la variante, fuerza una sola empresa activa,
+  valida la carpeta absoluta del perfil antes del llavero/login y aplica resultado
+  estricto y contador de clave sin confirmar. NAVAR conserva su selección y Drive.
+- `ingestas/galicia_datos.py`: lee Excel locales y saldos JSON, conserva los CSV
+  anteriores, elimina repetidos, clasifica por la tabla `TIPOS`, ordena por fecha
+  y elige el saldo con mayor `generado` entre los JSON de cada día. Los JSON
+  presentes actualizan ese día del CSV; los días sin JSON se conservan.
+- `ingestas/mercado_datos.py`: incorpora `galicia` y `--solo galicia`, ambos CSV
+  con escritura temporal y `os.replace`, control de antigüedad y omisión de la
+  fuente si no está configurada. `filas` cuenta movimientos; `desde`/`hasta`
+  son sus fechas. Cada CSV se reemplaza de manera atómica por separado.
+- Agregué `bots/galicia/test_una_empresa.py` (5 pruebas) y
+  `tests/test_galicia_datos.py` (5): página falsa, login único, perfil privado,
+  carpeta faltante, cuenta, resultado estricto, contador, Q/R/S, segunda corrida,
+  historial, tipos, saldo vacío, conservación de otras fuentes y fallas de
+  lectura/reemplazo sin perder el CSV anterior.
+- Pruebas con `/Users/thomasmanzo/Documents/Finnauto/.venv/bin/python3`, sin pytest:
+  NAVAR 42, reintentos 7, ventas 11, publicidad 3, liquidaciones 7, OAuth 9 y
+  Tiendanube 13: todas OK, sin modificar sus archivos. Las pruebas existentes se
+  ejecutaron con `PYTHONPATH=.`. Sin dependencias nuevas.
+- No abrí bancos reales ni usé datos privados. Los documentos privados de NAVAR
+  no están en este worktree; usé el contexto de las consignas. Queda para Claude
+  la prueba real con el usuario del cliente, como indica la tarea.
+
+- Las 10 pruebas nuevas y `git diff --check` también dan OK.
+- No pude commitear: `git add` no pudo crear el `index.lock` del worktree
+  (`Operation not permitted`, restricción del sandbox). Dejé los diez archivos
+  en este worktree, rama `tarea/74-galicia-una-empresa`, para revisión y commit.
+
 ## Revisión
+
+- 01/11/2026 (Claude): revisado el diff y las pruebas (5 + 5 nuevas; NAVAR 42 y reintentos 7 sin tocar, más las de
+  ML/MP/publicidad/Tiendanube: todo OK). Lo de NAVAR queda igual: los valores fijos pasaron a atributos con los mismos
+  valores, la cuenta por defecto del lector es la de siempre, y el orquestador solo agrega la rama nueva.
+  Retoque de Claude: en `TIPOS`, `IMP` pasó a `IMP.` e `IMPUESTO` (si no, "PAGO IMPORTACION" quedaba como impuesto).
+  **Merge pendiente del OK de Thomas** (toca código que corre en producción para NAVAR). Falta la prueba real con
+  el usuario del cliente; la tarea programada no se instala hasta probarla.

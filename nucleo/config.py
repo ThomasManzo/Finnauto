@@ -17,11 +17,15 @@ def ruta_cliente(base_repo, cliente):
 
 
 def cargar_perfil(base_repo, cliente):
-    """Lee clientes/<cliente>/perfil.json y lo devuelve como dict."""
+    """Lee el perfil de siempre o, si no está, el privado que no se sube a git."""
     ruta = os.path.join(ruta_cliente(base_repo, cliente), "perfil.json")
+    privada = os.path.join(ruta_cliente(base_repo, cliente), "privado", "perfil.json")
     if not os.path.exists(ruta):
-        raise FileNotFoundError(
-            "No existe el perfil del cliente '%s'. Esperaba: %s" % (cliente, ruta))
+        if not os.path.exists(privada):
+            raise FileNotFoundError(
+                "No existe el perfil del cliente '%s'. Esperaba: %s o %s"
+                % (cliente, ruta, privada))
+        ruta = privada
     with open(ruta, "r", encoding="utf-8") as f:
         return json.load(f)
 
