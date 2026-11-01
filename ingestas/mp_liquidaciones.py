@@ -119,9 +119,19 @@ def bajar(sesion, carpeta, desde, hasta, ventas=()):
     def pedir_reporte(clave, a, b):
         # Dejar constancia del pedido aceptado para no repetirlo en la misma fecha.
         marca = carpeta / (clave + '.pedido.json')
+        # Si ya hay uno de ese mes generándose (el que programó el vendedor, por ejemplo), se espera
+        # ese: pedir otro igual hace que Mercado Pago conteste con error.
+        if any(r.get('status') == 'pending' and instante(r['begin_date']) == a and instante(r['end_date']) == b
+               for r in listado):
+            return
         if not marca.exists() or json.loads(marca.read_text()).get('fecha') != hoy:
             utc = lambda f: f.astimezone(dt.timezone.utc).isoformat().replace('+00:00', 'Z')
-            pedir(cuerpo={'begin_date': utc(a), 'end_date': utc(b)})
+            try:
+                pedir(cuerpo={'begin_date': utc(a), 'end_date': utc(b)})
+            except ErrorDatos:
+                # Un pedido rechazado no frena los otros meses: este queda como faltante en el motivo
+                # y se vuelve a pedir en la próxima corrida.
+                return
             atomico(marca, json.dumps({'fecha': hoy}).encode())
     for inicio, fin in meses(desde, hasta):
         a, b = limites(inicio, fin)

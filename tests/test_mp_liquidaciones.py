@@ -91,6 +91,25 @@ class LiquidacionesTests(unittest.TestCase):
             with self.assertRaisesRegex(ML.ErrorDatos, 'más tarde'):
                 ML.Sesion('ejemplo').pedir('mercadopago', M.BASE, lambda r: (203, b''), {})
 
+    def test_pendiente_no_se_repide_y_post_rechazado_no_frena(self):
+        # Si el mes ya se está generando, se espera; si Mercado Pago rechaza el pedido, queda faltante.
+        import urllib.error
+        for lista, rechazar in (([dict(id=5, begin_date='2026-09-01T03:00:00Z', end_date='2026-10-01T02:59:59Z', status='pending')], False), ([], True)):
+            posts = []
+            def http(req):
+                if req.full_url.endswith('/config'): return 200, b'{}'
+                if req.full_url.endswith('/list'): return 200, json.dumps(lista).encode()
+                if req.get_method() == 'POST':
+                    posts.append(1)
+                    if rechazar: raise urllib.error.HTTPError(req.full_url, 500, '', {}, io.BytesIO())
+                    return 202, b''
+                return 200, b''
+            with tempfile.TemporaryDirectory() as tmp, patch.object(O, 'access_token', return_value='inventado'), patch.object(M, '_http', side_effect=http), patch.object(M.time, 'sleep'), patch.object(ML.time, 'sleep'):
+                filas, motivo = M.bajar(ML.Sesion('ejemplo'), Path(tmp), dt.date(2026, 9, 1), dt.date(2026, 9, 30))
+                self.assertEqual((filas, motivo), ([], 'faltan liquidaciones de: 2026-09-01_2026-09-30'))
+                self.assertEqual(len(posts), 0 if not rechazar else 6)
+                self.assertFalse(list(Path(tmp).glob('*.pedido.json')))
+
     def test_excel(self):
         try: import openpyxl
         except ImportError: self.skipTest('openpyxl no está en este intérprete')
