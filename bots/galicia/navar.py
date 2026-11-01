@@ -25,6 +25,10 @@ def _empresa(texto):
 
 
 class BotGaliciaNavar(BotGalicia):
+    patron_empresa = PATRON_EMPRESA
+    nombre_empresa = "NAVAR SA"
+    etiqueta_empresa = "NAVAR"
+
     def __init__(self, cfg):
         super().__init__()
         self.cuenta = cfg["cuenta"]
@@ -117,7 +121,7 @@ class BotGaliciaNavar(BotGalicia):
         try:
             campo_usuario.wait_for(state="hidden", timeout=timeout)
             self._esperar_alguno_visible(
-                page, lambda: page.get_by_text(PATRON_EMPRESA),
+                page, lambda: page.get_by_text(self.patron_empresa),
                 "el nombre de la empresa después del login", timeout)
         except Exception as e:
             # La clave SÍ llegó al banco y no confirmó la entrada: puede ser la clave. Esta marca la
@@ -130,9 +134,9 @@ class BotGaliciaNavar(BotGalicia):
     def capturar_empresa_activa(self, page):
         # El nombre aparece más de una vez en el inicio; alcanza con una copia visible.
         try:
-            coincidencias = page.get_by_text(PATRON_EMPRESA)
+            coincidencias = page.get_by_text(self.patron_empresa)
             if any(coincidencias.nth(i).is_visible() for i in range(coincidencias.count())):
-                return "NAVAR SA"
+                return self.nombre_empresa
         except Exception:
             pass
         return None
@@ -141,7 +145,7 @@ class BotGaliciaNavar(BotGalicia):
         return []
 
     def cambiar_a_empresa(self, page, nombre, timeout):
-        raise RuntimeError("Galicia NAVAR tiene una sola empresa activa; no se abre el selector.")
+        raise RuntimeError("Galicia %s tiene una sola empresa activa; no se abre el selector." % self.etiqueta_empresa)
 
     def _patron_cuenta(self):
         partes = [re.escape(parte) for parte in self.cuenta.split()]
@@ -170,7 +174,7 @@ class BotGaliciaNavar(BotGalicia):
 
     def ir_a_cuenta(self, page, timeout):
         if _empresa(self.capturar_empresa_activa(page)) not in self.empresas:
-            raise RuntimeError("No pude confirmar la empresa de NAVAR; revisar captura.")
+            raise RuntimeError("No pude confirmar la empresa de %s; revisar captura." % self.etiqueta_empresa)
 
         captura(page, "inicio")
         tarjeta = self._esperar_unico_visible(page, [
@@ -207,13 +211,15 @@ class BotGaliciaNavar(BotGalicia):
         return resultado
 
     def aplicar_filtro_fechas(self, page, desde, hasta, timeout):
-        log("Galicia NAVAR no usa filtro: baja los últimos 30 días que trae el banco")
+        log("Galicia %s no usa filtro: baja los últimos 30 días que trae el banco" % self.etiqueta_empresa)
         return True
 
-    def validar_excel(self, ruta):
+    def leer_excel(self, ruta):
         from lector.extractos import leer_planilla_galicia
+        return leer_planilla_galicia(ruta)
 
-        datos = leer_planilla_galicia(ruta)
+    def validar_excel(self, ruta):
+        datos = self.leer_excel(ruta)
         if not datos["movimientos"]:
             raise RuntimeError("Excel sin movimientos legibles; revisar antes de marcarlo al día.")
 

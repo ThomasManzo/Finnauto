@@ -6,6 +6,7 @@ import io
 import json
 from pathlib import Path
 import sys
+from ingestas import galicia_datos as galicia
 from ingestas import meli_oauth, meli_ventas as ml, mp_liquidaciones as mp, meli_publicidad as ads, tiendanube as tn
 
 
@@ -29,7 +30,7 @@ def main(argv=None):
     parser.add_argument('--cliente', required=True)
     parser.add_argument('--salida', required=True, type=Path)
     parser.add_argument('--desde', type=dt.date.fromisoformat, default=dt.date(2025, 10, 1))
-    parser.add_argument('--solo', choices=['mercadolibre', 'mercadopago', 'mercadolibre_publicidad', 'tiendanube'])
+    parser.add_argument('--solo', choices=['mercadolibre', 'mercadopago', 'mercadolibre_publicidad', 'tiendanube', 'galicia'])
     args = parser.parse_args(argv)
     ahora = dt.datetime.now(ml.HORA_BA)
     hasta = ahora.date() - dt.timedelta(days=1)
@@ -44,55 +45,65 @@ def main(argv=None):
     control['corrida'] = ml.fecha(ahora.isoformat())
     ventas = None
     fallo = False
-    for fuente in ('mercadolibre', 'mercadopago', 'mercadolibre_publicidad', 'tiendanube'):
+    for fuente in ('mercadolibre', 'mercadopago', 'mercadolibre_publicidad', 'tiendanube', 'galicia'):
         if args.solo and fuente != args.solo: continue
         carpeta = meli_oauth.BASE_REPO / 'clientes' / args.cliente / '.run' / fuente
         # El avance queda en liquidaciones, junto a los reportes, separado por fuente.
         marca = meli_oauth.BASE_REPO / 'clientes' / args.cliente / '.run/mercadopago/liquidaciones' / ('ultima-' + fuente + '.json')
-        ruta = args.salida / {'mercadolibre': 'ml_ventas.csv', 'mercadopago': 'mp_movimientos.csv', 'mercadolibre_publicidad': 'ml_publicidad.csv', 'tiendanube': 'tn_ordenes.csv'}[fuente]
+        ruta = args.salida / {'mercadolibre': 'ml_ventas.csv', 'mercadopago': 'mp_movimientos.csv', 'mercadolibre_publicidad': 'ml_publicidad.csv', 'tiendanube': 'tn_ordenes.csv', 'galicia': 'galicia_movimientos.csv'}[fuente]
         resumen = dict(ok=False, filas=0, desde='', hasta='', motivo='')
         if fuente == 'mercadolibre': resumen['descuadradas'] = 0
         if fuente == 'tiendanube': resumen['raras'] = 0
+        if fuente == 'galicia': resumen['ultima_descarga'] = ''
         try:
             if fuente == 'tiendanube' and not tn.tiene_aplicacion(args.cliente):
                 control['fuentes'].pop(fuente, None)
                 continue
-            if args.desde > hasta: raise ml.ErrorDatos('la fecha desde debe ser anterior a hoy')
-            if fuente == 'mercadolibre':
-                anterior = json.loads(marca.read_text()) if marca.exists() else {}
-                # Si se amplía el período, volver a buscar lo que antes no se había pedido.
-                ultima = anterior.get('corrida') if anterior.get('desde', '9999') <= args.desde.isoformat() else None
-                filas, resumen['descuadradas'] = ml.bajar(sesion, carpeta / 'cache', args.desde, hasta, ultima)
-                columnas, campo_fecha = ml.COLUMNAS, 'fecha_venta'
-            elif fuente == 'tiendanube':
-                sesion_tn = tn.Sesion(args.cliente)
-                marca = carpeta / 'cache' / 'ultima.json'
-                anterior = json.loads(marca.read_text(encoding='utf-8')) if marca.exists() else {}
-                ultima = anterior.get('corrida') if (anterior.get('desde', '9999') <= args.desde.isoformat()
-                    and anterior.get('store_id') == sesion_tn.permiso['store_id']) else None
-                filas, resumen['raras'] = tn.bajar(sesion_tn, carpeta / 'cache', args.desde, hasta, ultima)
-                columnas, campo_fecha = tn.COLUMNAS, 'fecha'
-            elif fuente == 'mercadolibre_publicidad':
-                carpeta = meli_oauth.BASE_REPO / 'clientes' / args.cliente / '.run/mercadolibre/publicidad'
-                filas = ads.bajar(sesion, carpeta, args.desde, hasta)
-                columnas, campo_fecha = ads.COLUMNAS, 'fecha'
+            if fuente == 'galicia':
+                cfg = galicia.configuracion(meli_oauth.BASE_REPO, args.cliente)
+                if cfg is None:
+                    control['fuentes'].pop(fuente, None)
+                    continue
+                filas, saldos, resumen = galicia.leer(cfg, args.salida, ahora.date())
+                escribir_csv(ruta, galicia.COLUMNAS_MOVIMIENTOS, filas)
+                escribir_csv(args.salida / 'galicia_saldo.csv', galicia.COLUMNAS_SALDO, saldos)
             else:
-                if ventas is None: ventas = leer_csv(args.salida / 'ml_ventas.csv')
-                filas, motivo = mp.bajar(sesion, carpeta / 'liquidaciones', args.desde, hasta, ventas)
-                if motivo: raise ml.ErrorDatos(motivo)
-                columnas, campo_fecha = mp.COLUMNAS, 'fecha_liquidacion'
-            escribir_csv(ruta, columnas, filas)
-            if fuente == 'mercadolibre': ventas = filas
-            fechas = [f[campo_fecha][:10] for f in filas if f[campo_fecha]]
-            resumen.update(ok=True, filas=len(filas), desde=min(fechas, default=''), hasta=max(fechas, default=''))
-            try:
-                avance = dict(corrida=ahora.isoformat(), desde=args.desde.isoformat())
-                if fuente == 'tiendanube': avance['store_id'] = sesion_tn.permiso['store_id']
-                ml.guardar_json(marca, avance)
-            except OSError:
-                # El CSV ya está completo. Sin marca se repite la búsqueda en la
-                # próxima corrida; eso cuesta tiempo pero no pierde movimientos.
-                print(f'{fuente}: no se pudo guardar el avance; se volverá a buscar en la próxima corrida.')
+                if args.desde > hasta: raise ml.ErrorDatos('la fecha desde debe ser anterior a hoy')
+                if fuente == 'mercadolibre':
+                    anterior = json.loads(marca.read_text()) if marca.exists() else {}
+                    # Si se amplía el período, volver a buscar lo que antes no se había pedido.
+                    ultima = anterior.get('corrida') if anterior.get('desde', '9999') <= args.desde.isoformat() else None
+                    filas, resumen['descuadradas'] = ml.bajar(sesion, carpeta / 'cache', args.desde, hasta, ultima)
+                    columnas, campo_fecha = ml.COLUMNAS, 'fecha_venta'
+                elif fuente == 'tiendanube':
+                    sesion_tn = tn.Sesion(args.cliente)
+                    marca = carpeta / 'cache' / 'ultima.json'
+                    anterior = json.loads(marca.read_text(encoding='utf-8')) if marca.exists() else {}
+                    ultima = anterior.get('corrida') if (anterior.get('desde', '9999') <= args.desde.isoformat()
+                        and anterior.get('store_id') == sesion_tn.permiso['store_id']) else None
+                    filas, resumen['raras'] = tn.bajar(sesion_tn, carpeta / 'cache', args.desde, hasta, ultima)
+                    columnas, campo_fecha = tn.COLUMNAS, 'fecha'
+                elif fuente == 'mercadolibre_publicidad':
+                    carpeta = meli_oauth.BASE_REPO / 'clientes' / args.cliente / '.run/mercadolibre/publicidad'
+                    filas = ads.bajar(sesion, carpeta, args.desde, hasta)
+                    columnas, campo_fecha = ads.COLUMNAS, 'fecha'
+                else:
+                    if ventas is None: ventas = leer_csv(args.salida / 'ml_ventas.csv')
+                    filas, motivo = mp.bajar(sesion, carpeta / 'liquidaciones', args.desde, hasta, ventas)
+                    if motivo: raise ml.ErrorDatos(motivo)
+                    columnas, campo_fecha = mp.COLUMNAS, 'fecha_liquidacion'
+                escribir_csv(ruta, columnas, filas)
+                if fuente == 'mercadolibre': ventas = filas
+                fechas = [f[campo_fecha][:10] for f in filas if f[campo_fecha]]
+                resumen.update(ok=True, filas=len(filas), desde=min(fechas, default=''), hasta=max(fechas, default=''))
+                try:
+                    avance = dict(corrida=ahora.isoformat(), desde=args.desde.isoformat())
+                    if fuente == 'tiendanube': avance['store_id'] = sesion_tn.permiso['store_id']
+                    ml.guardar_json(marca, avance)
+                except OSError:
+                    # El CSV ya está completo. Sin marca se repite la búsqueda en la
+                    # próxima corrida; eso cuesta tiempo pero no pierde movimientos.
+                    print(f'{fuente}: no se pudo guardar el avance; se volverá a buscar en la próxima corrida.')
         except meli_oauth.ErrorAutorizacion as exc:
             resumen['motivo'] = 'hay que volver a autorizar o revisar el permiso: ' + exc.motivo
         except ml.ErrorDatos as exc:

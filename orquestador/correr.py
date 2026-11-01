@@ -107,6 +107,8 @@ def correr_banco(cliente, banco, modo_forzado=None, navegador=None, si_falta=Fal
 
     perfil = _config.cargar_perfil(BASE_REPO, cliente)
     cfg_banco = _config.config_banco(perfil, banco)
+    una_empresa = (not variante_navar and banco == "galicia"
+                   and cfg_banco.get("variante") == "una_empresa")
     ctx = _contexto.construir(BASE_REPO, cliente, banco, perfil, cfg_banco, modo_forzado)
     if navegador:
         ctx.navegador = "" if navegador == "chromium" else navegador
@@ -115,7 +117,11 @@ def correr_banco(cliente, banco, modo_forzado=None, navegador=None, si_falta=Fal
         # el de Chromium no le sirve a Edge y mezclarlos puede romper los dos.
         ctx.perfil_dir = ctx.perfil_dir + "_" + ctx.navegador
 
-    if variante_navar:
+    if una_empresa:
+        from bots.galicia.una_empresa import BotGaliciaUnaEmpresa
+        bot = BotGaliciaUnaEmpresa(cfg_banco)
+        ctx.solo_activa = True
+    elif variante_navar:
         if banco == "galicia":
             from bots.galicia.navar import BotGaliciaNavar
             bot = BotGaliciaNavar(cfg_banco)
@@ -129,10 +135,10 @@ def correr_banco(cliente, banco, modo_forzado=None, navegador=None, si_falta=Fal
         bot = REGISTRO_BANCOS[banco]()
     ctx.banco_nombre = bot.nombre  # nombre lindo para _ESTADO_/_SALDOS_
 
-    if variante_navar:
+    if variante_navar or una_empresa:
         fijada = cfg_banco.get("carpeta_drive_destino", "").strip()
         relativa = cfg_banco.get("carpeta_drive_relativa", "Bancos/" + banco).strip()
-        if fijada:
+        if fijada or una_empresa:
             ctx.carpeta_drive = os.path.normpath(fijada)
             buscada = "carpeta_drive_destino=%s" % fijada
         else:
@@ -175,9 +181,10 @@ def correr_banco(cliente, banco, modo_forzado=None, navegador=None, si_falta=Fal
             log("%s: el banco recibió la clave y no confirmó la entrada (%d de %d hoy)."
                 % (bot.nombre, n, MAX_CLAVES_SIN_CONFIRMAR))
         raise
-    if variante_navar:
+    if variante_navar or una_empresa:
         if resultado["fallaron"] or not (resultado["ok"] or resultado["sin_novedades"]):
-            raise RuntimeError("%s NAVAR no terminó bien; revisar log y capturas." % bot.nombre)
+            raise RuntimeError("%s%s no terminó bien; revisar log y capturas."
+                               % (bot.nombre, " NAVAR" if variante_navar else ""))
     return resultado
 
 
