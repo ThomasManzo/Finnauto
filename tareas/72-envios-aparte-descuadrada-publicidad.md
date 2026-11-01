@@ -1,5 +1,5 @@
 # Tarea 72 — Mercado Libre: pagos de envío aparte, columna `descuadrada`, publicidad y bajada diaria más liviana
-Estado: pendiente
+Estado: aprobada
 Rama: tarea/72-envios-publicidad
 
 ## Objetivo
@@ -158,4 +158,46 @@ fuente queda en error y el CSV anterior no se toca.
 
 ## Qué hice
 
+- Modifiqué `ingestas/meli_ventas.py`: búsqueda y caché de pagos de envío aparte con
+  token de Mercado Pago; se filtran por descripción y estado, se agregan sus IDs y su
+  bruto menos reintegros al control cuando corresponde. Los importes de la venta y
+  sus cargos quedan iguales. Agregué `descuadrada` al final, vacía en las hijas.
+- El refresco de detalles ahora contempla los últimos 15 días, cambios de fecha de
+  actualización, detalles faltantes, envíos no finales y pagos en reclamo. Una orden
+  vieja entregada sin cambios usa la caché; la orden se guarda después de sus detalles.
+- Agregué `ingestas/meli_publicidad.py`: anunciante, avisos paginados, detalle diario
+  solo de avisos con movimiento, encabezados de versión y control del costo por día.
+  Pide desde el máximo entre `--desde` y hoy menos 89 días, hasta ayer. Acumula por
+  publicación, conserva días antiguos y arma las filas ordenadas desde `--desde`.
+- Modifiqué `ingestas/mercado_datos.py`: tercera fuente y opción `--solo`, CSV atómico,
+  control separado y continuidad de las otras fuentes ante errores. Sin anunciante
+  escribe solamente el encabezado. `venta_por_publicidad` sigue vacía.
+- Amplié `tests/test_meli_ventas.py` y agregué `tests/test_meli_publicidad.py` con datos
+  inventados y HTTP falso: I/J/K y regresión A–H, filtros de pagos, búsqueda y caché,
+  vínculo de `SETTLEMENT_SHIPPING`, columna y conteo de descuadres, refresco y estados
+  finales, ejemplo L, paginación, ventana de fechas, acumulación, cuenta sin anuncios,
+  error de control que conserva el CSV anterior y orden/aislamiento de las fuentes.
+- Pruebas: `python3 tests/test_meli_ventas.py` (11),
+  `python3 tests/test_meli_publicidad.py` (3), `python3 tests/test_mp_liquidaciones.py`
+  (6, con Excel omitido por ese intérprete) y `python3 tests/test_meli_oauth.py` (9): OK.
+  Repetí liquidaciones con `/Users/thomasmanzo/Documents/Finnauto/.venv/bin/python3`:
+  las 6 pasaron, incluida Excel. `git diff --check`: OK. Sin dependencias nuevas.
+- No usé datos reales ni archivos privados. Los documentos privados de NAVAR no
+  existen en este worktree; trabajé con el contexto de las consignas 71 y 72.
+  Queda para Claude la comparación con la API y los reportes reales en la Mac.
+- No pude commitear: `git add` falló al crear el `index.lock` del worktree por
+  permisos del sandbox (`Operation not permitted`). Dejé todos los archivos en
+  esta rama/worktree para que Claude los revise y commitee.
+
 ## Revisión
+
+- 01/11/2026 (Claude): revisado el diff y las pruebas (11 + 3 + 7 + 9 OK). Retoques de Claude:
+  (1) `meli_ventas.py`: pasada única que busca el pago de envío aparte también para las órdenes viejas que ya
+  estaban en la caché (sin eso, el arreglo solo llegaba a los últimos meses);
+  (2) `mp_liquidaciones.py`: si el reporte de un mes ya se está generando (por ejemplo, el mensual que programó el
+  vendedor), se espera ese en vez de pedir otro igual (Mercado Pago contestaba error 500), y un pedido rechazado deja
+  el mes como faltante sin frenar los demás. Prueba nueva.
+- Prueba real en la Mac (fuera del repo): las ventas descuadradas bajan de 92 a 37 (36 entregas "a acordar" con
+  pagos extra, a revisar con un reporte del vendedor, y 1 suelta); septiembre contra el reporte sigue igual.
+  Publicidad: el costo de septiembre por publicación y día suma exactamente el total de la cuenta; historial desde
+  hace 90 días. La corrida diaria con la caché al día tarda ~12 minutos (incluye la pasada única).

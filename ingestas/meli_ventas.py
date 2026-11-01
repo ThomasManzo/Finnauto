@@ -15,7 +15,7 @@ from ingestas import meli_oauth
 HORA_BA = meli_oauth.HORA_BA
 IMPUESTO_BONIFICACION_FLEX = Decimal('0.006')
 VALIDOS = {'approved', 'refunded', 'charged_back', 'in_mediation'}
-COLUMNAS = 'id_venta,id_pack,fecha_venta,estado,sku,id_publicacion,titulo,variante,unidades,precio_unitario,ingresos_productos,cargo_venta_impuestos,ingresos_envio,costos_envio,descuentos_bonificaciones,anulaciones_reembolsos,otros_cargos,total,tiene_cuotas,venta_por_publicidad,forma_entrega,provincia_comprador,fecha_entregado,id_pago_mp'.split(',')
+COLUMNAS = 'id_venta,id_pack,fecha_venta,estado,sku,id_publicacion,titulo,variante,unidades,precio_unitario,ingresos_productos,cargo_venta_impuestos,ingresos_envio,costos_envio,descuentos_bonificaciones,anulaciones_reembolsos,otros_cargos,total,tiene_cuotas,venta_por_publicidad,forma_entrega,provincia_comprador,fecha_entregado,id_pago_mp,descuadrada'.split(',')
 IMPORTES = COLUMNAS[10:18]
 
 
@@ -83,13 +83,13 @@ class Sesion:
         meli_oauth._validar(cliente, 'mercadolibre')
         self.cliente, self.tokens = cliente, {}
 
-    def pedir(self, fuente, url, http, cuerpo=None, crudo=False):
+    def pedir(self, fuente, url, http, cuerpo=None, crudo=False, encabezados=None):
         if fuente not in self.tokens:
             self.tokens[fuente] = meli_oauth.access_token(self.cliente, fuente)
         renovado, intentos = False, 0
         while True:
             pedido = urllib.request.Request(url, data=None if cuerpo is None else json.dumps(cuerpo).encode(),
-                headers={'Authorization': 'Bearer ' + self.tokens[fuente], 'Content-Type': 'application/json'})
+                headers={'Authorization': 'Bearer ' + self.tokens[fuente], 'Content-Type': 'application/json', **(encabezados or {})})
             try:
                 codigo, datos = http(pedido)
                 if codigo == 203:
@@ -127,10 +127,12 @@ class Sesion:
                 raise ErrorDatos(f'no se pudo leer la respuesta de {fuente}; revisar la conexión y volver a intentar') from None
 
 
-def armar_venta(ordenes, pagos, envio=None, costos=None):
+def armar_venta(ordenes, pagos, envio=None, costos=None, pagos_envio=None):
     """Devuelve (filas, descuadrada); el envío compartido se cuenta una sola vez."""
     envio, costos = envio or {}, costos or {}
     pagos = list({str(p['id']): p for p in pagos if p.get('status') in VALIDOS}.values())
+    pagos_envio = pagos_envio_validos(pagos_envio or [])
+    pagos_envio = [p for p in pagos_envio if str(p['id']) not in {str(p['id']) for p in pagos}]
     cargos = [c for p in pagos for c in p.get('charges_details', []) if c.get('accounts', {}).get('from') == 'collector']
     def cargo(*tipos):
         return sum((decimal(c.get('amounts', {}).get('original')) for c in cargos if c.get('type') in tipos), Decimal(0))
@@ -153,6 +155,10 @@ def armar_venta(ordenes, pagos, envio=None, costos=None):
                 -cargo('shipping') if any(c.get('type') == 'shipping' for c in cargos) else (Decimal(0) if flex else -receptor),
                 d, anulacion, -cargo('coupon')]
     total = sum(importes)
+    # El envío cobrado aparte ayuda al control, pero sus impuestos no cambian la venta.
+    aparte = sum((decimal(p.get('transaction_amount')) - decimal(p.get('transaction_amount_refunded'))
+                  for p in pagos_envio), Decimal(0)) if importes[3] != -receptor else Decimal(0)
+    descuadrada = abs(total - (neto + d - impuesto + anulacion + aparte)) > 1
     base = dict.fromkeys(COLUMNAS, '')
     base.update(zip(IMPORTES, map(monto, importes + [total])))
     base.update(fecha_venta=min((fecha(o.get('date_closed')) for o in ordenes if o.get('date_closed')), default=''),
@@ -160,7 +166,7 @@ def armar_venta(ordenes, pagos, envio=None, costos=None):
         forma_entrega={'self_service': 'flex', 'fulfillment': 'full', 'xd_drop_off': 'correo', 'drop_off': 'correo', 'cross_docking': 'correo'}.get(envio.get('logistic_type'), 'otra' if envio else 'acordar'),
         provincia_comprador=envio.get('receiver_address', {}).get('state', {}).get('name', ''),
         fecha_entregado=fecha(envio.get('status_history', {}).get('date_delivered')),
-        id_pago_mp='|'.join(str(p['id']) for p in pagos))
+        id_pago_mp='|'.join(str(p['id']) for p in pagos + pagos_envio), descuadrada='sí' if descuadrada else 'no')
     def estado(orden):
         est = envio.get('status')
         if est == 'cancelled': return 'Cancelada'
@@ -185,9 +191,31 @@ def armar_venta(ordenes, pagos, envio=None, costos=None):
                 variante=' | '.join(f"{a['name']} : {a['value_name']}" for a in producto.get('variation_attributes', [])),
                 unidades=str(item['quantity']), precio_unitario=monto(item['unit_price']))
             if cabecera:
-                fila.update(dict.fromkeys(IMPORTES, ''))
+                fila.update(dict.fromkeys(IMPORTES + ['descuadrada'], ''))
             filas.append(fila)
-    return filas, abs(total - (neto + d - impuesto + anulacion)) > 1
+    return filas, descuadrada
+
+
+def pagos_envio_validos(pagos):
+    return list({str(p['id']): p for p in pagos if p.get('description') == 'marketplace_shipment'
+                 and p.get('status') in VALIDOS}.values())
+
+
+def buscar_pago_envio(orden, pagos, costos):
+    receptor = decimal(costos.get('receiver', {}).get('cost'))
+    productos = sum(decimal(i['unit_price']) * decimal(i['quantity']) for i in orden['order_items'])
+    cobrado = sum(decimal(p.get('transaction_amount')) for p in pagos if p.get('status') in VALIDOS)
+    return receptor > 0 and cobrado < productos + receptor - 1
+
+
+def refrescar(orden, guardada, pagos, envio, completo, hoy):
+    """Volvemos a mirar lo reciente, lo que cambió o lo que todavía puede resolverse."""
+    final = not (orden.get('shipping') or {}).get('id') or envio.get('status') in {'delivered', 'cancelled'} or (
+        envio.get('status') == 'not_delivered' and envio.get('substatus') == 'returned')
+    return (not guardada or not completo or
+            guardada.get('date_last_updated') != orden.get('date_last_updated') or
+            not orden.get('date_closed') or instante(orden['date_closed']).date() >= hoy - dt.timedelta(days=15) or
+            not final or any(p.get('status') in {'in_mediation', 'charged_back'} for p in pagos))
 
 
 def bajar(sesion, carpeta, desde, hasta, ultima=None):
@@ -221,7 +249,10 @@ def bajar(sesion, carpeta, desde, hasta, ultima=None):
             if not resultados: raise ErrorDatos('la búsqueda de ventas quedó incompleta; volver a intentar')
     # Cada orden se guarda recién después de sus detalles: si la corrida se corta a mitad
     # (la primera tarda horas), lo bajado queda y la próxima sigue desde ahí.
-    reciente = dt.datetime.combine(ventana, dt.time.min, HORA_BA)
+    def leer(tipo, ident):
+        ruta = carpeta / f'{tipo}-{ident}.json'
+        return json.loads(ruta.read_text()) if ident and ruta.exists() else {}
+    hoy = hasta + dt.timedelta(days=1)
     bajados = set()
     for ident, orden in nuevas.items():
         recursos = [('pago', p['id'], '/v1/payments/', 'mercadopago') for p in orden.get('payments', [])]
@@ -229,10 +260,13 @@ def bajar(sesion, carpeta, desde, hasta, ultima=None):
         if envio:
             recursos += [('envio', envio, '/shipments/', 'mercadolibre'), ('costos', envio, '/shipments/', 'mercadolibre')]
         guardada = ordenes.get(ident)
-        # Una orden vieja que no cambió y ya tiene todo en la caché no se vuelve a bajar.
-        if (guardada and guardada.get('date_last_updated') == orden.get('date_last_updated')
-                and orden.get('date_closed') and instante(orden['date_closed']) < reciente
-                and all((carpeta / f'{t}-{i}.json').exists() for t, i, _, _ in recursos)):
+        pagos = [leer('pago', p['id']) for p in orden.get('payments', [])]
+        completo = all((carpeta / f'{t}-{i}.json').exists() for t, i, _, _ in recursos)
+        necesita = envio and completo and buscar_pago_envio(orden, pagos, leer('costos', envio))
+        if necesita:
+            completo = (carpeta / f'envio_pagos-{envio}.json').exists()
+        aparte = pagos_envio_validos(leer('envio_pagos', envio).get('results', []))
+        if not refrescar(orden, guardada, pagos + aparte, leer('envio', envio), completo, hoy):
             continue
         for tipo, ident_recurso, prefijo, fuente in recursos:
             clave = f'{tipo}-{ident_recurso}'
@@ -240,21 +274,40 @@ def bajar(sesion, carpeta, desde, hasta, ultima=None):
                 dato = pedir(prefijo + urllib.parse.quote(str(ident_recurso), safe='') + ('/costs' if tipo == 'costos' else ''), fuente)
                 guardar_json(carpeta / (clave + '.json'), dato)
                 bajados.add(clave)
+        pagos = [leer('pago', p['id']) for p in orden.get('payments', [])]
+        if envio and buscar_pago_envio(orden, pagos, leer('costos', envio)):
+            clave = f'envio_pagos-{envio}'
+            if clave not in bajados:
+                dato = pedir('/v1/payments/search?' + urllib.parse.urlencode({'external_reference': envio}), 'mercadopago')
+                guardar_json(carpeta / (clave + '.json'), dato)
+                bajados.add(clave)
         guardar_json(carpeta / f'orden-{ident}.json', orden)
     ordenes.update(nuevas)
+    # Órdenes viejas que ya estaban en la caché antes de que existiera la búsqueda del pago de
+    # envío aparte: se completan una sola vez (después ya queda el archivo y no se vuelve a pedir).
+    for orden in ordenes.values():
+        envio = (orden.get('shipping') or {}).get('id')
+        if not envio or not orden.get('date_closed') or not desde <= instante(orden['date_closed']).date() <= hasta:
+            continue
+        clave = f'envio_pagos-{envio}'
+        if clave in bajados or (carpeta / (clave + '.json')).exists():
+            continue
+        pagos = [leer('pago', p['id']) for p in orden.get('payments', [])]
+        if buscar_pago_envio(orden, pagos, leer('costos', envio)):
+            dato = pedir('/v1/payments/search?' + urllib.parse.urlencode({'external_reference': envio}), 'mercadopago')
+            guardar_json(carpeta / (clave + '.json'), dato)
+            bajados.add(clave)
     grupos = {}
     for orden in ordenes.values():
         if orden.get('date_closed') and desde <= instante(orden['date_closed']).date() <= hasta:
             grupos.setdefault(str(orden.get('pack_id') or orden['id']), []).append(orden)
-    def leer(tipo, ident):
-        return json.loads((carpeta / f'{tipo}-{ident}.json').read_text()) if ident else {}
     bloques, descuadradas = [], 0
     for grupo in grupos.values():
         envios = {(o.get('shipping') or {}).get('id') for o in grupo} - {None}
         if len(envios) > 1: raise ErrorDatos('un paquete tiene varios envíos; revisar antes de sumar sus importes')
         envio = next(iter(envios), None)
         pagos = [leer('pago', p['id']) for o in grupo for p in o.get('payments', [])]
-        filas, descuadre = armar_venta(grupo, pagos, leer('envio', envio), leer('costos', envio))
+        filas, descuadre = armar_venta(grupo, pagos, leer('envio', envio), leer('costos', envio), leer('envio_pagos', envio).get('results', []))
         bloques.append(filas)
         descuadradas += int(descuadre)
     bloques.sort(key=lambda filas: (filas[0]['fecha_venta'], filas[0]['id_venta']))

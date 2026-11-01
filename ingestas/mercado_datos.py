@@ -6,7 +6,7 @@ import io
 import json
 from pathlib import Path
 import sys
-from ingestas import meli_oauth, meli_ventas as ml, mp_liquidaciones as mp
+from ingestas import meli_oauth, meli_ventas as ml, mp_liquidaciones as mp, meli_publicidad as ads
 
 
 def escribir_csv(ruta, columnas, filas):
@@ -29,7 +29,7 @@ def main(argv=None):
     parser.add_argument('--cliente', required=True)
     parser.add_argument('--salida', required=True, type=Path)
     parser.add_argument('--desde', type=dt.date.fromisoformat, default=dt.date(2025, 10, 1))
-    parser.add_argument('--solo', choices=['mercadolibre', 'mercadopago'])
+    parser.add_argument('--solo', choices=['mercadolibre', 'mercadopago', 'mercadolibre_publicidad'])
     args = parser.parse_args(argv)
     ahora = dt.datetime.now(ml.HORA_BA)
     hasta = ahora.date() - dt.timedelta(days=1)
@@ -44,12 +44,12 @@ def main(argv=None):
     control['corrida'] = ml.fecha(ahora.isoformat())
     ventas = None
     fallo = False
-    for fuente in ('mercadolibre', 'mercadopago'):
+    for fuente in ('mercadolibre', 'mercadopago', 'mercadolibre_publicidad'):
         if args.solo and fuente != args.solo: continue
         carpeta = meli_oauth.BASE_REPO / 'clientes' / args.cliente / '.run' / fuente
         # El avance queda en liquidaciones, junto a los reportes, separado por fuente.
         marca = meli_oauth.BASE_REPO / 'clientes' / args.cliente / '.run/mercadopago/liquidaciones' / ('ultima-' + fuente + '.json')
-        ruta = args.salida / ('ml_ventas.csv' if fuente == 'mercadolibre' else 'mp_movimientos.csv')
+        ruta = args.salida / {'mercadolibre': 'ml_ventas.csv', 'mercadopago': 'mp_movimientos.csv', 'mercadolibre_publicidad': 'ml_publicidad.csv'}[fuente]
         resumen = dict(ok=False, filas=0, desde='', hasta='', motivo='')
         if fuente == 'mercadolibre': resumen['descuadradas'] = 0
         try:
@@ -60,6 +60,10 @@ def main(argv=None):
                 ultima = anterior.get('corrida') if anterior.get('desde', '9999') <= args.desde.isoformat() else None
                 filas, resumen['descuadradas'] = ml.bajar(sesion, carpeta / 'cache', args.desde, hasta, ultima)
                 columnas, campo_fecha = ml.COLUMNAS, 'fecha_venta'
+            elif fuente == 'mercadolibre_publicidad':
+                carpeta = meli_oauth.BASE_REPO / 'clientes' / args.cliente / '.run/mercadolibre/publicidad'
+                filas = ads.bajar(sesion, carpeta, args.desde, hasta)
+                columnas, campo_fecha = ads.COLUMNAS, 'fecha'
             else:
                 if ventas is None: ventas = leer_csv(args.salida / 'ml_ventas.csv')
                 filas, motivo = mp.bajar(sesion, carpeta / 'liquidaciones', args.desde, hasta, ventas)
