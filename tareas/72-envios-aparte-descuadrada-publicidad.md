@@ -1,5 +1,5 @@
 # Tarea 72 — Mercado Libre: pagos de envío aparte, columna `descuadrada`, publicidad y bajada diaria más liviana
-Estado: pendiente
+Estado: lista para revisión
 Rama: tarea/72-envios-publicidad
 
 ## Objetivo
@@ -157,5 +157,36 @@ fuente queda en error y el CSV anterior no se toca.
 - Lo que no se puede probar acá (datos reales): lo corre Claude en la Mac y compara.
 
 ## Qué hice
+
+- Modifiqué `ingestas/meli_ventas.py`: búsqueda y caché de pagos de envío aparte con
+  token de Mercado Pago; se filtran por descripción y estado, se agregan sus IDs y su
+  bruto menos reintegros al control cuando corresponde. Los importes de la venta y
+  sus cargos quedan iguales. Agregué `descuadrada` al final, vacía en las hijas.
+- El refresco de detalles ahora contempla los últimos 15 días, cambios de fecha de
+  actualización, detalles faltantes, envíos no finales y pagos en reclamo. Una orden
+  vieja entregada sin cambios usa la caché; la orden se guarda después de sus detalles.
+- Agregué `ingestas/meli_publicidad.py`: anunciante, avisos paginados, detalle diario
+  solo de avisos con movimiento, encabezados de versión y control del costo por día.
+  Pide desde el máximo entre `--desde` y hoy menos 89 días, hasta ayer. Acumula por
+  publicación, conserva días antiguos y arma las filas ordenadas desde `--desde`.
+- Modifiqué `ingestas/mercado_datos.py`: tercera fuente y opción `--solo`, CSV atómico,
+  control separado y continuidad de las otras fuentes ante errores. Sin anunciante
+  escribe solamente el encabezado. `venta_por_publicidad` sigue vacía.
+- Amplié `tests/test_meli_ventas.py` y agregué `tests/test_meli_publicidad.py` con datos
+  inventados y HTTP falso: I/J/K y regresión A–H, filtros de pagos, búsqueda y caché,
+  vínculo de `SETTLEMENT_SHIPPING`, columna y conteo de descuadres, refresco y estados
+  finales, ejemplo L, paginación, ventana de fechas, acumulación, cuenta sin anuncios,
+  error de control que conserva el CSV anterior y orden/aislamiento de las fuentes.
+- Pruebas: `python3 tests/test_meli_ventas.py` (11),
+  `python3 tests/test_meli_publicidad.py` (3), `python3 tests/test_mp_liquidaciones.py`
+  (6, con Excel omitido por ese intérprete) y `python3 tests/test_meli_oauth.py` (9): OK.
+  Repetí liquidaciones con `/Users/thomasmanzo/Documents/Finnauto/.venv/bin/python3`:
+  las 6 pasaron, incluida Excel. `git diff --check`: OK. Sin dependencias nuevas.
+- No usé datos reales ni archivos privados. Los documentos privados de NAVAR no
+  existen en este worktree; trabajé con el contexto de las consignas 71 y 72.
+  Queda para Claude la comparación con la API y los reportes reales en la Mac.
+- No pude commitear: `git add` falló al crear el `index.lock` del worktree por
+  permisos del sandbox (`Operation not permitted`). Dejé todos los archivos en
+  esta rama/worktree para que Claude los revise y commitee.
 
 ## Revisión

@@ -77,6 +77,7 @@ class VentasTests(unittest.TestCase):
         for fila in filas[1:]:
             self.assertTrue(all(fila[k] == '' for k in M.IMPORTES))
             self.assertEqual(fila['forma_entrega'], 'flex')
+            self.assertEqual(fila['descuadrada'], '')
         rechazado = dict(otro, status='rejected')
         self.assertEqual(M.armar_venta([o], [rechazado, p], e, c), M.armar_venta([o], [p], e, c))
         p['charges_details'].append(cargo('fee', 'financing_add_on_fee', 100))
@@ -85,6 +86,76 @@ class VentasTests(unittest.TestCase):
         self.assertEqual(filas[0]['tiene_cuotas'], 'sí')
         o['order_items'] *= 2
         self.assertEqual(len(M.armar_venta([o], [p], e, c)[0]), 3)
+
+    def test_i_j_k(self):
+        for caso, total in [('I', '27000.00'), ('J', '31820.00'), ('K', '25820.00')]:
+            o, p, e, c = ejemplo(True)
+            c['receiver']['cost'] = 6000 if caso == 'J' else 5000
+            if caso == 'I':
+                o['order_items'][0]['unit_price'] = 50000
+                o['shipping']['id'] = 40000000001
+                p.update(transaction_amount=50000, transaction_details={'net_received_amount': 16000},
+                         charges_details=[cargo('fee', 'meli_percentage_fee', 7000), cargo('tax', 'debitos_creditos', 300),
+                                          cargo('tax', 'sirtac', 700), cargo('shipping', 'shp_cross_docking', 26000)])
+                c.update(receiver={'cost': 11000}, senders=[dict(cost=15000, save=15000)], gross_amount=60000)
+            if caso != 'J': e['logistic_type'] = 'xd_drop_off'
+            aparte = dict(id=90000000009, description='marketplace_shipment', status='approved',
+                          transaction_amount=c['receiver']['cost'], transaction_amount_refunded=0,
+                          transaction_details={'net_received_amount': c['receiver']['cost'] - 70},
+                          charges_details=[cargo('tax', 'impuesto', 70)])
+            antes, des = M.armar_venta([o], [p], e, c)
+            filas, des_nuevo = M.armar_venta([o], [p], e, c, [aparte])
+            self.assertEqual(des, caso != 'K')
+            self.assertFalse(des_nuevo)
+            self.assertEqual(filas[0]['total'], total)
+            self.assertEqual(filas[0]['descuadrada'], 'no')
+            self.assertEqual(filas[0]['id_pago_mp'], '90000000001|90000000009')
+            movimientos = CLI.mp.leer_reporte('SOURCE_ID,REAL_AMOUNT,TRANSACTION_TYPE\n90000000009,10930,SETTLEMENT_SHIPPING\n', {'separator': ','}, filas)
+            self.assertEqual(movimientos[0]['id_venta_ml'], filas[0]['id_venta'])
+            invalidos = [dict(aparte, id=1, status='rejected'), dict(aparte, id=2, description='otro')]
+            self.assertEqual(M.armar_venta([o], [p], e, c, [aparte] + invalidos), (filas, des_nuevo))
+            self.assertEqual([antes[0][k] for k in M.IMPORTES], [filas[0][k] for k in M.IMPORTES])
+            self.assertTrue(M.buscar_pago_envio(o, [p], c))
+            p['transaction_amount'] += c['receiver']['cost']
+            self.assertFalse(M.buscar_pago_envio(o, [p], c))
+        o, p, e, c = ejemplo()
+        self.assertFalse(M.buscar_pago_envio(o, [p], c))
+
+    def test_refresco_http(self):
+        for caso in ('vieja', 'cambio', 'reciente', 'camino', 'reclamo', 'falta', 'aparte', 'aparte_guardado', 'devuelta', 'cancelada'):
+            with self.subTest(caso=caso), tempfile.TemporaryDirectory() as tmp:
+                o, p, e, c = ejemplo()
+                if caso == 'reciente': o['date_closed'] = '2026-10-30T12:00:00-03:00'
+                if caso == 'camino': e['status'] = 'shipped'
+                if caso == 'reclamo': p['status'] = 'in_mediation'
+                if caso in ('aparte', 'aparte_guardado'): c['receiver']['cost'] = 11000
+                if caso == 'devuelta': e.update(status='not_delivered', substatus='returned')
+                if caso == 'cancelada': e['status'] = 'cancelled'
+                carpeta = Path(tmp)
+                for tipo, ident, dato in [('orden', o['id'], o), ('pago', p['id'], p), ('envio', 70001, e), ('costos', 70001, c)]:
+                    M.guardar_json(carpeta / f'{tipo}-{ident}.json', dato)
+                if caso == 'aparte_guardado': M.guardar_json(carpeta / 'envio_pagos-70001.json', {'results': []})
+                if caso == 'cambio': o['date_last_updated'] = '2026-10-31T12:00:00Z'
+                if caso == 'falta': (carpeta / 'costos-70001.json').unlink()
+                detalles = []
+                def http(req):
+                    ruta = urllib.parse.urlsplit(req.full_url).path
+                    if ruta == '/orders/search': dato = dict(results=[o], paging={'total': 1})
+                    else:
+                        detalles.append(ruta)
+                        if ruta.endswith('/payments/search'):
+                            self.assertEqual(urllib.parse.parse_qs(urllib.parse.urlsplit(req.full_url).query), {'external_reference': ['70001']})
+                            self.assertEqual(urllib.parse.urlsplit(req.full_url).netloc, 'api.mercadopago.com')
+                        dato = {'results': [dict(id=90000000009, description='marketplace_shipment', status='approved', transaction_amount=11000)]} if ruta.endswith('/payments/search') else p if '/payments/' in ruta else c if ruta.endswith('/costs') else e
+                    return 200, json.dumps(dato).encode()
+                with patch.object(O, 'estado', return_value={'user_id': 123}), patch.object(O, 'access_token', return_value='inventado'), patch.object(M, '_http', side_effect=http):
+                    filas, des = M.bajar(M.Sesion('ejemplo'), carpeta, dt.date(2026, 9, 1), dt.date(2026, 10, 31), '2026-10-30T12:00:00Z')
+                self.assertEqual(len(detalles), 0 if caso in ('vieja', 'aparte_guardado', 'devuelta', 'cancelada') else 4 if caso == 'aparte' else 3)
+                self.assertEqual(sum(f['descuadrada'] == 'sí' for f in filas), des)
+                if caso == 'aparte':
+                    self.assertTrue((carpeta / 'envio_pagos-70001.json').exists())
+                    self.assertEqual(filas[0]['id_pago_mp'], '90000000001|90000000009')
+                    self.assertEqual(des, 0)
 
     def test_http_reintentos_y_token(self):
         error = lambda codigo, headers={}: urllib.error.HTTPError('https://example.org', codigo, '', headers, io.BytesIO())
