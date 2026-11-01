@@ -283,6 +283,20 @@ def bajar(sesion, carpeta, desde, hasta, ultima=None):
                 bajados.add(clave)
         guardar_json(carpeta / f'orden-{ident}.json', orden)
     ordenes.update(nuevas)
+    # Órdenes viejas que ya estaban en la caché antes de que existiera la búsqueda del pago de
+    # envío aparte: se completan una sola vez (después ya queda el archivo y no se vuelve a pedir).
+    for orden in ordenes.values():
+        envio = (orden.get('shipping') or {}).get('id')
+        if not envio or not orden.get('date_closed') or not desde <= instante(orden['date_closed']).date() <= hasta:
+            continue
+        clave = f'envio_pagos-{envio}'
+        if clave in bajados or (carpeta / (clave + '.json')).exists():
+            continue
+        pagos = [leer('pago', p['id']) for p in orden.get('payments', [])]
+        if buscar_pago_envio(orden, pagos, leer('costos', envio)):
+            dato = pedir('/v1/payments/search?' + urllib.parse.urlencode({'external_reference': envio}), 'mercadopago')
+            guardar_json(carpeta / (clave + '.json'), dato)
+            bajados.add(clave)
     grupos = {}
     for orden in ordenes.values():
         if orden.get('date_closed') and desde <= instante(orden['date_closed']).date() <= hasta:

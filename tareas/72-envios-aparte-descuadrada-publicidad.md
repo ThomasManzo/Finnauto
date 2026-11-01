@@ -1,5 +1,5 @@
 # Tarea 72 — Mercado Libre: pagos de envío aparte, columna `descuadrada`, publicidad y bajada diaria más liviana
-Estado: lista para revisión
+Estado: aprobada
 Rama: tarea/72-envios-publicidad
 
 ## Objetivo
@@ -190,3 +190,14 @@ fuente queda en error y el CSV anterior no se toca.
   esta rama/worktree para que Claude los revise y commitee.
 
 ## Revisión
+
+- 01/11/2026 (Claude): revisado el diff y las pruebas (11 + 3 + 7 + 9 OK). Retoques de Claude:
+  (1) `meli_ventas.py`: pasada única que busca el pago de envío aparte también para las órdenes viejas que ya
+  estaban en la caché (sin eso, el arreglo solo llegaba a los últimos meses);
+  (2) `mp_liquidaciones.py`: si el reporte de un mes ya se está generando (por ejemplo, el mensual que programó el
+  vendedor), se espera ese en vez de pedir otro igual (Mercado Pago contestaba error 500), y un pedido rechazado deja
+  el mes como faltante sin frenar los demás. Prueba nueva.
+- Prueba real en la Mac (fuera del repo): las ventas descuadradas bajan de 92 a 37 (36 entregas "a acordar" con
+  pagos extra, a revisar con un reporte del vendedor, y 1 suelta); septiembre contra el reporte sigue igual.
+  Publicidad: el costo de septiembre por publicación y día suma exactamente el total de la cuenta; historial desde
+  hace 90 días. La corrida diaria con la caché al día tarda ~12 minutos (incluye la pasada única).
