@@ -138,6 +138,10 @@ def correr_banco(cliente, banco, modo_forzado=None, navegador=None, si_falta=Fal
     if variante_navar or una_empresa:
         fijada = cfg_banco.get("carpeta_drive_destino", "").strip()
         relativa = cfg_banco.get("carpeta_drive_relativa", "Bancos/" + banco).strip()
+        if una_empresa and not fijada:
+            # Sin esto, normpath("") da "." y la descarga iría a la carpeta desde donde se corre.
+            raise SystemExit("Falta carpeta_drive_destino en el perfil de %s (bloque %s): "
+                             "no se abre el banco." % (cliente, banco))
         if fijada or una_empresa:
             ctx.carpeta_drive = os.path.normpath(fijada)
             buscada = "carpeta_drive_destino=%s" % fijada

@@ -91,7 +91,13 @@ class Pruebas(unittest.TestCase):
                 self.assertEqual(correr._leer_contador(contador), 1)
 
     def test_carpeta_faltante_no_toca_llavero_ni_loop(self):
-        for destino in ('', 'relativa', '/carpeta-inventada-no-existe'):
+        # Vacía: error propio, que dice qué falta (antes quedaba como ".").
+        with patch.object(correr._config, 'cargar_perfil', return_value={'bancos': {'galicia': configuracion('')}}), patch.object(correr._cred, 'cargar') as cred, patch.object(correr._loop, 'correr') as loop:
+            with self.assertRaisesRegex(SystemExit, 'Falta carpeta_drive_destino'):
+                correr.correr_banco('ejemplo', 'galicia')
+            cred.assert_not_called()
+            loop.assert_not_called()
+        for destino in ('relativa', '/carpeta-inventada-no-existe'):
             with patch.object(correr._config, 'cargar_perfil', return_value={'bancos': {'galicia': configuracion(destino)}}), patch.object(correr._cred, 'cargar') as cred, patch.object(correr._loop, 'correr') as loop:
                 with self.assertRaisesRegex(SystemExit, 'antes de abrir el banco'):
                     correr.correr_banco('ejemplo', 'galicia')
