@@ -1,5 +1,5 @@
 # Tarea 73 — Tiendanube: autorización por link y bajada diaria de órdenes a CSV
-Estado: pendiente
+Estado: aprobada
 Rama: tarea/73-tiendanube
 
 ## Objetivo
@@ -126,4 +126,40 @@ canjea `abc123`.
 
 ## Qué hice
 
+- Creé `ingestas/tiendanube.py`: link con state, canje JSON con prefijo TN opcional,
+  permiso sin vencimiento en el llavero y comandos estado/probar sin mostrar secretos.
+  Lee la aplicación con el lector compartido. Solo saltea una entrada ausente;
+  un problema del llavero queda como error. No reintenta el canje del código.
+- Implementé órdenes por mes, paginación por Link, límite de dos pedidos por segundo,
+  reintentos de 429 (milisegundos del encabezado), 5xx y cortes de red, y mensajes
+  específicos para 401/402. Los links se validan antes de enviar el token y no se
+  siguen redirecciones. Fechas en Buenos Aires, incluso con husos sin dos puntos
+  en el Python 3 de la Mac. Importes por orden solo en su primera fila; raras > $1.
+- Integré la cuarta fuente y `--solo tiendanube` en `ingestas/mercado_datos.py`.
+  Conserva las otras fuentes del control y el CSV anterior ante errores. El avance
+  queda en `tiendanube/cache/ultima.json` recién después de escribir el CSV.
+  Caché incremental con dos meses completos más el mes en curso y cambios desde
+  la última corrida buena menos dos días; vuelve a buscar todo al ampliar desde
+  o cambiar de tienda. Cada orden guardada incluye la tienda para no mezclarlas.
+  Solo se guardan los campos de la API que usa esta tarea, sin datos del comprador.
+- Creé `tests/test_tiendanube.py`: 13 pruebas con HTTP y llavero falsos, ejemplos
+  M/N/O/P y carpetas temporales. Cubren secretos, errores, paginación y enlaces,
+  reintentos, velocidad, caché histórica/incremental, filtros y orden, aislamiento
+  de tiendas, ausencia de credenciales, continuidad de fuentes y CSV/marca intactos
+  ante fallo de segunda página o reemplazo del archivo.
+- Pruebas con `python3`, sin pytest: Tiendanube 13, ventas 11, publicidad 3,
+  liquidaciones 7 (una omitida por falta de openpyxl en ese intérprete) y OAuth 9:
+  OK. Repetí liquidaciones con el `python3` del entorno virtual existente: las 7
+  pasan, incluida Excel. Ambos `--help` y `git diff --check`: OK.
+- Sin dependencias nuevas ni acceso a datos privados o tiendas reales. Queda para
+  Claude probar la autorización y la API reales en la Mac cuando autorice el cliente.
+
+- No pude commitear: `git add` falló al crear el `index.lock` del worktree por
+  permisos del sandbox (`Operation not permitted`). Los cuatro archivos quedan
+  en este worktree, rama `tarea/73-tiendanube`, para que Claude revise y commitee.
+
 ## Revisión
+
+- 01/11/2026 (Claude): revisado el diff y las pruebas (13 + 11 + 3 + 7 + 9 OK). Sin retoques. Verificado en la Mac:
+  sin credenciales de la aplicación, la fuente se saltea (no queda en rojo) y `limpiar_codigo` saca el prefijo.
+  Falta la prueba real: crear la aplicación, autorizar la tienda y correr `probar` y la bajada.
