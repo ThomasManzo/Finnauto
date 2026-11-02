@@ -10,6 +10,7 @@ import datetime as dt
 from decimal import Decimal
 import getpass
 import io
+from http.client import HTTPException
 import json
 import math
 import re
@@ -182,11 +183,15 @@ class Sesion:
                             demora = valor
                     except (KeyError, ValueError, TypeError):
                         pass
-            except (OSError, urllib.error.URLError):
+            except urllib.error.URLError:
                 if intento == 5:
                     raise ErrorTiendanube('no se pudo conectar con Tiendanube: revisar la conexión') from None
                 demora = 2 ** (intento + 1)
-            except (ValueError, TypeError):
+            except (OSError, HTTPException, ValueError):
+                if intento == 5:
+                    raise ErrorTiendanube('no se pudo leer la respuesta de Tiendanube; revisar la conexión y volver a intentar') from None
+                demora = 2 ** (intento + 1)
+            except TypeError:
                 raise ErrorTiendanube('no se pudo leer la respuesta de Tiendanube') from None
             time.sleep(demora)
 

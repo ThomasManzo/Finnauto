@@ -70,7 +70,7 @@ class Pruebas(unittest.TestCase):
             reemplazar(origen, destino)
         with patch('os.replace', side_effect=comprobar):
             self.correr()
-        self.assertEqual(destinos, ['galicia_movimientos.csv', 'galicia_saldo.csv', 'control.json'])
+        self.assertEqual(destinos, ['galicia_movimientos.csv', 'galicia_saldo.csv', 'mercado_datos_estado.json', 'control.json'])
         self.assertEqual(md.leer_csv(self.salida / 'galicia_movimientos.csv'), filas)
         for p in self.descargas.iterdir(): p.unlink()
         self.assertEqual(self.correr(), 1)

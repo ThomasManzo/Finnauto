@@ -198,8 +198,8 @@ class TiendanubeTests(unittest.TestCase):
             self.llavero = Llavero()
             with patch.object(T, '_llavero', return_value=self.llavero), patch.object(T.credenciales, '_keyring', return_value=self.llavero):
                 self.llavero.datos.pop(('finauto:ejemplo:tiendanube-token', 'token'))
-                self.assertEqual(self.correr(tmp), 1)
-                self.assertEqual(json.loads((Path(tmp)/'control.json').read_text())['fuentes']['tiendanube']['motivo'], 'falta autorizar Tiendanube')
+                self.assertEqual(self.correr(tmp), 0)
+                self.assertNotIn('tiendanube', json.loads((Path(tmp)/'control.json').read_text())['fuentes'])
             with patch.object(T, '_llavero', side_effect=RuntimeError('clave-inventada')):
                 self.assertEqual(self.correr(tmp), 1)
                 self.assertNotIn('clave-inventada', (Path(tmp)/'control.json').read_text())
@@ -276,6 +276,26 @@ class TiendanubeTests(unittest.TestCase):
             control = json.loads((Path(tmp)/'control.json').read_text())['fuentes']
             self.assertEqual(len(control), 4)
             self.assertTrue(all(f['ok'] for f in control.values()))
+
+
+
+
+
+class LecturaTests(unittest.TestCase):
+    def test_reintentos_lectura(self):
+        from http.client import IncompleteRead
+        permiso = dict(access_token='inventado', store_id='123', scope='read_orders')
+        for error in (ValueError(), IncompleteRead(b''), ConnectionResetError()):
+            for agotar in (False, True):
+                with self.subTest(error=error, agotar=agotar), patch.object(T, '_leer', return_value=permiso), patch.object(T.time, 'sleep') as dormir, patch.object(T.time, 'monotonic', side_effect=range(100)), patch.object(T, '_http', side_effect=error if agotar else [error, ([], {})]) as http:
+                    sesion = T.Sesion('ejemplo')
+                    if agotar:
+                        with self.assertRaisesRegex(T.ErrorTiendanube, 'no se pudo leer la respuesta de Tiendanube; revisar la conexión y volver a intentar'):
+                            sesion.pedir(sesion.base + '/orders')
+                    else:
+                        self.assertEqual(sesion.pedir(sesion.base + '/orders'), ([], {}))
+                    self.assertEqual(http.call_count, 6 if agotar else 2)
+                    self.assertEqual([c.args[0] for c in dormir.call_args_list], [2, 4, 8, 16, 32] if agotar else [2])
 
 
 if __name__ == '__main__':

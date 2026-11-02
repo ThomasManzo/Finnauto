@@ -1,5 +1,5 @@
 # Tarea 75 — Bajada de mercados: reintentar cortes de lectura y repetir en el día solo lo que falló
-Estado: pendiente
+Estado: lista para revisión
 Rama: tarea/75-reintentos-bajada
 
 ## Objetivo
@@ -84,4 +84,50 @@ Que la bajada diaria de `ingestas/mercado_datos.py` se recupere sola cuando una 
 
 ## Qué hice
 
+- Modifiqué `ingestas/meli_ventas.py` y `ingestas/tiendanube.py`: los cortes de lectura,
+  respuestas incompletas y JSON cortado se reintentan hasta seis pedidos, con esperas
+  de 2, 4, 8, 16 y 32 segundos. Al agotarse queda el mensaje de lectura en criollo.
+  Un POST con corte de lectura no se repite, incluido un timeout durante la lectura.
+  Los HTTPError conservan su tratamiento.
+- Modifiqué `ingestas/mercado_datos.py`: agregué `--solo-pendientes`, combinable
+  con `--solo`, y el estado diario por cliente en `.run/mercado_datos_estado.json`.
+  Se guarda por temporal + reemplazo después de escribir los CSV de una fuente exitosa,
+  también sin la opción nueva. Usa el día de Buenos Aires. Conserva los resúmenes de
+  fuentes salteadas y usa las ventas del CSV anterior para vincular Mercado Pago.
+  Si no queda nada pendiente, sale 0 sin escribir el control. La fecha de corrida
+  solo cambia cuando se intentó alguna fuente.
+- Tiendanube sin aplicación o sin permiso guardado se omite y se quita del control.
+  Si esa limpieza es lo único que cambia, se guarda sin cambiar la fecha de corrida.
+  Los errores del llavero o de un permiso existente siguen quedando en rojo.
+- Amplié `tests/test_meli_ventas.py` y `tests/test_tiendanube.py`; agregué
+  `tests/test_mercado_datos.py`. Cubren recuperación y agotamiento de lecturas,
+  POST sin repetición, filtros, salida sin trabajo, conservación de control y CSV,
+  vínculo con ventas guardadas, fecha sin actualizar ante fallos y Tiendanube sin permiso.
+  Ajusté dos expectativas anteriores por los cambios pedidos: un reemplazo atómico
+  adicional para el estado y Tiendanube sin permiso ahora omitida.
+- Intenté el comando pedido:
+  `PYTHONPATH=. /Users/thomasmanzo/Documents/Finnauto/.venv/bin/python3 -m pytest tests/test_meli_ventas.py tests/test_tiendanube.py tests/test_mercado_datos.py tests/test_meli_publicidad.py tests/test_mp_liquidaciones.py`.
+  No arrancó: ese entorno no tiene pytest. Intenté instalarlo únicamente en
+  `/private/tmp/tarea75-pytest`, pero falló la resolución de pypi.org. No se instalaron
+  dependencias ni se modificó el entorno compartido.
+- Como alternativa, con el mismo intérprete:
+  `PYTHONPATH=. /Users/thomasmanzo/Documents/Finnauto/.venv/bin/python3 -m unittest tests.test_meli_ventas tests.test_tiendanube tests.test_mercado_datos tests.test_meli_publicidad tests.test_mp_liquidaciones`:
+  **42 pruebas OK**, incluida Excel. `git diff --check`: OK.
+- No pude commitear: `git add` falló al crear
+  `Finnauto/.git/worktrees/tarea-75/index.lock` por permisos del sandbox
+  (`Operation not permitted`). Los archivos quedan en este worktree y rama para revisión
+  y commit de Claude.
+- Sin datos reales ni acceso a carpetas privadas. Quedan pendientes el comando pytest
+  cuando esté disponible y la corrida real del cliente, a cargo de Claude tras revisar.
+
+
 ## Revisión
+Claude, 02/11/2026:
+- Revisé el diff. Los reintentos de lectura están bien acotados: un GET se repite y un POST con la respuesta cortada no.
+  `ErrorDatos` no hereda de `ValueError`, así que el 203 de los reportes no se reintenta por error. `--solo-pendientes`
+  conserva los resúmenes, no se conecta si no hay nada pendiente y usa el día de Buenos Aires.
+- Corregí `tests/test_galicia_datos.py` (no estaba en la lista de Codex): la prueba de escrituras atómicas esperaba
+  solo los CSV y `control.json`, y ahora también se escribe `mercado_datos_estado.json`.
+- `unittest discover -s tests`: 56 pruebas OK.
+- Falta: la corrida real con el cliente y la tarea programada de 5 corridas con `caffeinate` (fuera del repo), después
+  del merge.

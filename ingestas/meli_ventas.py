@@ -2,6 +2,7 @@
 import datetime as dt
 from decimal import Decimal, ROUND_HALF_UP
 import email.utils
+from http.client import HTTPException
 import json
 import os
 from pathlib import Path
@@ -116,14 +117,19 @@ class Sesion:
                     intentos += 1
                     continue
                 raise ErrorDatos(f'no se pudo consultar {fuente} (HTTP {exc.code}); revisar el permiso o intentar más tarde') from None
-            except (urllib.error.URLError, TimeoutError):
+            except urllib.error.URLError:
                 # Un corte de red en una corrida de horas no tiene que tirar todo: reintentar.
                 if intentos < 5:
                     time.sleep(2 ** (intentos + 1))
                     intentos += 1
                     continue
                 raise ErrorDatos(f'no se pudo conectar con {fuente}; revisar la conexión y volver a intentar') from None
-            except (OSError, ValueError):
+            except (OSError, HTTPException, ValueError):
+                # Un POST puede haber quedado hecho aunque se corte la respuesta.
+                if cuerpo is None and intentos < 5:
+                    time.sleep(2 ** (intentos + 1))
+                    intentos += 1
+                    continue
                 raise ErrorDatos(f'no se pudo leer la respuesta de {fuente}; revisar la conexión y volver a intentar') from None
 
 
