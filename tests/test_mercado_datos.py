@@ -118,6 +118,25 @@ class CorridaTests(unittest.TestCase):
         C.ml.bajar.assert_called_once()
 
 
+    def test_pendientes_rehace_mp_si_ml_se_bajo_en_la_corrida(self):
+        correr, estado, control = self.corrida
+        # A la mañana MP salió bien con las ventas viejas y ML falló; ahora ML baja bien.
+        C.ml.guardar_json(estado, {'mercadopago': '2026-01-15', 'mercadolibre_publicidad': '2026-01-15'})
+        nuevas = [dict(id_venta='789', id_pago_mp='999', fecha_venta='2026-01-14')]
+        C.ml.bajar.return_value = (nuevas, 0)
+        assert correr('--solo-pendientes') == 0
+        C.ml.bajar.assert_called_once()
+        assert C.mp.bajar.call_args.args[-1] == nuevas
+        C.ads.bajar.assert_not_called()
+
+    def test_pendientes_no_rehace_mp_si_ml_falla(self):
+        correr, estado, control = self.corrida
+        C.ml.guardar_json(estado, {'mercadopago': '2026-01-15', 'mercadolibre_publicidad': '2026-01-15'})
+        C.ml.bajar.side_effect = C.ml.ErrorDatos('corte inventado')
+        assert correr('--solo-pendientes') == 1
+        C.mp.bajar.assert_not_called()
+
+
     def test_tiendanube_sin_permiso_se_quita_sin_falla(self):
         correr, estado, control = self.corrida
         self.setattr(C.tn, 'tiene_aplicacion', Mock(return_value=True))

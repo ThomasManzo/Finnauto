@@ -56,7 +56,10 @@ def main(argv=None):
     for fuente in ('mercadolibre', 'mercadopago', 'mercadolibre_publicidad', 'tiendanube', 'galicia'):
         if args.solo and fuente != args.solo: continue
         if args.solo_pendientes and estado.get(fuente) == ahora.date().isoformat():
-            continue
+            # Mercado Pago vincula sus pagos con ml_ventas.csv. Si Mercado Libre se acaba de bajar bien
+            # en esta corrida, se rehace Mercado Pago para que las ventas nuevas no queden sin vincular.
+            if not (fuente == 'mercadopago' and ventas is not None):
+                continue
         carpeta = meli_oauth.BASE_REPO / 'clientes' / args.cliente / '.run' / fuente
         # El avance queda en liquidaciones, junto a los reportes, separado por fuente.
         marca = meli_oauth.BASE_REPO / 'clientes' / args.cliente / '.run/mercadopago/liquidaciones' / ('ultima-' + fuente + '.json')

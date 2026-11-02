@@ -131,3 +131,6 @@ Claude, 02/11/2026:
 - `unittest discover -s tests`: 56 pruebas OK.
 - Falta: la corrida real con el cliente y la tarea programada de 5 corridas con `caffeinate` (fuera del repo), después
   del merge.
+- Ajuste pedido en la revisión (02/11): con `--solo-pendientes`, si Mercado Libre se baja bien en la corrida, Mercado
+  Pago se rehace en esa misma corrida aunque ya figure como hecho hoy. Así las ventas nuevas quedan vinculadas el
+  mismo día. Si Mercado Libre falla, Mercado Pago no se repite. Dos pruebas nuevas; 58 OK.
