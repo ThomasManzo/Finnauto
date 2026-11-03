@@ -1909,3 +1909,27 @@ function _lista_validacion_(h, col, n, valores) {
     .setAllowInvalid(true).build();          // avisa, pero no bloquea una carga a mano
   h.getRange(2, col, n, 1).setDataValidation(regla);
 }
+
+// ================================================================== Movimientos por empresa
+// Dos solapas de consulta, "Movimientos A" y "Movimientos AA": muestran la lista Movimientos filtrada
+// por empresa, lo más nuevo primero. Son solo fórmula: se actualizan solas y no se cargan a mano.
+// La lista original sigue siendo una sola porque de ella dependen el Cash y el importador.
+// Se corre una vez, y se puede volver a correr sin perder nada.
+function armarMovimientosPorEmpresa() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet(), lista = ss.getSheetByName("Movimientos");
+  var ancho = lista.getLastColumn(), enc = lista.getRange(1, 1, 1, ancho).getValues()[0];
+  var col = function (texto) { return enc.indexOf(texto) + 1; };
+  var ult = _colLetra_(ancho), empresa = _colLetra_(col("Empresa"));
+  ["A", "AA"].forEach(function (emp) {
+    var nombre = "Movimientos " + emp, h = ss.getSheetByName(nombre) || ss.insertSheet(nombre);
+    h.clear();
+    var sep = _separadorDeEstaPlanilla_(h);
+    h.getRange(1, 1).setFormula("=ARRAYFORMULA(Movimientos!A1:" + ult + "1)");
+    h.getRange(2, 1).setFormula("=SORT(FILTER(Movimientos!A2:" + ult + sep + "Movimientos!" + empresa + "2:" + empresa + "=\"" + emp + "\")" + sep + col("Fecha") + sep + "FALSE)");
+    h.getRange(1, 1, 1, ancho).setFontWeight("bold").setBackground("#e8f0fe");
+    h.getRange(2, col("Fecha"), h.getMaxRows() - 1, 1).setNumberFormat("dd/mm/yyyy");
+    h.getRange(2, col("Semana (lunes)"), h.getMaxRows() - 1, 1).setNumberFormat("dd/mm/yyyy");
+    h.getRange(2, col("Importe"), h.getMaxRows() - 1, 1).setNumberFormat("#,##0.00");
+    h.setFrozenRows(1);
+  });
+}
