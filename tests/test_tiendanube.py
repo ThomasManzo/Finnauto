@@ -17,7 +17,7 @@ from ingestas import tiendanube as T, mercado_datos as CLI, meli_oauth as O, mel
 def ejemplo(**cambios):
     return dict(dict(id=9000001, number=1001, created_at='2026-09-10T11:06:30-0300',
         updated_at='2026-09-10T11:06:30-0300', status='open', payment_status='paid',
-        subtotal='25000.00', shipping_cost_customer='3000.00', total='26000.00',
+        subtotal='25000.00', discount='2000.00', total='26000.00',
         payment_details={'installments': 3}, products=[
             dict(sku='AB 100', name='Lámpara', quantity=2, price='10000.00'),
             dict(sku='AB-200', name='Pantalla', quantity=1, price='5000.00')]), **cambios)
@@ -110,10 +110,18 @@ class TiendanubeTests(unittest.TestCase):
         self.assertEqual(filas[1]['sku'], 'AB-200')
         self.assertTrue(all(filas[1][k] == '' for k in T.COLUMNAS[7:]))
         self.assertEqual(T.armar_orden(ejemplo(status='cancelled', payment_status='refunded'))[0][0]['estado_pago'], 'cancelada')
-        filas, rara = T.armar_orden(ejemplo(subtotal='10000.00', shipping_cost_customer='', total='10500.00', payment_details=None))
+        # Las cuentas no cierran: el total no llega a subtotal menos descuento.
+        filas, rara = T.armar_orden(ejemplo(subtotal='10000.00', discount=None, total='9500.00', payment_details=None))
         self.assertTrue(rara)
-        self.assertEqual((filas[0]['descuento'], filas[0]['cuotas']), ('500.00', ''))
-        self.assertFalse(T.armar_orden(ejemplo(subtotal='10000', shipping_cost_customer=None, total='10001'))[1])
+        self.assertEqual((filas[0]['descuento'], filas[0]['costo_envio'], filas[0]['cuotas']), ('0.00', '-500.00', ''))
+        self.assertFalse(T.armar_orden(ejemplo(subtotal='10000', discount=None, total='9999'))[1])
+        # Envío sin campo propio: sale de la resta y el descuento queda aparte.
+        filas, rara = T.armar_orden(ejemplo(subtotal='40000.00', discount='0.00', total='55000.00'))
+        self.assertFalse(rara)
+        self.assertEqual((filas[0]['descuento'], filas[0]['costo_envio']), ('0.00', '15000.00'))
+        filas, rara = T.armar_orden(ejemplo(subtotal='30000.00', discount='3000.00', total='34000.00'))
+        self.assertFalse(rara)
+        self.assertEqual((filas[0]['descuento'], filas[0]['costo_envio']), ('-3000.00', '7000.00'))
         for original, traducido in dict(T.ESTADOS, desconocido='desconocido').items():
             self.assertEqual(T.armar_orden(ejemplo(payment_status=original))[0][0]['estado_pago'], traducido)
         self.assertEqual(T.armar_orden(ejemplo(created_at='2026-09-10T02:00:00+0000'))[0][0]['fecha'], '2026-09-09 23:00')
@@ -198,8 +206,8 @@ class TiendanubeTests(unittest.TestCase):
             self.llavero = Llavero()
             with patch.object(T, '_llavero', return_value=self.llavero), patch.object(T.credenciales, '_keyring', return_value=self.llavero):
                 self.llavero.datos.pop(('finauto:ejemplo:tiendanube-token', 'token'))
-                self.assertEqual(self.correr(tmp), 1)
-                self.assertEqual(json.loads((Path(tmp)/'control.json').read_text())['fuentes']['tiendanube']['motivo'], 'falta autorizar Tiendanube')
+                self.assertEqual(self.correr(tmp), 0)
+                self.assertNotIn('tiendanube', json.loads((Path(tmp)/'control.json').read_text())['fuentes'])
             with patch.object(T, '_llavero', side_effect=RuntimeError('clave-inventada')):
                 self.assertEqual(self.correr(tmp), 1)
                 self.assertNotIn('clave-inventada', (Path(tmp)/'control.json').read_text())
@@ -208,7 +216,7 @@ class TiendanubeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             ruta = Path(tmp)
             (ruta/'control.json').write_text(json.dumps({'fuentes': {'banco': {'ok': True}}}))
-            with patch.object(T, '_http', return_value=([ejemplo(subtotal='10000', total='10500', shipping_cost_customer='0')], {})):
+            with patch.object(T, '_http', return_value=([ejemplo(subtotal='10000', total='9500', discount='0')], {})):
                 self.assertEqual(self.correr(tmp), 0)
             csv = (ruta/'tn_ordenes.csv').read_bytes()
             self.assertEqual(csv.decode().splitlines()[0], ','.join(T.COLUMNAS))
@@ -265,17 +273,51 @@ class TiendanubeTests(unittest.TestCase):
                 llamadas.append(nombre)
                 return resultado
             return ejecutar
-        with tempfile.TemporaryDirectory() as tmp, patch.object(M, 'bajar', side_effect=bajar('ml', ([],0))), patch.object(CLI.mp, 'bajar', side_effect=bajar('mp', ([],''))), patch.object(CLI.ads, 'bajar', side_effect=bajar('ads', [])), patch.object(T, 'bajar', side_effect=bajar('tn', ([],0))) as tn:
+        with tempfile.TemporaryDirectory() as tmp, patch.object(CLI.dolar, 'bajar', side_effect=bajar('dolar', [])), patch.object(M, 'bajar', side_effect=bajar('ml', ([],0))), patch.object(CLI.mp, 'bajar', side_effect=bajar('mp', ([],''))), patch.object(CLI.ads, 'bajar', side_effect=bajar('ads', [])), patch.object(T, 'bajar', side_effect=bajar('tn', ([],0))) as tn:
             self.assertEqual(self.correr(tmp, solo=False), 0)
-            self.assertEqual(llamadas, ['ml','mp','ads','tn'])
+            self.assertEqual(llamadas, ['ml','mp','ads','tn','dolar'])
             self.assertIsNone(tn.call_args.args[-1])
             self.assertEqual(self.correr(tmp), 0)
             self.assertIsNotNone(tn.call_args.args[-1])
             self.assertEqual(self.correr(tmp, desde='2026-08-01'), 0)
             self.assertIsNone(tn.call_args.args[-1])
             control = json.loads((Path(tmp)/'control.json').read_text())['fuentes']
-            self.assertEqual(len(control), 4)
+            self.assertEqual(len(control), 5)
             self.assertTrue(all(f['ok'] for f in control.values()))
+
+
+
+
+
+class LecturaTests(unittest.TestCase):
+    def test_periodo_sin_ordenes_no_es_error(self):
+        import urllib.error
+        permiso = dict(access_token='inventado', store_id='123', scope='read_orders')
+        def error_404(cuerpo):
+            return urllib.error.HTTPError('https://ejemplo', 404, 'Not Found', {}, io.BytesIO(cuerpo))
+        with patch.object(T, '_leer', return_value=permiso), patch.object(T.time, 'sleep'):
+            sesion = T.Sesion('ejemplo')
+            with patch.object(T, '_http', side_effect=error_404(b'{"description": "Last page is 0"}')):
+                self.assertEqual(sesion.pedir(sesion.base + '/orders'), ([], {}))
+            # Otro 404 (por ejemplo, una tienda que no existe) sigue siendo un error.
+            with patch.object(T, '_http', side_effect=error_404(b'{"description": "Store not found"}')):
+                with self.assertRaisesRegex(T.ErrorTiendanube, 'HTTP 404'):
+                    sesion.pedir(sesion.base + '/orders')
+
+    def test_reintentos_lectura(self):
+        from http.client import IncompleteRead
+        permiso = dict(access_token='inventado', store_id='123', scope='read_orders')
+        for error in (ValueError(), IncompleteRead(b''), ConnectionResetError()):
+            for agotar in (False, True):
+                with self.subTest(error=error, agotar=agotar), patch.object(T, '_leer', return_value=permiso), patch.object(T.time, 'sleep') as dormir, patch.object(T.time, 'monotonic', side_effect=range(100)), patch.object(T, '_http', side_effect=error if agotar else [error, ([], {})]) as http:
+                    sesion = T.Sesion('ejemplo')
+                    if agotar:
+                        with self.assertRaisesRegex(T.ErrorTiendanube, 'no se pudo leer la respuesta de Tiendanube; revisar la conexión y volver a intentar'):
+                            sesion.pedir(sesion.base + '/orders')
+                    else:
+                        self.assertEqual(sesion.pedir(sesion.base + '/orders'), ([], {}))
+                    self.assertEqual(http.call_count, 6 if agotar else 2)
+                    self.assertEqual([c.args[0] for c in dormir.call_args_list], [2, 4, 8, 16, 32] if agotar else [2])
 
 
 if __name__ == '__main__':

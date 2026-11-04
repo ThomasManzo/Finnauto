@@ -10,6 +10,7 @@ import datetime as dt
 from decimal import Decimal
 import getpass
 import io
+from http.client import HTTPException
 import json
 import math
 import re
@@ -171,6 +172,9 @@ class Sesion:
                     raise ErrorTiendanube('hay que volver a autorizar Tiendanube: la aplicación fue desinstalada o el permiso no sirve') from None
                 if exc.code == 402:
                     raise ErrorTiendanube('la tienda o la aplicación Tiendanube tiene un pago pendiente') from None
+                # Un período sin órdenes no es un error: Tiendanube contesta 404 "Last page is 0".
+                if exc.code == 404 and destino.path == base.path + '/orders' and b'Last page is 0' in exc.read():
+                    return [], {}
                 if (exc.code != 429 and not 500 <= exc.code < 600) or intento == 5:
                     raise ErrorTiendanube(f'no se pudo consultar Tiendanube (HTTP {exc.code})') from None
                 demora = 2 ** (intento + 1)
@@ -182,11 +186,15 @@ class Sesion:
                             demora = valor
                     except (KeyError, ValueError, TypeError):
                         pass
-            except (OSError, urllib.error.URLError):
+            except urllib.error.URLError:
                 if intento == 5:
                     raise ErrorTiendanube('no se pudo conectar con Tiendanube: revisar la conexión') from None
                 demora = 2 ** (intento + 1)
-            except (ValueError, TypeError):
+            except (OSError, HTTPException, ValueError):
+                if intento == 5:
+                    raise ErrorTiendanube('no se pudo leer la respuesta de Tiendanube; revisar la conexión y volver a intentar') from None
+                demora = 2 ** (intento + 1)
+            except TypeError:
                 raise ErrorTiendanube('no se pudo leer la respuesta de Tiendanube') from None
             time.sleep(demora)
 
@@ -225,10 +233,13 @@ def fecha(valor):
 
 
 def armar_orden(orden):
-    subtotal, envio, total = (ml.decimal(orden.get(k)) for k in ('subtotal', 'shipping_cost_customer', 'total'))
-    if not all(v.is_finite() for v in (subtotal, envio, total)):
+    subtotal, rebaja, total = (ml.decimal(orden.get(k)) for k in ('subtotal', 'discount', 'total'))
+    if not all(v.is_finite() for v in (subtotal, rebaja, total)):
         raise ErrorTiendanube('una orden de Tiendanube trae importes inválidos')
-    descuento = total - subtotal - envio
+    # `discount` ya suma cupón y descuento por medio de pago. El envío casi nunca viene en
+    # su campo (shipping_cost_customer llega vacío), así que sale de lo que queda del total.
+    descuento = -rebaja
+    envio = total - subtotal - descuento
     pago = orden.get('payment_status', '')
     estado_pago = 'cancelada' if orden.get('status') == 'cancelled' else ESTADOS.get(pago, pago)
     filas = []
@@ -242,7 +253,8 @@ def armar_orden(orden):
                         costo_envio=ml.monto(envio), total=ml.monto(total),
                         cuotas=(orden.get('payment_details') or {}).get('installments', ''))
         filas.append(fila)
-    return filas, descuento > Decimal(1)
+    # Rara: el total no alcanza para subtotal menos descuento, o sea que las cuentas no cierran.
+    return filas, envio < Decimal(-1)
 
 
 def bajar(sesion, carpeta, desde, hasta, ultima=None):
@@ -270,7 +282,7 @@ def bajar(sesion, carpeta, desde, hasta, ultima=None):
             # Guardamos solo los campos usados: la API también trae datos personales
             # que no hacen falta para este CSV. La tienda evita mezclar permisos.
             dato = {k: orden.get(k) for k in ('id', 'number', 'created_at', 'updated_at', 'status',
-                'payment_status', 'subtotal', 'total', 'shipping_cost_customer', 'payment_details', 'products')}
+                'payment_status', 'subtotal', 'total', 'discount', 'payment_details', 'products')}
             dato['products'] = [{k: p.get(k) for k in ('sku', 'name', 'quantity', 'price')} for p in orden['products']]
             dato['payment_details'] = {'installments': (orden.get('payment_details') or {}).get('installments', '')}
             ml.guardar_json(carpeta / f'orden-{ident}.json', dict(store_id=sesion.permiso['store_id'], orden=dato))

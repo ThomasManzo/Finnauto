@@ -239,11 +239,45 @@ class VentasTests(unittest.TestCase):
         filas = M.armar_venta([ejemplo()[0]], [ejemplo()[1]], *ejemplo()[2:])[0]
         with tempfile.TemporaryDirectory() as tmp, patch.object(O, 'BASE_REPO', Path(tmp)), patch.object(M, 'bajar', return_value=(filas, 0)), patch.object(M.os, 'replace', wraps=M.os.replace) as reemplazo, contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(CLI.main(['--cliente', 'ejemplo', '--salida', tmp, '--solo', 'mercadolibre']), 0)
-            self.assertEqual(len(reemplazo.call_args_list), 3)
+            # También se guarda el estado diario, por temporal y reemplazo.
+            self.assertEqual(len(reemplazo.call_args_list), 4)
             for llamada in reemplazo.call_args_list:
                 self.assertEqual(Path(llamada.args[0]).parent, Path(llamada.args[1]).parent)
             control = json.loads((Path(tmp) / 'control.json').read_text())['fuentes']['mercadolibre']
             self.assertEqual((control['filas'], control['desde'], control['hasta']), (1, '2026-09-10', '2026-09-10'))
 
 
-if __name__ == '__main__': unittest.main()
+
+
+
+class LecturaTests(unittest.TestCase):
+    def test_reintentos_lectura_y_post(self):
+        from http.client import IncompleteRead
+        from unittest.mock import Mock
+        casos = [
+            ([ConnectionResetError(), ConnectionResetError(), (200, b'{}')], [2, 4]),
+            ([(200, b'{"cortado":'), (200, b'{}')], [2]),
+        ]
+        with patch.object(O, 'access_token', return_value='inventado'):
+            for respuestas, esperas in casos:
+                with self.subTest(respuestas=respuestas), patch.object(M.time, 'sleep') as dormir:
+                    http = Mock(side_effect=respuestas)
+                    self.assertEqual(M.Sesion('ejemplo').pedir('mercadolibre', 'https://example.org', http), {})
+                    self.assertEqual([c.args[0] for c in dormir.call_args_list], esperas)
+            with patch.object(M.time, 'sleep') as dormir:
+                http = Mock(side_effect=IncompleteRead(b'cortado'))
+                with self.assertRaisesRegex(M.ErrorDatos, 'no se pudo leer la respuesta de mercadolibre; revisar la conexión y volver a intentar'):
+                    M.Sesion('ejemplo').pedir('mercadolibre', 'https://example.org', http)
+                self.assertEqual(http.call_count, 6)
+                self.assertEqual([c.args[0] for c in dormir.call_args_list], [2, 4, 8, 16, 32])
+            for error in (ConnectionResetError(), IncompleteRead(b''), TimeoutError(), ValueError()):
+                with self.subTest(error=error), patch.object(M.time, 'sleep') as dormir:
+                    http = Mock(side_effect=error)
+                    with self.assertRaisesRegex(M.ErrorDatos, 'no se pudo leer la respuesta'):
+                        M.Sesion('ejemplo').pedir('mercadopago', 'https://example.org', http, cuerpo={})
+                    self.assertEqual(http.call_count, 1)
+                    dormir.assert_not_called()
+
+
+if __name__ == '__main__':
+    unittest.main()

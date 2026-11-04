@@ -47,7 +47,12 @@ class Pruebas(unittest.TestCase):
                                                            empresas=[dict(saldo_actual=saldo)])))
 
     def correr(self):
-        with patch.object(md.meli_oauth, 'BASE_REPO', self.base):
+        # Reloj fijo: las descargas de prueba tienen fecha fija y a los 3 días la fuente queda en rojo.
+        class Reloj(dt.datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return cls(2026, 11, 1, 12, 0, tzinfo=tz)
+        with patch.object(md.meli_oauth, 'BASE_REPO', self.base), patch.object(md.dt, 'datetime', Reloj):
             return md.main(['--cliente', 'ejemplo', '--salida', str(self.salida), '--solo', 'galicia'])
 
     def test_q_r_historial_y_atomico(self):
@@ -70,7 +75,7 @@ class Pruebas(unittest.TestCase):
             reemplazar(origen, destino)
         with patch('os.replace', side_effect=comprobar):
             self.correr()
-        self.assertEqual(destinos, ['galicia_movimientos.csv', 'galicia_saldo.csv', 'control.json'])
+        self.assertEqual(destinos, ['galicia_movimientos.csv', 'galicia_saldo.csv', 'mercado_datos_estado.json', 'control.json'])
         self.assertEqual(md.leer_csv(self.salida / 'galicia_movimientos.csv'), filas)
         for p in self.descargas.iterdir(): p.unlink()
         self.assertEqual(self.correr(), 1)
