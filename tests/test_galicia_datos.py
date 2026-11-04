@@ -47,7 +47,12 @@ class Pruebas(unittest.TestCase):
                                                            empresas=[dict(saldo_actual=saldo)])))
 
     def correr(self):
-        with patch.object(md.meli_oauth, 'BASE_REPO', self.base):
+        # Reloj fijo: las descargas de prueba tienen fecha fija y a los 3 días la fuente queda en rojo.
+        class Reloj(dt.datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return cls(2026, 11, 1, 12, 0, tzinfo=tz)
+        with patch.object(md.meli_oauth, 'BASE_REPO', self.base), patch.object(md.dt, 'datetime', Reloj):
             return md.main(['--cliente', 'ejemplo', '--salida', str(self.salida), '--solo', 'galicia'])
 
     def test_q_r_historial_y_atomico(self):
