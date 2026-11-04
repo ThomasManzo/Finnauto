@@ -17,7 +17,7 @@ from ingestas import tiendanube as T, mercado_datos as CLI, meli_oauth as O, mel
 def ejemplo(**cambios):
     return dict(dict(id=9000001, number=1001, created_at='2026-09-10T11:06:30-0300',
         updated_at='2026-09-10T11:06:30-0300', status='open', payment_status='paid',
-        subtotal='25000.00', shipping_cost_customer='3000.00', total='26000.00',
+        subtotal='25000.00', discount='2000.00', total='26000.00',
         payment_details={'installments': 3}, products=[
             dict(sku='AB 100', name='Lámpara', quantity=2, price='10000.00'),
             dict(sku='AB-200', name='Pantalla', quantity=1, price='5000.00')]), **cambios)
@@ -110,10 +110,18 @@ class TiendanubeTests(unittest.TestCase):
         self.assertEqual(filas[1]['sku'], 'AB-200')
         self.assertTrue(all(filas[1][k] == '' for k in T.COLUMNAS[7:]))
         self.assertEqual(T.armar_orden(ejemplo(status='cancelled', payment_status='refunded'))[0][0]['estado_pago'], 'cancelada')
-        filas, rara = T.armar_orden(ejemplo(subtotal='10000.00', shipping_cost_customer='', total='10500.00', payment_details=None))
+        # Las cuentas no cierran: el total no llega a subtotal menos descuento.
+        filas, rara = T.armar_orden(ejemplo(subtotal='10000.00', discount=None, total='9500.00', payment_details=None))
         self.assertTrue(rara)
-        self.assertEqual((filas[0]['descuento'], filas[0]['cuotas']), ('500.00', ''))
-        self.assertFalse(T.armar_orden(ejemplo(subtotal='10000', shipping_cost_customer=None, total='10001'))[1])
+        self.assertEqual((filas[0]['descuento'], filas[0]['costo_envio'], filas[0]['cuotas']), ('0.00', '-500.00', ''))
+        self.assertFalse(T.armar_orden(ejemplo(subtotal='10000', discount=None, total='9999'))[1])
+        # Envío sin campo propio: sale de la resta y el descuento queda aparte.
+        filas, rara = T.armar_orden(ejemplo(subtotal='40000.00', discount='0.00', total='55000.00'))
+        self.assertFalse(rara)
+        self.assertEqual((filas[0]['descuento'], filas[0]['costo_envio']), ('0.00', '15000.00'))
+        filas, rara = T.armar_orden(ejemplo(subtotal='30000.00', discount='3000.00', total='34000.00'))
+        self.assertFalse(rara)
+        self.assertEqual((filas[0]['descuento'], filas[0]['costo_envio']), ('-3000.00', '7000.00'))
         for original, traducido in dict(T.ESTADOS, desconocido='desconocido').items():
             self.assertEqual(T.armar_orden(ejemplo(payment_status=original))[0][0]['estado_pago'], traducido)
         self.assertEqual(T.armar_orden(ejemplo(created_at='2026-09-10T02:00:00+0000'))[0][0]['fecha'], '2026-09-09 23:00')
@@ -208,7 +216,7 @@ class TiendanubeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             ruta = Path(tmp)
             (ruta/'control.json').write_text(json.dumps({'fuentes': {'banco': {'ok': True}}}))
-            with patch.object(T, '_http', return_value=([ejemplo(subtotal='10000', total='10500', shipping_cost_customer='0')], {})):
+            with patch.object(T, '_http', return_value=([ejemplo(subtotal='10000', total='9500', discount='0')], {})):
                 self.assertEqual(self.correr(tmp), 0)
             csv = (ruta/'tn_ordenes.csv').read_bytes()
             self.assertEqual(csv.decode().splitlines()[0], ','.join(T.COLUMNAS))

@@ -233,10 +233,13 @@ def fecha(valor):
 
 
 def armar_orden(orden):
-    subtotal, envio, total = (ml.decimal(orden.get(k)) for k in ('subtotal', 'shipping_cost_customer', 'total'))
-    if not all(v.is_finite() for v in (subtotal, envio, total)):
+    subtotal, rebaja, total = (ml.decimal(orden.get(k)) for k in ('subtotal', 'discount', 'total'))
+    if not all(v.is_finite() for v in (subtotal, rebaja, total)):
         raise ErrorTiendanube('una orden de Tiendanube trae importes inválidos')
-    descuento = total - subtotal - envio
+    # `discount` ya suma cupón y descuento por medio de pago. El envío casi nunca viene en
+    # su campo (shipping_cost_customer llega vacío), así que sale de lo que queda del total.
+    descuento = -rebaja
+    envio = total - subtotal - descuento
     pago = orden.get('payment_status', '')
     estado_pago = 'cancelada' if orden.get('status') == 'cancelled' else ESTADOS.get(pago, pago)
     filas = []
@@ -250,7 +253,8 @@ def armar_orden(orden):
                         costo_envio=ml.monto(envio), total=ml.monto(total),
                         cuotas=(orden.get('payment_details') or {}).get('installments', ''))
         filas.append(fila)
-    return filas, descuento > Decimal(1)
+    # Rara: el total no alcanza para subtotal menos descuento, o sea que las cuentas no cierran.
+    return filas, envio < Decimal(-1)
 
 
 def bajar(sesion, carpeta, desde, hasta, ultima=None):
@@ -278,7 +282,7 @@ def bajar(sesion, carpeta, desde, hasta, ultima=None):
             # Guardamos solo los campos usados: la API también trae datos personales
             # que no hacen falta para este CSV. La tienda evita mezclar permisos.
             dato = {k: orden.get(k) for k in ('id', 'number', 'created_at', 'updated_at', 'status',
-                'payment_status', 'subtotal', 'total', 'shipping_cost_customer', 'payment_details', 'products')}
+                'payment_status', 'subtotal', 'total', 'discount', 'payment_details', 'products')}
             dato['products'] = [{k: p.get(k) for k in ('sku', 'name', 'quantity', 'price')} for p in orden['products']]
             dato['payment_details'] = {'installments': (orden.get('payment_details') or {}).get('installments', '')}
             ml.guardar_json(carpeta / f'orden-{ident}.json', dict(store_id=sesion.permiso['store_id'], orden=dato))
