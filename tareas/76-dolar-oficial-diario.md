@@ -1,5 +1,5 @@
 # Tarea 76 — Fuente "dolar": cotización del dólar oficial, todos los días, a CSV
-Estado: pendiente
+Estado: lista para revisión
 Rama: tarea/75-reintentos-bajada (se suma a la 75 porque toca el mismo `mercado_datos.py`)
 
 ## Objetivo
@@ -36,5 +36,27 @@ el archivo igual y marca la fuente en rojo, reintento ante corte. Las pruebas qu
 ajustan solo si la fuente nueva lo exige, y se anota en "Qué hice".
 
 ## Qué hice
+- Agregué `ingestas/dolar.py`: consulta pública con User-Agent `finauto`, timeout de 60 segundos
+  y hasta 3 intentos ante 429, 5xx o cortes. Lee los importes directamente con Decimal y los
+  guarda con 2 decimales. Valida toda la respuesta antes de devolver filas para escribir.
+- Conserva todas las filas existentes de `dolar.csv`, suma solo fechas nuevas del período
+  solicitado y ordena por fecha. La corrida usa ayer como límite, sin incorporar hoy.
+- Integré `dolar` al final de las fuentes y en `--solo`, con resumen en `control.json` y
+  estado diario para `--solo-pendientes`. No necesita token ni perfil.
+- Agregué `tests/test_dolar.py` y amplié `tests/test_mercado_datos.py`, usando datos inventados,
+  cliente `ejemplo` y respuestas simuladas. Ajusté la lista de fuentes del caso «todo listo».
+- Verificación específica: 6 pruebas de dólar y 10 del coordinador, todas OK.
+- La primera suite completa ejecutó 67 pruebas: falló únicamente
+  `test_corrida_completa_y_ampliar_periodo` de `tests/test_tiendanube.py`, porque ahora debe
+  simular también el dólar y contar una fuente adicional. Pedí autorización para ese ajuste,
+  ya que el archivo no figura en «Archivos permitidos»; todavía no lo modifiqué.
+- No pude commitear: `git add` falló con `Operation not permitted` al crear
+  `/Users/thomasmanzo/Documents/Finnauto/.git/worktrees/tarea-75/index.lock`.
+  Los cambios quedan en este worktree y rama para que Claude los revise y commitee.
+- `git diff --check` pasó sin errores.
+- No instalé dependencias ni usé datos privados. Los cambios concurrentes de Tiendanube
+  son ajenos a esta tarea y se conservaron.
 
 ## Revisión
+Claude, 04/11/2026: revisé el diff. Ajusté `tests/test_tiendanube.py` (fuera de la lista de Codex): simula también el
+dólar, así la prueba no sale a internet, y cuenta 5 fuentes. Corrida real comprobada contra la fuente. Pruebas: ver abajo el commit.

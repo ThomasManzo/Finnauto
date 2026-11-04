@@ -10,6 +10,7 @@ from pathlib import Path
 
 
 from ingestas import mercado_datos as C
+from ingestas.dolar import bajar as bajar_dolar
 
 
 class Reloj(dt.datetime):
@@ -25,7 +26,7 @@ def preparar(tmp_path, parches):
     parches.setattr(C.meli_oauth, 'access_token', Mock(side_effect=AssertionError('No pedir tokens')))
     parches.setattr(C.tn, 'tiene_aplicacion', Mock(return_value=False))
     parches.setattr(C.galicia, 'configuracion', Mock(return_value=None))
-    for modulo, resultado in ((C.ml, ([], 0)), (C.mp, ([], '')), (C.ads, [])):
+    for modulo, resultado in ((C.ml, ([], 0)), (C.mp, ([], '')), (C.ads, []), (C.dolar, [])):
         parches.setattr(modulo, 'bajar', Mock(return_value=resultado))
     estado = tmp_path / 'clientes/ejemplo/.run/mercado_datos_estado.json'
     control = tmp_path / 'control.json'
@@ -51,6 +52,33 @@ class CorridaTests(unittest.TestCase):
         self.addCleanup(redireccion.__exit__, None, None, None)
         self.corrida = preparar(self.tmp_path, self)
 
+    def test_dolar_solo_sin_perfil_ni_token_y_pendientes(self):
+        correr, estado, control = self.corrida
+        C.dolar.bajar.return_value = [dict(fecha='2026-01-14', compra='4.00', venta='5.00', fuente='argentinadatos')]
+        assert correr('--solo', 'dolar') == 0
+        C.dolar.bajar.assert_called_once_with(self.tmp_path, dt.date(2025, 10, 1), dt.date(2026, 1, 14))
+        assert json.loads(control.read_text())['fuentes']['dolar'] == dict(
+            ok=True, filas=1, desde='2026-01-14', hasta='2026-01-14', motivo='')
+        assert json.loads(estado.read_text()) == {'dolar': '2026-01-15'}
+        C.dolar.bajar.reset_mock()
+        assert correr('--solo', 'dolar', '--solo-pendientes') == 0
+        C.dolar.bajar.assert_not_called()
+        C.meli_oauth.access_token.assert_not_called()
+        C.galicia.configuracion.assert_not_called()
+        assert (self.tmp_path / 'dolar.csv').exists()
+
+    def test_dolar_invalido_deja_csv_igual_y_fuente_en_rojo(self):
+        correr, estado, control = self.corrida
+        ruta = self.tmp_path / 'dolar.csv'
+        ruta.write_bytes(b'archivo anterior\r\n')
+        # Usar el lector real con una respuesta inválida, sin llamar a internet.
+        C.dolar.bajar.side_effect = lambda *args: bajar_dolar(*args, http=Mock(return_value=(200, b'{}')))
+        assert correr('--solo', 'dolar') == 1
+        assert ruta.read_bytes() == b'archivo anterior\r\n'
+        resumen = json.loads(control.read_text())['fuentes']['dolar']
+        assert not resumen['ok'] and resumen['motivo']
+        assert not estado.exists()
+
     def test_fallo_de_bajada(self):
         self.comprobar_fallo(False)
 
@@ -74,7 +102,7 @@ class CorridaTests(unittest.TestCase):
 
     def test_todo_listo_no_toca_control_ni_permisos(self):
         correr, estado, control = self.corrida
-        fuentes = ['mercadolibre', 'mercadopago', 'mercadolibre_publicidad', 'tiendanube', 'galicia']
+        fuentes = ['mercadolibre', 'mercadopago', 'mercadolibre_publicidad', 'tiendanube', 'galicia', 'dolar']
         C.ml.guardar_json(estado, dict.fromkeys(fuentes, '2026-01-15'))
         control.write_text('{"corrida": "anterior", "fuentes": {}}')
         antes = control.stat().st_mtime_ns
@@ -87,6 +115,7 @@ class CorridaTests(unittest.TestCase):
         C.ml.bajar.assert_not_called()
         C.mp.bajar.assert_not_called()
         C.ads.bajar.assert_not_called()
+        C.dolar.bajar.assert_not_called()
         assert 'Nada pendiente: todo se bajó bien hoy.' in self.salida.getvalue()
 
 

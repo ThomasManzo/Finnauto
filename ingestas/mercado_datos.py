@@ -8,7 +8,7 @@ import io
 import json
 from pathlib import Path
 import sys
-from ingestas import galicia_datos as galicia
+from ingestas import dolar, galicia_datos as galicia
 from ingestas import meli_oauth, meli_ventas as ml, mp_liquidaciones as mp, meli_publicidad as ads, tiendanube as tn
 
 
@@ -32,7 +32,7 @@ def main(argv=None):
     parser.add_argument('--cliente', required=True)
     parser.add_argument('--salida', required=True, type=Path)
     parser.add_argument('--desde', type=dt.date.fromisoformat, default=dt.date(2025, 10, 1))
-    parser.add_argument('--solo', choices=['mercadolibre', 'mercadopago', 'mercadolibre_publicidad', 'tiendanube', 'galicia'])
+    parser.add_argument('--solo', choices=['mercadolibre', 'mercadopago', 'mercadolibre_publicidad', 'tiendanube', 'galicia', 'dolar'])
     parser.add_argument('--solo-pendientes', action='store_true')
     args = parser.parse_args(argv)
     ahora = dt.datetime.now(ml.HORA_BA)
@@ -53,7 +53,7 @@ def main(argv=None):
     control_cambio = False
     ventas = None
     fallo = False
-    for fuente in ('mercadolibre', 'mercadopago', 'mercadolibre_publicidad', 'tiendanube', 'galicia'):
+    for fuente in ('mercadolibre', 'mercadopago', 'mercadolibre_publicidad', 'tiendanube', 'galicia', 'dolar'):
         if args.solo and fuente != args.solo: continue
         if args.solo_pendientes and estado.get(fuente) == ahora.date().isoformat():
             # Mercado Pago vincula sus pagos con ml_ventas.csv. Si Mercado Libre se acaba de bajar bien
@@ -63,7 +63,7 @@ def main(argv=None):
         carpeta = meli_oauth.BASE_REPO / 'clientes' / args.cliente / '.run' / fuente
         # El avance queda en liquidaciones, junto a los reportes, separado por fuente.
         marca = meli_oauth.BASE_REPO / 'clientes' / args.cliente / '.run/mercadopago/liquidaciones' / ('ultima-' + fuente + '.json')
-        ruta = args.salida / {'mercadolibre': 'ml_ventas.csv', 'mercadopago': 'mp_movimientos.csv', 'mercadolibre_publicidad': 'ml_publicidad.csv', 'tiendanube': 'tn_ordenes.csv', 'galicia': 'galicia_movimientos.csv'}[fuente]
+        ruta = args.salida / {'mercadolibre': 'ml_ventas.csv', 'mercadopago': 'mp_movimientos.csv', 'mercadolibre_publicidad': 'ml_publicidad.csv', 'tiendanube': 'tn_ordenes.csv', 'galicia': 'galicia_movimientos.csv', 'dolar': 'dolar.csv'}[fuente]
         resumen = dict(ok=False, filas=0, desde='', hasta='', motivo='')
         if fuente == 'mercadolibre': resumen['descuadradas'] = 0
         if fuente == 'tiendanube': resumen['raras'] = 0
@@ -91,6 +91,9 @@ def main(argv=None):
                     ultima = anterior.get('corrida') if anterior.get('desde', '9999') <= args.desde.isoformat() else None
                     filas, resumen['descuadradas'] = ml.bajar(sesion, carpeta / 'cache', args.desde, hasta, ultima)
                     columnas, campo_fecha = ml.COLUMNAS, 'fecha_venta'
+                elif fuente == 'dolar':
+                    filas = dolar.bajar(args.salida, args.desde, hasta)
+                    columnas, campo_fecha = dolar.COLUMNAS, 'fecha'
                 elif fuente == 'tiendanube':
                     sesion_tn = tn.Sesion(args.cliente)
                     marca = carpeta / 'cache' / 'ultima.json'

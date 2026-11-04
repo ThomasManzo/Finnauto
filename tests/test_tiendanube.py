@@ -273,16 +273,16 @@ class TiendanubeTests(unittest.TestCase):
                 llamadas.append(nombre)
                 return resultado
             return ejecutar
-        with tempfile.TemporaryDirectory() as tmp, patch.object(M, 'bajar', side_effect=bajar('ml', ([],0))), patch.object(CLI.mp, 'bajar', side_effect=bajar('mp', ([],''))), patch.object(CLI.ads, 'bajar', side_effect=bajar('ads', [])), patch.object(T, 'bajar', side_effect=bajar('tn', ([],0))) as tn:
+        with tempfile.TemporaryDirectory() as tmp, patch.object(CLI.dolar, 'bajar', side_effect=bajar('dolar', [])), patch.object(M, 'bajar', side_effect=bajar('ml', ([],0))), patch.object(CLI.mp, 'bajar', side_effect=bajar('mp', ([],''))), patch.object(CLI.ads, 'bajar', side_effect=bajar('ads', [])), patch.object(T, 'bajar', side_effect=bajar('tn', ([],0))) as tn:
             self.assertEqual(self.correr(tmp, solo=False), 0)
-            self.assertEqual(llamadas, ['ml','mp','ads','tn'])
+            self.assertEqual(llamadas, ['ml','mp','ads','tn','dolar'])
             self.assertIsNone(tn.call_args.args[-1])
             self.assertEqual(self.correr(tmp), 0)
             self.assertIsNotNone(tn.call_args.args[-1])
             self.assertEqual(self.correr(tmp, desde='2026-08-01'), 0)
             self.assertIsNone(tn.call_args.args[-1])
             control = json.loads((Path(tmp)/'control.json').read_text())['fuentes']
-            self.assertEqual(len(control), 4)
+            self.assertEqual(len(control), 5)
             self.assertTrue(all(f['ok'] for f in control.values()))
 
 
