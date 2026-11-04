@@ -282,6 +282,20 @@ class TiendanubeTests(unittest.TestCase):
 
 
 class LecturaTests(unittest.TestCase):
+    def test_periodo_sin_ordenes_no_es_error(self):
+        import urllib.error
+        permiso = dict(access_token='inventado', store_id='123', scope='read_orders')
+        def error_404(cuerpo):
+            return urllib.error.HTTPError('https://ejemplo', 404, 'Not Found', {}, io.BytesIO(cuerpo))
+        with patch.object(T, '_leer', return_value=permiso), patch.object(T.time, 'sleep'):
+            sesion = T.Sesion('ejemplo')
+            with patch.object(T, '_http', side_effect=error_404(b'{"description": "Last page is 0"}')):
+                self.assertEqual(sesion.pedir(sesion.base + '/orders'), ([], {}))
+            # Otro 404 (por ejemplo, una tienda que no existe) sigue siendo un error.
+            with patch.object(T, '_http', side_effect=error_404(b'{"description": "Store not found"}')):
+                with self.assertRaisesRegex(T.ErrorTiendanube, 'HTTP 404'):
+                    sesion.pedir(sesion.base + '/orders')
+
     def test_reintentos_lectura(self):
         from http.client import IncompleteRead
         permiso = dict(access_token='inventado', store_id='123', scope='read_orders')

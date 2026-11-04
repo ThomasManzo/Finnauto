@@ -172,6 +172,9 @@ class Sesion:
                     raise ErrorTiendanube('hay que volver a autorizar Tiendanube: la aplicación fue desinstalada o el permiso no sirve') from None
                 if exc.code == 402:
                     raise ErrorTiendanube('la tienda o la aplicación Tiendanube tiene un pago pendiente') from None
+                # Un período sin órdenes no es un error: Tiendanube contesta 404 "Last page is 0".
+                if exc.code == 404 and destino.path == base.path + '/orders' and b'Last page is 0' in exc.read():
+                    return [], {}
                 if (exc.code != 429 and not 500 <= exc.code < 600) or intento == 5:
                     raise ErrorTiendanube(f'no se pudo consultar Tiendanube (HTTP {exc.code})') from None
                 demora = 2 ** (intento + 1)
