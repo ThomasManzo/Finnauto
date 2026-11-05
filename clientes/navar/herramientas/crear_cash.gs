@@ -172,6 +172,17 @@ function _real_(tipo, cat, banco) {
       R.movEstado + ",\"Real\"," + R.movOrigen + ",\"" + origen + "\"" + (cat ? "," + R.movCat + ",\"" + cat + "\"" : "") + (banco !== undefined ? "," + R.movBanco + "," + _criterioBanco_(banco) : "") + ")";
   }).join("+") + ")";
 }
+// Saldo de un banco o caja a una fecha. Los bancos arrastran el último saldo conocido.
+// Cada caja se calcula sola: último arqueo de ESA caja + los movimientos posteriores de ESA caja.
+// Si no hay saldo anterior a la fecha (la caja AA se cargó el 31/08), se toma el primero conocido.
+function _saldoBancoAl_(b, corte) {
+  var cond = R.salBanco + ",\"" + b.nombre + "\"";
+  var ult = "MAXIFS(" + R.salFecha + "," + cond + "," + R.salFecha + ",\"<=\"&" + corte + ")";
+  var primero = "MINIFS(" + R.salFecha + "," + cond + ")";
+  var desde = "IF(" + ult + "=0," + primero + "," + ult + ")";
+  var base = "SUMIFS(" + R.salImp + "," + cond + "," + R.salFecha + "," + desde + ")";
+  return base + (b.caja ? "+" + _movCaja_(b.caja, desde, corte) : "");
+}
 function _lista_(imp, fecha, extra, desde) {
   // "desde" sólo se pasa para los renglones de AA: lo estimado de AA no puede pisar días que
   // ya tienen movimiento real de caja cargado.
@@ -228,7 +239,7 @@ function _renglones_(periodo) {
     // Aparece cuando el extracto lo trae clasificado. En el mensual sí va el promedio.
     { n: "Intereses y gastos bancarios", real: _real_("Egreso", "Gastos Bancarios"), est: "", como: "prom",
       f: "real: extracto · estimado: " + (mensual ? "promedio × inflación" : "promedio de los últimos 90 días") },
-    { n: "Otros (tarjeta, honorarios)", real: _real_("Egreso", "Otros") + "+" + _real_("Egreso", "Honorarios y Dividendos"), est: "-" + _proy_("Sueldos y Jornales", true), como: "lista", lista: "-" + _proy_("Sueldos y Jornales", true),
+    { n: "Otros (tarjeta, honorarios)", real: "(" + _real_("Egreso", "Otros") + "+" + _real_("Egreso", "Honorarios y Dividendos") + ")", est: "-" + _proy_("Sueldos y Jornales", true), como: "lista", lista: "-" + _proy_("Sueldos y Jornales", true),
       f: "real: extracto · estimado: lo proyectado con fecha en Movimientos (salvo sueldos)" },
   ];
   // Deuda en dos bloques. "Sale sí o sí": el banco o ARCA la debita solo cuando hay fondos
@@ -362,15 +373,7 @@ function _armarPeriodica_(ss, nombre, periodo) {
       // la caja AA se carga a mano y puede ser más nueva que el último extracto: llega hasta hoy
       // hasta HOY: si el banco no mandó extracto, el saldo es el último conocido, no un vacío
       var corte = "MIN(" + F(c) + "-1,$B$2)";
-      var cond = R.salBanco + ",\"" + b.nombre + "\"";
-      var ult = "MAXIFS(" + R.salFecha + "," + cond + "," + R.salFecha + ",\"<=\"&" + corte + ")";
-      var primero = "MINIFS(" + R.salFecha + "," + cond + ")";
-      // si no hay saldo anterior al corte (la caja AA se cargó el 31/08), se toma el primero conocido
-      // Cada caja se calcula sola: último arqueo cargado de ESA caja + los movimientos posteriores
-      // de ESA caja (Movimientos, Banco / Cuenta = "Caja A" o "Caja AA", Origen de Tango).
-      var base = "SUMIFS(" + R.salImp + "," + cond + "," + R.salFecha + ",IF(" + ult + "=0," + primero + "," + ult + "))";
-      var desdeArqueo = "IF(" + ult + "=0," + primero + "," + ult + ")";
-      h.getRange(fila, 2 + c).setFormula("=IF(" + D(c) + ">$B$2,\"\"," + base + (b.caja ? "+" + _movCaja_(b.caja, desdeArqueo, corte) : "") + ")");
+      h.getRange(fila, 2 + c).setFormula("=IF(" + D(c) + ">$B$2,\"\"," + _saldoBancoAl_(b, corte) + ")");
     }
     fila++;
   });
@@ -508,9 +511,11 @@ function _armarPeriodica_(ss, nombre, periodo) {
     var mixto = L(c6) + filaSaldoReal + "+(" + ing + "-" + L(c6) + filaRealIng + ")-(" + egr + "-" + L(c6) + filaRealEgr + ")";
     var futuro = c6 === 0 ? mixto : L(c6) + filaInicial + "+" + ing + "-" + egr;
     h.getRange(filaCierre, 2 + c6).setFormula("=IF(" + F(c6) + "-1<=$B$3," + L(c6) + filaSaldoReal + ",IF(" + D(c6) + "<=$B$3," + mixto + "," + futuro + "))").setFontWeight("bold");
-    // saldo inicial: el cierre de la columna anterior; en la primera, el cierre real menos lo que pasó en ella
+    // saldo inicial: el cierre de la columna anterior; en la primera, el saldo real del día anterior.
+    // Antes se calculaba para atrás (cierre menos lo que pasó): así la primera columna siempre
+    // "cerraba", aunque faltara plata en los renglones, y el error quedaba escondido.
     h.getRange(filaInicial, 2 + c6).setFormula(c6 === 0
-      ? "=" + L(0) + filaSaldoReal + "-" + L(0) + filaRealIng + "+" + L(0) + filaRealEgr
+      ? "=" + bancos.map(function (b) { return _saldoBancoAl_(b, D(0) + "-1"); }).join("+")
       : "=" + L(c6 - 1) + filaCierre).setFontWeight("bold");
     // deuda pospuesta acumulada: solo hacia adelante, suma lo que se pagaría por decisión y no se paga
     h.getRange(filaPospuesta, 2 + c6).setFormula("=IF(" + F(c6) + "-1<=$B$3,\"\"," + (c6 === 0 ? "0" : "N(" + L(c6 - 1) + filaPospuesta + ")") + "+" + L(c6) + totDec + ")").setFontColor("#a50e0e");
@@ -610,8 +615,104 @@ function _armarPeriodica_(ss, nombre, periodo) {
   h.hideColumns(colAcuerdo);          // auxiliar: acuerdo de descubierto por banco
   // El detalle nuevo sólo muestra datos: ninguna fórmula de cierre lo toma como base.
   _colorearBancos_(h, bancos, primeraMargen, primeraBanco, colAcuerdo, nCols, D, L);
+  if (mensual) _controlDeCierre_(h, fila + 2, { bancos: bancos, primeraBanco: primeraBanco, filaSaldoReal: filaSaldoReal,
+    totIng: totIng, totOpe: totOpe, totAuto: totAuto, totDec: totDec, nCols: nCols, colFuente: colFuente, D: D, F: F, L: L, fx: fx });
   h.setFrozenRows(filaFechas + 1);
   h.setFrozenColumns(1);
+}
+
+// ---- Control de cierre (Cash Mensual, solo meses cerrados).
+// Pregunta: saldo real del mes anterior + lo que dicen los renglones, ¿da el saldo real de este mes?
+// Si no da, separa la diferencia en cuatro partes, para saber dónde mirar:
+//   · transferencias internas que no se cancelan: un pase entre cuentas propias tiene dos patas;
+//     si sobra una, la otra está clasificada como otra cosa (cobranza, proveedor...);
+//   · bancos: el saldo del extracto no coincide con sus movimientos (extracto incompleto);
+//   · sin explicar: hay movimientos en una categoría que no tiene renglón en el cash;
+//   · efectivo: informativo. Las cajas A y AA van juntas porque los préstamos entre ellas no se
+//     registran y así se cancelan; igual no cierra al peso: un arqueo trae lo que Tango no tiene.
+//     Por eso esta parte se muestra, pero no marca el mes para revisar.
+// Mide y avisa: no cambia ningún renglón ni ningún saldo.
+var TOLERANCIA_CONTROL = 1000000;                        // menos de esto no se marca para revisar
+var ORIGENES_BANCO = ["Extracto*"], ORIGENES_CAJA = ["Tango AA*", "Tango caja A*"];
+
+// Movimientos reales del mes de esos orígenes, con su signo. Se le puede pedir una sola categoría.
+function _movDelMes_(origenes, cat) {
+  return "(" + origenes.map(function (o) {
+    return "SUMIFS(" + R.movImp + "," + R.movFecha + ",\">=\"&{D}," + R.movFecha + ",\"<\"&{F}," + R.movEstado + ",\"Real\"," +
+      R.movOrigen + ",\"" + o + "\"" + (cat ? "," + R.movCat + ",\"" + cat + "\"" : "") + ")";
+  }).join("+") + ")";
+}
+function _estadoControl_(interna, bancos, sinExplicar) {
+  var abs = function (x) { return "ABS(" + x + ")"; };
+  return "IF(MAX(" + [interna, bancos, sinExplicar].map(abs).join(",") + ")>=" + TOLERANCIA_CONTROL + ",\"REVISAR\",\"OK\")";
+}
+function _controlDeCierre_(h, fila, o) {
+  var L = o.L, D = o.D, F = o.F;
+  var nombres = [
+    "Saldo real al cierre del mes anterior",
+    "Lo que dicen los renglones (ingresos − egresos − deuda)",
+    "Saldo que debería haber",
+    "Saldo real al cierre",
+    "DIFERENCIA (real − debería)",
+    "De dónde sale la diferencia:",
+    "   Transferencias internas que no se cancelan (debe dar 0)",
+    "   Bancos: saldo contra movimientos (debe dar 0)",
+    "   Movimientos sin renglón en el cash (debe dar 0)",
+    "   Efectivo: cajas A y AA contra arqueos (informativo)",
+    "Estado",
+    "Bancos al inicio (auxiliar)", "Cajas al inicio (auxiliar)", "Bancos al cierre (auxiliar)", "Cajas al cierre (auxiliar)"
+  ];
+  _seccion_(h, fila++, "7 · Control de cierre: ¿los movimientos explican el saldo? (meses cerrados)", "#e8f0fe", "#174ea6", o.colFuente);
+  var f0 = fila, r = {};
+  ["ini", "flujo", "debe", "real", "dif", "titulo", "interna", "bancos", "sin", "efectivo", "estado", "bIni", "cIni", "bFin", "cFin"]
+    .forEach(function (k, i) { r[k] = f0 + i; h.getRange(f0 + i, 1).setValue(nombres[i]); });
+  var deBancos = o.bancos.filter(function (b) { return !b.caja; }), deCajas = o.bancos.filter(function (b) { return b.caja; });
+  var fila0 = function (b) { return o.primeraBanco + o.bancos.indexOf(b); };
+
+  for (var c = 0; c < o.nCols; c++) {
+    var l = L(c);
+    var cierre = function (lista) { return lista.length ? lista.map(function (b) { return "N(" + l + fila0(b) + ")"; }).join("+") : "0"; };
+    var inicio = function (lista, filaAnt) {
+      if (c > 0) return L(c - 1) + filaAnt;      // la primera columna no tiene anterior: se calcula el saldo
+      return lista.length ? lista.map(function (b) { return _saldoBancoAl_(b, D(0) + "-1"); }).join("+") : "0";
+    };
+    var si = function (x) { return "=IF(" + F(c) + "-1<=$B$3," + x + ",\"\")"; };   // solo si el mes está cerrado
+    h.getRange(r.bIni, 2 + c).setFormula(si(inicio(deBancos, r.bFin)));
+    h.getRange(r.cIni, 2 + c).setFormula(si(inicio(deCajas, r.cFin)));
+    h.getRange(r.bFin, 2 + c).setFormula(si(cierre(deBancos)));
+    h.getRange(r.cFin, 2 + c).setFormula(si(cierre(deCajas)));
+    h.getRange(r.ini, 2 + c).setFormula(si(l + r.bIni + "+" + l + r.cIni));
+    h.getRange(r.flujo, 2 + c).setFormula(si(l + o.totIng + "-" + l + o.totOpe + "-" + l + o.totAuto + "-" + l + o.totDec));
+    h.getRange(r.debe, 2 + c).setFormula(si(l + r.ini + "+" + l + r.flujo));
+    h.getRange(r.real, 2 + c).setFormula(si(l + o.filaSaldoReal));
+    // Al peso, para que los centavos no aparezcan como "-0". El "sin renglón" se redondea a la
+    // decena: es la resta de los otros y su propio redondeo no tiene que parecer una diferencia.
+    h.getRange(r.dif, 2 + c).setFormula(si("ROUND(" + l + r.real + "-" + l + r.debe + ",0)")).setFontWeight("bold");
+    h.getRange(r.interna, 2 + c).setFormula(si("ROUND(" + o.fx(_movDelMes_(ORIGENES_REALES, "Transferencia Interna"), c) + ",0)"));
+    h.getRange(r.bancos, 2 + c).setFormula(si("ROUND(" + l + r.bFin + "-" + l + r.bIni + "-" + o.fx(_movDelMes_(ORIGENES_BANCO), c) + ",0)"));
+    h.getRange(r.efectivo, 2 + c).setFormula(si("ROUND(" + l + r.cFin + "-" + l + r.cIni + "-" + o.fx(_movDelMes_(ORIGENES_CAJA), c) + ",0)"));
+    h.getRange(r.sin, 2 + c).setFormula(si("ROUND(" + l + r.dif + "-" + l + r.interna + "-" + l + r.bancos + "-" + l + r.efectivo + ",-1)"));
+    h.getRange(r.estado, 2 + c).setFormula(si(_estadoControl_(l + r.interna, l + r.bancos, l + r.sin))).setFontWeight("bold").setHorizontalAlignment("right");
+  }
+  h.getRange(f0, 2, r.cFin - f0 + 1, o.nCols).setNumberFormat("#,##0;[Red]-#,##0;0");
+  h.getRange(r.dif, 1).setFontWeight("bold");
+  h.getRange(r.titulo, 1).setFontStyle("italic").setFontColor("#5f6368");
+  h.getRange(r.efectivo, 1).setFontColor("#5f6368");
+  h.getRange(r.estado, 1).setFontWeight("bold");
+  h.getRange(r.interna, 1).setNote("Un pase entre cuentas propias tiene dos patas y suma cero. Si no da cero, una pata está clasificada como otra cosa, o la otra cuenta no tiene extracto.");
+  h.getRange(r.efectivo, 1).setNote("No marca el mes para revisar: los préstamos entre la caja de A y la de AA no se registran y un arqueo puede traer plata que Tango no tiene. Antes de su primer arqueo, la caja se muestra con el saldo de ese arqueo: la diferencia de esos meses no es un faltante.");
+  h.hideRows(r.bIni, 4);
+
+  // Colores y aviso arriba de todo, para que se vea sin bajar hasta esta sección.
+  var estados = h.getRange(r.estado, 2, 1, o.nCols);
+  var reglas = h.getConditionalFormatRules();
+  reglas.push(SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo("REVISAR").setBackground("#fce8e6").setFontColor("#a50e0e").setRanges([estados]).build());
+  reglas.push(SpreadsheetApp.newConditionalFormatRule().whenTextStartsWith("OK").setBackground("#e6f4ea").setFontColor("#137333").setRanges([estados]).build());
+  h.setConditionalFormatRules(reglas);
+  var rango = "$B$" + r.estado + ":$" + L(o.nCols - 1) + "$" + r.estado;
+  h.getRange(2, 3).setFormula("=IF(COUNTIF(" + rango + ",\"REVISAR\")>0,\"Control de cierre: \"&COUNTIF(" + rango + ",\"REVISAR\")&\" mes(es) para revisar, ver sección 7\",\"Control de cierre: OK\")")
+    .setFontWeight("bold").setFontColor("#a50e0e");
+  return r;
 }
 
 function _fin_(periodo, D) {
@@ -801,6 +902,7 @@ function armarInstrucciones() {
     ["Resultado después de la deuda", "Resultado de la operación menos toda la deuda. Negativo = la deuda se come más de lo que la operación deja."],
     ["Venció en el período y no se pagó", "Facturas de proveedores e impuestos con vencimiento en ese período que siguen impagos (solo en lo real). Es la parte de la operación que se financió NO pagando."],
     ["Resultado de la operación pagando lo que vencía", "Lo que hubiera quedado pagando todo lo que venció. Es el número honesto de la operación."],
+    ["7 · Control de cierre (solo Cash Mensual)", "En los meses cerrados compara el saldo real con el saldo anterior más los movimientos y dice de dónde sale la diferencia. REVISAR = hay una diferencia de $ 1 M o más en bancos, transferencias internas o movimientos sin renglón. El efectivo se muestra aparte y no marca el mes: los préstamos entre cajas no se registran y no cierra al peso."],
     ["Descubierto acordado · usado · disponible", "Acordado: lo que cada banco autorizó. Usado: los saldos en negativo. Disponible: acordado − usado, banco por banco (un banco excedido no se compensa con otro en positivo). Hacia adelante, sobre el total."],
     ["Saldo disponible", "Saldos en positivo + descubierto disponible, en los dos escenarios. Negativo = no se cubre lo comprometido ni usando todo el descubierto: hay que elegir."],
     ["6 · Atrasado hoy", "Stock por concepto y detalle por vencimiento original: cada importe va al día, semana o mes en que venció. Fuera de la curva; no cambia cierres. Antes/después de las fechas visibles se muestra aparte. Total menos repartido debe dar 0; si no, revisar fechas. Excluye vencido a cobrar y conserva los filtros del stock. Baja cuando la lista actualizada registra el pago; no basta el extracto. Se paga por decisión, en Plan."],
@@ -851,7 +953,7 @@ function armarInstrucciones() {
     ["2", "el vigilante (cada 15 min)", "ve el archivo nuevo y corre el lector que corresponde; el lector deja el para_pegar_*.xlsx en '_para la Sheet'. Si una lista se achica de golpe (un export con filtro cambiado), lo retiene y no publica", "log del vigilante"],
     ["3", "el disparador de esta Sheet (cada hora)", "ve el para_pegar nuevo y lo importa: pisa lo que ese lector cargó antes, no toca fórmulas ni lo cargado a mano; si el lector trae una columna nueva, la agrega", "solapa Registro"],
     ["4", "las pantallas", "recalculan solas: B3 avanza, lo real reemplaza lo estimado, la cobranza que entró sale del 'a cobrar'", "Cash · Cash Semanal · Cash Mensual"],
-    ["a mano", "quien hace el arqueo", "una fila por arqueo en Saldos Bancarios: fecha, Varios, AA, saldo, Manual", "Saldos Bancarios"],
+    ["a mano", "quien hace el arqueo", "una fila por arqueo en Saldos Bancarios: fecha, Caja AA o Caja A, empresa, saldo, Manual", "Saldos Bancarios"],
     ["a mano", "la dirección", "las decisiones: pagar / refinanciar / posponer, gracia, cuotas, tasa", "Plan"],
     ["si hace falta", "finauto → Importar lo nuevo ahora", "lo mismo que el disparador, sin esperar la hora", "menú finauto"],
     ["si cambió la estructura", "finauto → Armar solapa Cash", "rearma las pantallas; Plan no se toca", "menú finauto"],
@@ -1904,8 +2006,10 @@ function _validacionesSaldos_(ss) {
   });
   h.getRange(2, 6, n, 1).clearDataValidations();                 // F · Origen: lo escribe el lector
   _lista_validacion_(h, 2, n, Object.keys(bancos).sort());       // B · Banco: los que realmente hay
+  // OJO: las fórmulas del cash buscan el saldo por el nombre del banco. Si se renombra, hay que
+  // volver a armar el cash o la caja queda sin arqueo (pasó el 05/11/2026).
   if (renombradas) SpreadsheetApp.getActiveSpreadsheet().toast(
-    "Caja AA renombrada en " + renombradas + " fila(s) de Saldos Bancarios.", "finauto", 6);
+    "Caja AA renombrada en " + renombradas + " fila(s). Volvé a armar el cash (finauto → Armar solapa Cash).", "finauto", 15);
 }
 
 function _lista_validacion_(h, col, n, valores) {
