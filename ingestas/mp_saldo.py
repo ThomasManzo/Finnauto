@@ -14,6 +14,7 @@ from ingestas.meli_ventas import ErrorDatos, atomico, fecha, instante, limites, 
 
 BASE = 'https://api.mercadopago.com/v1/account/release_report'
 COLUMNAS = ['fecha', 'disponible', 'a_liberar', 'intereses_del_dia']
+REPEDIR_SEGUNDOS = 2 * 60 * 60
 REQUERIDAS = {'DATE', 'DESCRIPTION', 'NET_CREDIT_AMOUNT', 'NET_DEBIT_AMOUNT', 'BALANCE_AMOUNT'}
 
 
@@ -115,10 +116,13 @@ def bajar(sesion, carpeta, ruta_csv, desde, hasta):
         reporte = candidato()
         marca = carpeta / (clave + '.pedido.json')
         pendiente = any(r.get('status') == 'pending' and coincide(r) for r in listado)
-        if not reporte and not pendiente and (not marca.exists() or json.loads(marca.read_text()).get('fecha') != hoy):
+        # Mercado Pago a veces acepta un pedido y no lo genera: pasado un rato se puede volver a pedir.
+        pedido = json.loads(marca.read_text()) if marca.exists() else {}
+        vigente = pedido.get('fecha') == hoy and time.time() - pedido.get('hora', 0) < REPEDIR_SEGUNDOS
+        if not reporte and not pendiente and not vigente:
             utc = lambda valor: valor.astimezone(dt.timezone.utc).isoformat().replace('+00:00', 'Z')
             pedir(cuerpo={'begin_date': utc(a), 'end_date': utc(b)})
-            atomico(marca, json.dumps({'fecha': hoy}).encode())
+            atomico(marca, json.dumps({'fecha': hoy, 'hora': time.time()}).encode())
         # Cinco minutos compartidos entre todos los meses, no cinco por cada uno.
         while not reporte and esperas < 10:
             time.sleep(30)

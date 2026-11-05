@@ -6,6 +6,7 @@ import os
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -99,6 +100,35 @@ class Pruebas(unittest.TestCase):
         self.assertEqual(sum(f['fecha'] == vieja['fecha'] for f in filas), 1)
         self.assertEqual(md.leer_csv(self.salida / 'galicia_saldo.csv')[0]['fecha'], vieja['fecha'])
         self.assertTrue(all(f['tipo'] for f in filas))
+
+    def test_bot_que_fallo_hoy_marca_la_fuente_en_rojo(self):
+        self.excel('2026-10-31')
+        estado = self.descargas / '_ESTADO_Galicia_01-11.txt'
+        estado.write_text('ATENCION: 1 empresa fallo', encoding='utf-8')
+        filas, _, control = gd.leer(self.cfg, self.salida, dt.date(2026, 11, 1))
+        self.assertFalse(control['ok'])
+        self.assertIn('falló hoy', control['motivo'])
+        self.assertTrue(filas)
+        estado.write_text('OK: no fallo ninguna empresa.', encoding='utf-8')
+        self.assertTrue(gd.leer(self.cfg, self.salida, dt.date(2026, 11, 1))[2]['ok'])
+
+    def test_limite_deja_el_fallo_en_el_estado_y_termina(self):
+        from orquestador import correr as O
+        ctx = SimpleNamespace(carpeta_drive=str(self.descargas), banco_nombre='Galicia')
+        hoy = dt.date(2026, 11, 1)
+        self.assertIsNone(O._poner_limite(ctx, hoy, None))
+        with patch.object(O.os, '_exit') as salir, patch.object(O, 'log'):
+            O._cortar_por_limite(ctx, hoy, 600)
+        salir.assert_called_once_with(1)
+        texto = (self.descargas / '_ESTADO_Galicia_01-11.txt').read_text(encoding='utf-8')
+        self.assertIn('LIMITE DE TIEMPO', texto)
+        self.assertNotIn('OK: no fallo', texto)
+
+    def test_una_empresa_no_mira_descargas_y_navar_si(self):
+        from bots.galicia.navar import BotGaliciaNavar
+        from bots.galicia.una_empresa import BotGaliciaUnaEmpresa
+        self.assertTrue(BotGaliciaNavar.mirar_descargas_usuario)
+        self.assertFalse(BotGaliciaUnaEmpresa.mirar_descargas_usuario)
 
     def test_ingresos_brutos_abreviado_es_impuesto(self):
         self.assertEqual(gd.tipo('Ing. Brutos S/ Cred EJEMPLO'), 'impuesto')

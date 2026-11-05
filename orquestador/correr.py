@@ -16,6 +16,7 @@ import os
 import sys
 import argparse
 import datetime
+import threading
 import traceback
 
 # Hacer importable el repo (nucleo, bots) tanto con 'python -m' como script suelto.
@@ -98,6 +99,29 @@ def decidir_reintento(estado_txt, claves_sin_confirmar):
     return True, "", False
 
 
+def _cortar_por_limite(ctx, hoy, segundos):
+    """Termina el programa si la corrida se trabó: mejor un fallo avisado que una hora colgado."""
+    motivo = "LIMITE DE TIEMPO: la corrida se cortó a los %d segundos" % segundos
+    try:
+        log(motivo)
+        from nucleo.salidas import escribir_estado_drive
+        escribir_estado_drive(ctx.carpeta_drive, ctx.banco_nombre, hoy, {
+            "ok": [], "sin_novedades": [], "fallaron": [motivo]})
+    finally:
+        # os._exit y no sys.exit: el programa principal puede estar trabado y no atender nada más.
+        os._exit(1)
+
+
+def _poner_limite(ctx, hoy, segundos):
+    """Si el perfil del banco pide un límite (limite_segundos), lo vigila desde otro hilo."""
+    if not segundos:
+        return None
+    reloj = threading.Timer(segundos, _cortar_por_limite, (ctx, hoy, segundos))
+    reloj.daemon = True
+    reloj.start()
+    return reloj
+
+
 def correr_banco(cliente, banco, modo_forzado=None, navegador=None, si_falta=False):
     banco = banco.lower()
     variante_navar = cliente == "navar" and banco in VARIANTES_NAVAR
@@ -176,6 +200,7 @@ def correr_banco(cliente, banco, modo_forzado=None, navegador=None, si_falta=Fal
 
     log("=== finauto :: cliente=%s banco=%s modo=%s ===" % (
         ctx.cliente_nombre, bot.nombre, "visible" if ctx.modo_visible else "invisible"))
+    reloj = _poner_limite(ctx, hoy, cfg_banco.get("limite_segundos"))
     try:
         resultado = _loop.correr(bot, ctx, usuario, clave)
     except SystemExit:
@@ -185,6 +210,9 @@ def correr_banco(cliente, banco, modo_forzado=None, navegador=None, si_falta=Fal
             log("%s: el banco recibió la clave y no confirmó la entrada (%d de %d hoy)."
                 % (bot.nombre, n, MAX_CLAVES_SIN_CONFIRMAR))
         raise
+    finally:
+        if reloj:
+            reloj.cancel()
     if variante_navar or una_empresa:
         if resultado["fallaron"] or not (resultado["ok"] or resultado["sin_novedades"]):
             raise RuntimeError("%s%s no terminó bien; revisar log y capturas."

@@ -115,6 +115,10 @@ def leer(cfg, salida, hoy=None):
         motivo = 'todavía no hay descargas de Galicia'
     elif (hoy - ultima).days > 2:
         motivo = 'el bot de Galicia no bajó nada desde ' + ultima.isoformat()
+    # El rearmado usa lo ya bajado: sin esto, un bot que falló hoy se vería como una fuente al día.
+    estado_hoy = carpeta / ('_ESTADO_Galicia_%s.txt' % hoy.strftime('%d-%m'))
+    if not motivo and estado_hoy.exists() and 'OK: no fallo' not in estado_hoy.read_text(encoding='utf-8'):
+        motivo = 'el bot de Galicia falló hoy; datos de la descarga del ' + ultima.isoformat()
     fechas = [f['fecha'] for f in movimientos]
     resumen = dict(ok=not motivo, filas=len(movimientos), desde=min(fechas, default=''),
                    hasta=max(fechas, default=''), motivo=motivo,
