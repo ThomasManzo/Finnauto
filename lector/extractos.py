@@ -84,6 +84,8 @@ if BASE_REPO not in sys.path:
 
 import openpyxl
 
+from lector import comisiones
+
 NUM_AR = r'-?\d{1,3}(?:\.\d{3})*,\d{2}'      # 1.234.567,89
 NUM_US = r'-?\d{1,3}(?:,\d{3})*\.\d{2}'      # 1,234,567.89
 
@@ -884,6 +886,8 @@ REGLAS_EGRESO = [
     ("DEBITO DIRECTO", "Otros", "Débito automático", False),
     ("DEBITO", "Otros", "Débito automático", False),
     (" HON", "Honorarios y Dividendos", "Transferencia", False),
+    # Nación a otro titular (a uno mismo es "MISMO TIT", que está más arriba): sin esto caía en Otros.
+    ("DEB.TRAN.INTERB", "Proveedores MP y Logist.", "Transferencia", False),
     ("TRANSF", "Proveedores MP y Logist.", "Transferencia", False),
     ("TRF", "Proveedores MP y Logist.", "Transferencia", False),
     ("E-SET", "Proveedores MP y Logist.", "Transferencia", False),
@@ -968,8 +972,15 @@ def clasificar(mov, cuit_propio):
     c = _norm(mov["concepto"])
     v = mov["importe"]
     tipo = "Ingreso" if v > 0 else "Egreso"
-    if cuit_propio and re.search(r'\b' + re.escape(cuit_propio) + r'\b', c.replace("-", "")):
+    # Macro escribe "TRF MO CCDO DIST T - <CUIT de NAVAR>" en las transferencias a OTRO titular: el CUIT
+    # es el de quien manda, no el de quien cobra ("DIST T" = distinto titular). Es un pago, no un pase.
+    a_tercero = v < 0 and re.search(r'\bDIST T\b', c)
+    if cuit_propio and not a_tercero and re.search(r'\b' + re.escape(cuit_propio) + r'\b', c.replace("-", "")):
         return (tipo, "Transferencia Interna", "Transferencia", True, "al/del CUIT propio (otra cuenta de NAVAR)")
+    # "TRANSF <CUIT> FAC comisiones" es la comisión de un vendedor, no una comisión del banco: la
+    # palabra sola la mandaba a gastos bancarios. Se la saca de esa regla y sigue como pago a proveedor.
+    if v < 0 and "COMISION" in c and re.match(r'TRANSF \d{11}\b', c):
+        return (tipo, "Proveedores MP y Logist.", "Transferencia", False, "proveedor a identificar")
     if re.fullmatch(r'\d{18,}', c) and v > 0:
         # Macro acredita la venta de valores (descuento de cheques) solo con el número de operación (administración, 18/09).
         return (tipo, "Descuento de Cheques", "Transferencia", False, "venta de valores Macro (descuento de cheques de clientes), según administración 18/09")
@@ -978,6 +989,7 @@ def clasificar(mov, cuit_propio):
             nota = NOTAS.get(texto, "")
             if cat == "Proveedores MP y Logist.":
                 cuit = re.search(r'\b(\d{11})\b', c)
+                cuit = None if cuit and cuit.group(1) == cuit_propio else cuit
                 nota = ("CUIT %s-%s-%s: proveedor a identificar" % (cuit.group(1)[:2], cuit.group(1)[2:10], cuit.group(1)[10:])
                         if cuit else "proveedor a identificar")
             return (tipo, cat, medio, interno, nota)
@@ -1133,7 +1145,7 @@ def procesar(carpeta, empresa="A"):
     saldos.sort(key=lambda s: (s["banco"], s["cuenta"], s["fecha"]))
     movs.sort(key=lambda m: (m["fecha"], m["banco"], m["cuenta"]))
 
-    filas, por_cat = [], defaultdict(lambda: [0, 0.0])
+    filas, por_cat, marcas = [], defaultdict(lambda: [0, 0.0]), []
     for i, m in enumerate(movs, 1):
         tipo, cat, medio, interno, nota = clasificar(m, cuit)
         obs = "Extracto %s · %s%s" % (m["banco"], m["fuente"].upper(), (" · " + nota) if nota else "")
@@ -1145,8 +1157,14 @@ def procesar(carpeta, empresa="A"):
             ("Banco / Cuenta", "%s %s" % (m["banco"], m["cuenta"])), ("Origen", "Extracto %s" % m["banco"]),
             ("Estado", "Real"), ("Referencia", m.get("ref")), ("Semana (lunes)", None), ("Observaciones", obs),
         ]))
-        por_cat[(m["banco"], tipo, cat, interno)][0] += 1
-        por_cat[(m["banco"], tipo, cat, interno)][1] += m["importe"]
+        marcas.append((m, tipo, interno))
+    # Comisiones a vendedores: la lista está en Drive, al lado de la carpeta de bancos (lector/comisiones.py).
+    raiz = os.path.dirname(os.path.abspath(carpeta))
+    vendedores = comisiones.cargar_vendedores(raiz)
+    comisiones.marcar_banco(filas, vendedores, comisiones.pagos_de_banco(raiz, vendedores))
+    for fila, (m, tipo, interno) in zip(filas, marcas):
+        por_cat[(m["banco"], tipo, fila["Categoria"], interno)][0] += 1
+        por_cat[(m["banco"], tipo, fila["Categoria"], interno)][1] += m["importe"]
     return {"errores": errores, "leidos": sum(len(b["lecturas"]) for b in bancos),
             "cuit": cuit, "bancos": resumen_bancos, "saldos": saldos, "movimientos": filas, "por_cat": por_cat}
 

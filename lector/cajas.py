@@ -31,6 +31,7 @@ CATEGORÍAS (mirando hacia dónde va la plata: las cuentas del lado contrario a 
     honorarios, cuenta particular de un director   → Honorarios y Dividendos (si entra plata: Otros)
     préstamo                                       → Prestamo
     acreedores (proveedores)                       → A: Proveedores MP y Logist. · AA: Proveedores AA
+    a un vendedor, o la leyenda dice comisión      → Comisiones (lector/comisiones.py)
     de la caja al banco (depósito)                 → Cobranza Facturas en negativo (ver arriba)
     entre la caja y la cartera de cheques          → Cheques (cheques cambiados por efectivo)
     entre cajas, del banco a la caja, pases        → Transferencia Interna
@@ -65,6 +66,12 @@ import unicodedata
 from collections import OrderedDict, defaultdict
 
 import openpyxl
+
+# Para poder correrlo como script ("python lector/cajas.py") y también importarlo desde las pruebas.
+_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _REPO not in sys.path:
+    sys.path.insert(0, _REPO)
+from lector import comisiones
 
 BASE_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -169,6 +176,7 @@ def leer_detalle(ruta):
                 "debe": _num(col(r, "Debe (cte) (renglón)")),
                 "haber": _num(col(r, "Haber (cte) (renglón)")),
                 "razon": str(col(r, "Razón social (encab.)") or col(r, "Proveedor (encab.)") or "").strip(),
+                "cuit_proveedor": comisiones.solo_digitos(col(r, "CUIT proveedor (encab.)")),
                 "leyenda": str(col(r, "Leyenda") or "").strip(),
             })
         if repetidos:
@@ -218,6 +226,12 @@ def categoria(empresa, cajas_renglones, otros, cfg):
     leyenda = _norm(cajas_renglones[0]["leyenda"])
     if entra and "DEUDOR" in texto:
         return COBRANZA[empresa]
+    # Comisiones: a un vendedor de la lista de Drive (facturó), o lo dice la leyenda de un pago a
+    # proveedor o por sueldos (los empleados cobran la suya por sueldos, sin factura).
+    a_proveedor = "ACREEDOR" in texto
+    if not entra and ((a_proveedor and cajas_renglones[0].get("cuit_proveedor") in cfg.get("vendedores", ())) or
+                      ("COMISION" in leyenda and (a_proveedor or "SUELDO" in texto or "JORNAL" in texto))):
+        return comisiones.CATEGORIA
     if any(p in texto for p in ("SUELDO", "JORNAL", "CARGAS SOCIALES", "CONVENIO")) or \
             any(p in leyenda for p in ("SUELDO", "JORNAL", "HORAS EXTRA", "OSECAC", "FAECYS", "UATRE",
                                        "SINDICATO", "OBRA SOCIAL", "APORTES")):
@@ -270,7 +284,8 @@ def movimientos(renglones, empresa, cfg, nombre_archivo):
             # o un sueldo es egreso aunque vuelva plata. El resto, por el signo (una anulación REV, al revés).
             if cat.startswith("Cobranza") or cat == "Cheques":
                 ingreso = True
-            elif cat in ("Proveedores MP y Logist.", "Proveedores AA", "Sueldos y Jornales", "Honorarios y Dividendos"):
+            elif cat in ("Proveedores MP y Logist.", "Proveedores AA", "Sueldos y Jornales", "Honorarios y Dividendos",
+                         comisiones.CATEGORIA):
                 ingreso = False
             else:
                 ingreso = (importe > 0) != (r["tipo"] == "REV")
@@ -397,6 +412,8 @@ def main(argv=None):
         if not os.path.isfile(ruta):
             raise ValueError("falta el detalle de tesorería: %s; no se publica ninguna caja" % ruta)
     cfg = config_cajas(a.cliente)
+    # La lista de vendedores está en Drive, dos carpetas arriba del detalle (lector/comisiones.py).
+    cfg["vendedores"] = comisiones.cargar_vendedores(os.path.dirname(os.path.dirname(os.path.abspath(a.a))))
     filas = []
     for empresa, ruta in (("A", a.a), ("AA", a.aa)):
         filas += movimientos(leer_detalle(ruta), empresa, cfg, os.path.basename(ruta))

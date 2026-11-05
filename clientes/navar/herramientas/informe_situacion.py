@@ -476,14 +476,14 @@ def armar(D, out):
     S += [PageBreak(), P("3 · Los tres meses reales: qué entra y qué sale", "h1"),
           P("Junio, julio y agosto según el extracto (no según Tango ni la planilla vieja). Es la base de toda la proyección.", "p")]
     ren_ing = ["Cobranza acreditada", "Cobranza AA (efectivo)", "Cheques de clientes (depositados y descontados)"]
-    ren_egr = ["Proveedores A", "Proveedores AA", "Sueldos y cargas", "Impuestos corrientes", "Cheques propios", "Intereses y gastos bancarios", "Otros (tarjeta, honorarios)"]
+    ren_egr = ["Proveedores A", "Proveedores AA", "Comisiones de vendedores", "Sueldos y cargas", "Impuestos corrientes", "Cheques propios", "Intereses y gastos bancarios", "Otros (tarjeta, honorarios)"]
     fr = [["", lab(cols[0]), lab(cols[1]), lab(cols[2]), "promedio"]]
     def f3(nombre, vals, bold=False):
         return [Paragraph(("<b>%s</b>" if bold else "%s") % nombre, ParagraphStyle("l", parent=PR.b, fontSize=8.4, leading=11, spaceAfter=0))] + [celda_num(v, bold) for v in vals[:3]] + [celda_num(sum(vals[:3]) / 3, bold)]
     for r in ren_ing:
         fr.append(f3(r, M[r]))
     fr.append(f3("Total ingresos", M["Total ingresos"], True))
-    for r in ren_egr:
+    for r in [x for x in ren_egr if x in M]:          # el renglón de comisiones no existe en cash viejos
         fr.append(f3(r, M[r]))
     fr.append(f3("Total egresos de la operación", M["Total egresos de la operación"], True))
     fr.append(f3("Resultado de la operación por caja (bancos + efectivo AA, sin préstamos)", M["Resultado de la operación (antes de la deuda)"], True))
