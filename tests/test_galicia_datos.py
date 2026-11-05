@@ -84,6 +84,25 @@ class Pruebas(unittest.TestCase):
         control = json.loads((self.salida / 'control.json').read_text())['fuentes']['galicia']
         self.assertEqual(control['motivo'], 'todavía no hay descargas de Galicia')
 
+    def test_historial_conserva_filas_viejas_y_su_tipo(self):
+        # Una fila más vieja que lo que trae el banco, con un tipo revisado a mano.
+        vieja = dict(fecha='2026-01-05', concepto='Transferencia De Terceros EJEMPLO', referencia='',
+                     importe='100.00', saldo='1000.00', tipo='Tiendanube')
+        md.escribir_csv(self.salida / 'galicia_movimientos.csv', gd.COLUMNAS_MOVIMIENTOS, [vieja])
+        md.escribir_csv(self.salida / 'galicia_saldo.csv', gd.COLUMNAS_SALDO,
+                        [dict(fecha='2026-01-05', saldo='1000.00')])
+        self.excel('2026-10-31')
+        self.correr()
+        self.correr()
+        filas = md.leer_csv(self.salida / 'galicia_movimientos.csv')
+        self.assertEqual(filas[0], vieja)
+        self.assertEqual(sum(f['fecha'] == vieja['fecha'] for f in filas), 1)
+        self.assertEqual(md.leer_csv(self.salida / 'galicia_saldo.csv')[0]['fecha'], vieja['fecha'])
+        self.assertTrue(all(f['tipo'] for f in filas))
+
+    def test_ingresos_brutos_abreviado_es_impuesto(self):
+        self.assertEqual(gd.tipo('Ing. Brutos S/ Cred EJEMPLO'), 'impuesto')
+
     def test_segunda_corrida_agrega_y_actualiza_saldo_del_dia(self):
         viejo = self.excel("2026-10-30", 3)
         self.saldo("_SALDOS_Galicia_31-10.json", "2026-10-31T10:00:00", 500000)
