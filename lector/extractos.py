@@ -84,7 +84,7 @@ if BASE_REPO not in sys.path:
 
 import openpyxl
 
-from lector import comisiones
+from lector import comisiones, pases_internos
 
 NUM_AR = r'-?\d{1,3}(?:\.\d{3})*,\d{2}'      # 1.234.567,89
 NUM_US = r'-?\d{1,3}(?:,\d{3})*\.\d{2}'      # 1,234,567.89
@@ -1158,11 +1158,14 @@ def procesar(carpeta, empresa="A"):
             ("Estado", "Real"), ("Referencia", m.get("ref")), ("Semana (lunes)", None), ("Observaciones", obs),
         ]))
         marcas.append((m, tipo, interno))
+    # Primero los pases entre cuentas propias: su otra pata no es una cobranza ni un pago a proveedor.
+    pases_internos.marcar(filas)
     # Comisiones a vendedores: la lista está en Drive, al lado de la carpeta de bancos (lector/comisiones.py).
     raiz = os.path.dirname(os.path.abspath(carpeta))
     vendedores = comisiones.cargar_vendedores(raiz)
     comisiones.marcar_banco(filas, vendedores, comisiones.pagos_de_banco(raiz, vendedores))
     for fila, (m, tipo, interno) in zip(filas, marcas):
+        interno = interno or fila["Categoria"] == pases_internos.INTERNA
         por_cat[(m["banco"], tipo, fila["Categoria"], interno)][0] += 1
         por_cat[(m["banco"], tipo, fila["Categoria"], interno)][1] += m["importe"]
     return {"errores": errores, "leidos": sum(len(b["lecturas"]) for b in bancos),
