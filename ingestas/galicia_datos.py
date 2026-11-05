@@ -16,7 +16,7 @@ COLUMNAS_SALDO = ['fecha', 'saldo']
 TIPOS = (
     # "IMP." y no "IMP" a secas: si no, "PAGO IMPORTACION" quedaría como impuesto.
     ('impuesto', ('IMP.', 'IMPUESTO', 'LEY 25413', 'DEBITOS Y CREDITOS', 'PERCEP', 'RETEN',
-                  'IIBB', 'INGRESOS BRUTOS', 'SIRCREB', 'IVA')),
+                  'IIBB', 'INGRESOS BRUTOS', 'ING. BRUTOS', 'SIRCREB', 'IVA')),
     ('comisión', ('COMISION', 'COM.', 'MANTENIMIENTO', 'CARGO')),
     ('Tiendanube', ('TIENDANUBE', 'NUVEM', 'PAGO NUBE')),
     ('transferencia', ('TRANSF', 'TRF', 'TRANSFERENCIA', 'DEBIN', 'ECHEQ')),
@@ -53,10 +53,12 @@ def _monto(valor):
 
 
 def _movimiento(fila):
+    # Una fila ya guardada conserva su tipo: el historial puede traer tipos revisados a mano, que la
+    # regla por palabras no sabe deducir. La regla clasifica solo lo nuevo que llega del Excel.
     return dict(fecha=dt.date.fromisoformat(str(fila['fecha'])[:10]).isoformat(),
                 concepto=fila['concepto'], referencia=str(fila.get('referencia', fila.get('ref')) or ''),
                 importe=_monto(fila['importe']), saldo=_monto(fila['saldo']),
-                tipo=tipo(fila['concepto']))
+                tipo=fila.get('tipo') or tipo(fila['concepto']))
 
 
 def leer(cfg, salida, hoy=None):
