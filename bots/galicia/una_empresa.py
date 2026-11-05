@@ -16,6 +16,10 @@ def patron_nombre(nombre):
 
 
 class BotGaliciaUnaEmpresa(BotGaliciaNavar):
+    # Baja solo en su carpeta. Leer Descargas desde una tarea programada de Mac puede quedar
+    # trabado esperando un permiso del sistema, con nadie frente a la pantalla.
+    mirar_descargas_usuario = False
+
     def __init__(self, cfg):
         nombres = cfg.get('solo_estas_empresas')
         if not isinstance(nombres, list) or not nombres or any(

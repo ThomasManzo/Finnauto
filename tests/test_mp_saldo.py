@@ -114,6 +114,19 @@ class SaldoTests(unittest.TestCase):
         self.assertIn('2026-02-01_2026-02-02', motivo)
         self.assertFalse((self.carpeta / '2026-02-01_2026-02-02.pedido.json').exists())
 
+    def test_pedido_perdido_se_repite_pasadas_dos_horas(self):
+        self.listado = []
+        ahora = S.time.time()
+        with patch.object(S.time, 'time', return_value=ahora):
+            self.bajar()
+        self.assertEqual(len(self.posts()), 1)
+        with patch.object(S.time, 'time', return_value=ahora + S.REPEDIR_SEGUNDOS - 60):
+            self.bajar()
+        self.assertEqual(len(self.posts()), 1)
+        with patch.object(S.time, 'time', return_value=ahora + S.REPEDIR_SEGUNDOS + 60):
+            self.bajar()
+        self.assertEqual(len(self.posts()), 2)
+
     def test_pending_no_pide_y_processed_se_acepta(self):
         self.reporte['status'] = 'pending'
         self.assertTrue(self.bajar()[1])

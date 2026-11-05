@@ -28,6 +28,8 @@ class BotGaliciaNavar(BotGalicia):
     patron_empresa = PATRON_EMPRESA
     nombre_empresa = "NAVAR SA"
     etiqueta_empresa = "NAVAR"
+    # NAVAR busca en Descargas el Excel que Chromium a veces deja ahí (visto el 28/09, en Windows).
+    mirar_descargas_usuario = True
 
     def __init__(self, cfg):
         super().__init__()
@@ -489,7 +491,8 @@ class BotGaliciaNavar(BotGalicia):
                         (antiguo.name, e))
 
         usuario = Path.home() / "Downloads"
-        if usuario.is_dir() and usuario.resolve() != carpeta_temporales.resolve():
+        if (self.mirar_descargas_usuario and usuario.is_dir()
+                and usuario.resolve() != carpeta_temporales.resolve()):
             self._limpiar_descargas_usuario(usuario, limite_antiguos)
         else:
             usuario = None

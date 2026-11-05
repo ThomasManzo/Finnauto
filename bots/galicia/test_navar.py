@@ -625,6 +625,24 @@ class PruebaNavar(unittest.TestCase):
         self.assertIn("la página se cayó", textos[1])
         self.assertIn("https://ejemplo.invalid/descarga", textos[2])
 
+    def test_sin_mirar_descargas_no_toca_la_carpeta_del_usuario(self):
+        # Una tarea programada de Mac se traba si lee Descargas sin permiso: ni listarla.
+        (self.home / "Downloads").mkdir()
+        self.bot.mirar_descargas_usuario = False
+        real = Path.iterdir
+
+        def espia(ruta):
+            if ruta.name == "Downloads":
+                raise AssertionError("no debe leer Descargas")
+            return real(ruta)
+
+        with tempfile.TemporaryDirectory() as carpeta, patch.object(Path, "iterdir", espia), \
+                patch.object(self.bot, "_limpiar_descargas_usuario",
+                             side_effect=AssertionError("no debe limpiar Descargas")):
+            ruta = Path(carpeta)
+            destino = self._correr_descarga(ruta, ruta, DescargaFalsa())
+            self.assertTrue(Path(destino).exists())
+
     def test_rescate_desde_downloads_publica_y_borra_guid(self):
         descargas = self.home / "Downloads"
         descargas.mkdir()
