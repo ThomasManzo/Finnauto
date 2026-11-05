@@ -218,6 +218,9 @@ function _renglones_(periodo) {
     { n: "Proveedores AA", real: _real_("Egreso", "Proveedores AA"), est: pagAA, como: "lista", lista: pagAA, f: "real: órdenes de pago de AA en la tesorería de Tango (efectivo) · estimado: facturas AA que vencen en Tango" },
     { n: "Sueldos y cargas", real: _real_("Egreso", "Sueldos y Jornales"), est: mensual ? "" : "-" + _proy_("Sueldos y Jornales"), como: "prom",
       f: "real: extracto (Macro) y cajas · estimado: " + (mensual ? "promedio × inflación" : "lo proyectado con fecha en Movimientos") },
+    // Las comisiones a vendedores se pagan como a un proveedor, pero se muestran aparte (tarea 80).
+    { n: "Comisiones de vendedores", real: _real_("Egreso", "Comisiones"), est: "", como: "prom",
+      f: "real: pagos a vendedores por banco y por las cajas, sin retenciones · estimado: " + (mensual ? "promedio × inflación" : "no se estima día a día; ver Cash Mensual") },
     { n: "Impuestos corrientes", real: _real_("Egreso", "Impuestos"), est: "", como: "prom",
       f: "real: extracto · estimado: " + (mensual ? "promedio × inflación" : "no se estima día a día; ver Cash Mensual") },
     { n: "Cheques propios", real: _real_("Egreso", "Cheques"), est: chqP, como: "lista", lista: chqP, f: "real: debitados (extracto) · estimado: en cartera por fecha de pago" },
@@ -812,6 +815,7 @@ function armarInstrucciones() {
     ["Proveedores A", "pagos a proveedores, por banco y por la caja de A (Movimientos · Proveedores)", "diario/semanal: facturas A que vencen (Cuentas a Pagar) · mensual: el mayor entre eso y el promedio × inflación"],
     ["Proveedores AA", "órdenes de pago de AA en la tesorería de Tango (Movimientos · Proveedores AA, Origen Tango AA)", "facturas AA que vencen (Cuentas a Pagar)"],
     ["Sueldos y cargas", "Movimientos · Sueldos y Jornales", "diario/semanal: lo proyectado con fecha en Movimientos · mensual: promedio × inflación"],
+    ["Comisiones de vendedores", "Movimientos · Comisiones (pagos a vendedores por banco y caja; lista en Drive, Comisiones/vendedores.json)", "mensual: promedio × inflación · diario/semanal: no se estima"],
     ["Impuestos corrientes", "Movimientos · Impuestos (IVA, cargas, retenciones pagadas)", "mensual: promedio × inflación · diario/semanal: no se estima"],
     ["Cheques propios", "cheques debitados (Movimientos · Cheques, egreso)", "en cartera por fecha de pago (Cartera de Cheques)"],
     ["Intereses y gastos bancarios", "Movimientos · Gastos Bancarios", "diario/semanal: promedio de los últimos 90 días · mensual: promedio × inflación"],
@@ -1869,7 +1873,7 @@ function arreglarValidaciones() {
   var n = Math.max(h.getMaxRows() - 1, 1);
   h.getRange(2, 10, n, 1).clearDataValidations();               // J · Origen: sin lista
   _lista_validacion_(h, 5, n, ["Cobranza Facturas", "Cobranza Canchada", "Cobranza AA",
-    "Descuento de Cheques", "Cheques", "Prestamo", "Proveedores MP y Logist.", "Proveedores AA",
+    "Descuento de Cheques", "Cheques", "Prestamo", "Proveedores MP y Logist.", "Proveedores AA", "Comisiones",
     "Hoja Verde", "Insumos", "Cosecha", "Sueldos y Jornales", "Impuestos", "Honorarios y Dividendos",
     "Gastos Bancarios", "Estampillas", "Transferencia Interna", "Otros"]);
   _lista_validacion_(h, 8, n, ["Efectivo", "Transferencia", "Cheque Propio", "Cheque de Terceros",
