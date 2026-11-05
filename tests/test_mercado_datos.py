@@ -26,7 +26,7 @@ def preparar(tmp_path, parches):
     parches.setattr(C.meli_oauth, 'access_token', Mock(side_effect=AssertionError('No pedir tokens')))
     parches.setattr(C.tn, 'tiene_aplicacion', Mock(return_value=False))
     parches.setattr(C.galicia, 'configuracion', Mock(return_value=None))
-    for modulo, resultado in ((C.ml, ([], 0)), (C.mp, ([], '')), (C.ads, []), (C.dolar, [])):
+    for modulo, resultado in ((C.ml, ([], 0)), (C.mp, ([], '')), (C.mp_saldo, ([], '')), (C.ads, []), (C.dolar, [])):
         parches.setattr(modulo, 'bajar', Mock(return_value=resultado))
     estado = tmp_path / 'clientes/ejemplo/.run/mercado_datos_estado.json'
     control = tmp_path / 'control.json'
@@ -51,6 +51,26 @@ class CorridaTests(unittest.TestCase):
         redireccion.__enter__()
         self.addCleanup(redireccion.__exit__, None, None, None)
         self.corrida = preparar(self.tmp_path, self)
+
+    def test_saldo_control_estado_y_falla_conserva_csv(self):
+        correr, estado, control = self.corrida
+        C.mp_saldo.bajar.return_value = ([dict(fecha='2026-01-14', disponible='12.00', a_liberar='', intereses_del_dia='0.00')], '')
+        assert correr('--solo', 'mercadopago_saldo') == 0
+        assert C.mp_saldo.bajar.call_args.args[-1] == dt.date(2026, 1, 14)
+        resumen = json.loads(control.read_text())['fuentes']['mercadopago_saldo']
+        assert resumen == dict(ok=True, filas=1, desde='2026-01-14', hasta='2026-01-14', motivo='')
+        assert json.loads(estado.read_text())['mercadopago_saldo'] == '2026-01-15'
+        C.mp_saldo.bajar.reset_mock()
+        assert correr('--solo', 'mercadopago_saldo', '--solo-pendientes') == 0
+        C.mp_saldo.bajar.assert_not_called()
+        ruta = self.tmp_path / 'mp_saldo.csv'
+        anterior = ruta.read_bytes()
+        for error in (False, True):
+            C.mp_saldo.bajar.return_value = ([], 'faltan saldos inventados')
+            C.mp_saldo.bajar.side_effect = C.ml.ErrorDatos('saldo inválido') if error else None
+            assert correr('--solo', 'mercadopago_saldo') == 1
+            assert ruta.read_bytes() == anterior
+            assert not json.loads(control.read_text())['fuentes']['mercadopago_saldo']['ok']
 
     def test_dolar_solo_sin_perfil_ni_token_y_pendientes(self):
         correr, estado, control = self.corrida
@@ -102,7 +122,7 @@ class CorridaTests(unittest.TestCase):
 
     def test_todo_listo_no_toca_control_ni_permisos(self):
         correr, estado, control = self.corrida
-        fuentes = ['mercadolibre', 'mercadopago', 'mercadolibre_publicidad', 'tiendanube', 'galicia', 'dolar']
+        fuentes = ['mercadolibre', 'mercadopago', 'mercadopago_saldo', 'mercadolibre_publicidad', 'tiendanube', 'galicia', 'dolar']
         C.ml.guardar_json(estado, dict.fromkeys(fuentes, '2026-01-15'))
         control.write_text('{"corrida": "anterior", "fuentes": {}}')
         antes = control.stat().st_mtime_ns
