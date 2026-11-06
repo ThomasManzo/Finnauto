@@ -1,5 +1,5 @@
 # Tarea 83 — Deuda de proveedores según la lista de la administración
-Estado: lista para revisión
+Estado: aprobada
 Rama: tarea/deuda-lista-admin
 
 ## Objetivo

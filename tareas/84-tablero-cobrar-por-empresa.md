@@ -1,5 +1,5 @@
 # Tarea 84 — "A cobrar": la lista de cada empresa
-Estado: lista para revisión
+Estado: aprobada
 Rama: tarea/tablero-cobrar-empresa
 
 ## Objetivo
