@@ -88,6 +88,23 @@ MARCA_AGREGADO = "AGREGADO"
 MARCA_REVISAR = "REVISAR:"
 
 
+# Lo que la administración ya aclaró no se presenta como una duda abierta.
+TEXTOS_MOTIVO = {
+    "deuda no real": "%d registros por %s de deuda vieja a dar de baja, según la administración. "
+                     "No suman en este tablero; quedan en la planilla como recordatorio.",
+    "fuera de la lista de la administración": "%d registros por %s no figuran en la lista de deuda de la "
+                                              "administración. No suman en este tablero; quedan en la planilla.",
+}
+
+
+def _texto_hallazgo(motivo, n, monto):
+    """El texto de un hallazgo: el propio de su motivo o, si no tiene, el general."""
+    molde = TEXTOS_MOTIVO.get(motivo, "%d registros por %s quedaron afuera de todos los números de este tablero "
+                                      "hasta que alguien de la empresa diga qué son. Están en la planilla, "
+                                      "marcados “REVISAR”.")
+    return molde % (n, _m(monto))
+
+
 def _revisar(d):
     """El motivo de la marca REVISAR (texto hasta el primer ' · '), o None."""
     obs = _txt(_col(d, "observ"))
@@ -591,9 +608,7 @@ def leer(archivo, cliente, hoy=None):
                       % (lista, n, _m(monto), motivo))
         hallazgos_lector.append({
             "titulo": "%s: %s" % (lista, motivo),
-            "cuerpo": ("%d registros por %s quedaron afuera de todos los números de este tablero "
-                       "hasta que alguien de la empresa diga qué son. Están en la planilla, "
-                       "marcados “REVISAR”." % (n, _m(monto))),
+            "cuerpo": _texto_hallazgo(motivo, n, monto),
             "monto": monto})
 
     contrato = OrderedDict([
