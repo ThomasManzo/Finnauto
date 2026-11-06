@@ -1,4 +1,4 @@
-"""El buscador mantiene los indicadores y reúne las empresas sin duplicar GRUPO."""
+"""El buscador mantiene los indicadores y la lista sale de la empresa elegida."""
 from dashboard.app import render, JS
 
 
@@ -7,8 +7,13 @@ def test_buscador_render():
     assert 'Buscar cliente…' in html
     assert 'No hay clientes con ese nombre' in html
     assert 'coinciden.slice(0,10)' in html
-    assert 'grupo.a_cobrar.filas.slice()' in html
     assert '<script src=' not in html
+
+
+def test_lista_de_la_empresa_elegida():
+    # Antes la lista salía siempre del consolidado y A y AA mostraban lo mismo.
+    assert "var filas=(c.filas||[]).slice();" in JS
+    assert "grupo.a_cobrar" not in JS
 
 
 def test_normalizacion_js():
