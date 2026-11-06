@@ -66,6 +66,7 @@ import re
 import sys
 import glob
 import json
+import math
 import shutil
 import argparse
 import datetime
@@ -258,10 +259,52 @@ def leer_cobranzas(ruta, empresa, hoy, corte_deuda_vieja, origen):
     return filas, desc
 
 
-def leer_pagos(ruta, empresa, hoy, corte_deuda_vieja, origen, categoria_default, mapa_prov):
+def cargar_lista_proveedores(ruta):
+    """Si la lista falta o está rota, seguimos con Tango y avisamos sin mostrar datos privados."""
+    aviso = "AVISO: lista de proveedores ausente; se mantienen las reglas habituales de Tango."
+    if not ruta:
+        return None, aviso
+    try:
+        with open(ruta, encoding="utf-8") as archivo:
+            datos = json.load(archivo)
+        if datos["empresa"] != "A":
+            raise ValueError("empresa inválida")
+        fecha = datetime.date.fromisoformat(datos["fecha"])
+        lista = {"empresa": "A", "fecha": fecha}
+        usados = set()
+        for grupo, campo in (("real", "ajuste"), ("no_real", "saldo")):
+            if not isinstance(datos[grupo], list):
+                raise ValueError("grupo inválido")
+            lista[grupo] = {}
+            for proveedor in datos[grupo]:
+                codigo, nombre = proveedor["codigo"], proveedor["nombre"]
+                monto = proveedor[campo]
+                if (not isinstance(codigo, str) or not codigo.strip() or
+                        not isinstance(nombre, str) or not nombre.strip() or
+                        codigo.strip() in usados or isinstance(monto, bool) or
+                        not isinstance(monto, (int, float)) or not math.isfinite(monto) or
+                        (campo == "saldo" and monto < 0)):
+                    raise ValueError("proveedor inválido")
+                usados.add(codigo.strip())
+                lista[grupo][codigo.strip()] = {"nombre": nombre.strip(), campo: round(monto, 2)}
+        return lista, "Lista de proveedores aplicada: empresa A, emisión hasta " + fecha.isoformat() + "."
+    except (OSError, ValueError, TypeError, KeyError, OverflowError):
+        return None, "AVISO: lista de proveedores ilegible o inválida; se mantienen las reglas habituales de Tango."
+
+
+def _contar_lista(estadisticas, regla, monto):
+    estadisticas[regla][0] += 1
+    estadisticas[regla][1] += monto
+
+
+def leer_pagos(ruta, empresa, hoy, corte_deuda_vieja, origen, categoria_default, mapa_prov,
+               lista_proveedores=None, estadisticas=None):
     """Pagos a realizar -> filas de "Cuentas a Pagar"."""
     filas, desc = [], defaultdict(lambda: [0, 0.0])
-    for d in _tabla(ruta):
+    lista = lista_proveedores if lista_proveedores and empresa == lista_proveedores["empresa"] else None
+    estadisticas = estadisticas if estadisticas is not None else defaultdict(lambda: [0, 0.0])
+    reales = defaultdict(list)
+    for d in (_tabla(ruta) if ruta else []):
         pend = _num(_col(d, "total pendiente", "pendiente"))
         total = _num(_col(d, "total al vencimiento", "al vencimiento", "importe total")) or pend
         venc = _fecha(_col(d, "fecha de vencimiento", "vencimiento"))
@@ -279,7 +322,16 @@ def leer_pagos(ruta, empresa, hoy, corte_deuda_vieja, origen, categoria_default,
         cod = _txt(_col(d, "cod. proveedor", "codigo"))
         categoria = mapa_prov.get(cod) or mapa_prov.get(prov.upper()) or categoria_default
         obs = origen
-        if venc < corte_deuda_vieja:
+        aplica = lista and emision and emision <= lista["fecha"]
+        if aplica and cod in lista["no_real"]:
+            _contar_lista(estadisticas, "Facturas no reales reemplazadas", pend)
+            continue
+        if aplica and cod not in lista["real"]:
+            obs = "REVISAR: fuera de la lista de la administración · " + origen
+            _contar_lista(estadisticas, "Fuera de la lista (no suma)", pend)
+        elif aplica:
+            _contar_lista(estadisticas, "Facturas reales admitidas (antes del ajuste)", pend)
+        elif venc < corte_deuda_vieja:
             obs = "%s deuda vieja (venció %s) · %s" % (MARCA_REVISAR, venc.strftime("%d/%m/%Y"), obs)
         atraso = (hoy - venc).days if venc < hoy else 0
         filas.append(OrderedDict([
@@ -290,6 +342,42 @@ def leer_pagos(ruta, empresa, hoy, corte_deuda_vieja, origen, categoria_default,
             ("Estado", "Vencido" if venc < hoy else "Pendiente"),
             ("Dias de Atraso", atraso), ("Prioridad", "Media"), ("Observaciones", obs),
         ]))
+        if aplica and cod in lista["real"]:
+            reales[cod].append(filas[-1])
+        elif lista and emision and emision > lista["fecha"]:
+            _contar_lista(estadisticas, "Facturas posteriores (reglas habituales)", pend)
+
+    if lista:
+        for cod, proveedor in lista["real"].items():
+            facturas = sorted(reales[cod], key=lambda f: f["Fecha Vencimiento"])
+            ajuste = proveedor["ajuste"]
+            restante = abs(ajuste)
+            # El descuento alcanza solo a este proveedor y a las facturas de la fecha acordada.
+            for fila in (facturas if ajuste < 0 else facturas[-1:]):
+                aplicado = min(restante, fila["Saldo Pendiente"]) if ajuste < 0 else restante
+                if not aplicado:
+                    continue
+                if ajuste < 0:
+                    fila["Pagado"] = round(fila["Pagado"] + aplicado, 2)
+                else:
+                    fila["Importe Total"] = round(fila["Importe Total"] + aplicado, 2)
+                fila["Saldo Pendiente"] = round(fila["Importe Total"] - fila["Pagado"], 2)
+                fila["Estado"] = "Pagado" if fila["Saldo Pendiente"] == 0 else fila["Estado"]
+                fila["Observaciones"] += " · ajuste lista administración: %+.2f" % (-aplicado if ajuste < 0 else aplicado)
+                _contar_lista(estadisticas, "Ajuste negativo aplicado" if ajuste < 0 else "Ajuste positivo aplicado", aplicado)
+                restante = round(restante - aplicado, 2)
+            if restante:
+                _contar_lista(estadisticas, "Ajuste negativo sobrante descartado" if ajuste < 0 else "Ajuste positivo sin factura (no aplicado)", restante)
+        for cod, proveedor in lista["no_real"].items():
+            fecha, saldo = lista["fecha"], proveedor["saldo"]
+            filas.append(OrderedDict(zip(ENC_PAGAR, [
+                None, proveedor["nombre"], empresa,
+                mapa_prov.get(cod) or mapa_prov.get(proveedor["nombre"].upper()) or categoria_default,
+                "LISTA ADMINISTRACION", fecha, fecha, saldo, 0, saldo,
+                "Vencido" if fecha < hoy else "Pendiente", max(0, (hoy - fecha).days),
+                "Media", "REVISAR: deuda no real · " + origen,
+            ])))
+            _contar_lista(estadisticas, "Deuda no real informativa (no suma)", saldo)
     return filas, desc
 
 
@@ -397,7 +485,7 @@ def leer_saldos(ruta):
 
 
 # ------------------------------------------------------------------ armado
-def procesar(carpeta, cliente, hoy=None):
+def procesar(carpeta, cliente, hoy=None, lista_proveedores=None):
     hoy = datetime.date.fromisoformat(hoy) if isinstance(hoy, str) else (hoy or datetime.date.today())
     corte = datetime.date(hoy.year, 1, 1)
     ruta_cat = os.path.join(BASE_REPO, "clientes", cliente, "catalogo.json")
@@ -407,6 +495,8 @@ def procesar(carpeta, cliente, hoy=None):
     cat_default = {k: v for k, v in tango_cfg.get("categoria_pagos_por_empresa", {}).items() if not k.startswith("_")}
     mapa_prov = {k: v for k, v in tango_cfg.get("categoria_por_proveedor", {}).items() if not k.startswith("_")}
 
+    lista_admin, aviso_lista = cargar_lista_proveedores(lista_proveedores)
+    estadisticas_lista = defaultdict(lambda: [0, 0.0])
     archivos = localizar(carpeta)
     fecha_txt = hoy.strftime("%d/%m/%Y")
     listas = {"cobrar": [], "pagar": [], "cheques": []}
@@ -421,7 +511,7 @@ def procesar(carpeta, cliente, hoy=None):
             listas["cobrar"] += f
         elif lista == "pagos":
             f, d = leer_pagos(ruta, empresa, hoy, corte, origen,
-                              cat_default.get(empresa, "Proveedores"), mapa_prov)
+                              cat_default.get(empresa, "Proveedores"), mapa_prov, lista_admin, estadisticas_lista)
             listas["pagar"] += f
         elif lista == "cheques_terceros":
             f, d = leer_cheques_terceros(ruta, empresa, hoy, origen)
@@ -436,6 +526,12 @@ def procesar(carpeta, cliente, hoy=None):
             continue   # ventas y movimientos: se leen aparte, no van a estas listas
         descartes[(empresa, lista)] = d
 
+    # También conservamos los proveedores no reales cuando Tango no trae pagos de A.
+    if lista_admin and ("A", "pagos") not in archivos:
+        f, _ = leer_pagos(None, "A", hoy, corte, "Tango Live · pagos · " + fecha_txt,
+                         cat_default.get("A", "Proveedores"), mapa_prov, lista_admin, estadisticas_lista)
+        listas["pagar"] += f
+
     # Numerar los ID por lista, en orden de vencimiento: así se pegan ordenados.
     for k, filas in listas.items():
         campo = "Fecha Pago / Cobro" if k == "cheques" else "Fecha Vencimiento"
@@ -444,6 +540,7 @@ def procesar(carpeta, cliente, hoy=None):
             x["ID"] = i
 
     return {"hoy": hoy, "empresas": empresas, "archivos": archivos, "listas": listas,
+            "aviso_lista": aviso_lista, "estadisticas_lista": estadisticas_lista,
             "descartes": descartes, "saldos": saldos, "corte_deuda_vieja": corte}
 
 
@@ -528,6 +625,11 @@ def resumen(res, ruta_pegar, destino=None, quitadas=None):
         L.append("- %s · %s ← `%s`" % (e, l.replace("_", " "), os.path.basename(r)))
     L.append("")
 
+    L.append(res.get("aviso_lista", "AVISO: lista de proveedores ausente; reglas habituales de Tango."))
+    for regla, (cantidad, monto) in res.get("estadisticas_lista", {}).items():
+        L.append("- %s: %d · %s" % (regla, cantidad, _m(monto)))
+    L.append("")
+
     def _bloque(nombre, filas, campo_monto, campo_fecha, quien):
         L.append("## %s: %d filas" % (nombre, len(filas)))
         por_emp = defaultdict(lambda: [0, 0.0, 0.0, 0.0])   # n, total, vencido, revisar
@@ -607,9 +709,10 @@ def main():
     ap.add_argument("--cliente", required=True)
     ap.add_argument("--hoy", default=None, help="AAAA-MM-DD; por defecto hoy")
     ap.add_argument("--sheet", default=None, help="la Sheet exportada como .xlsx; si se pasa, deja una copia con las filas de Tango")
+    ap.add_argument("--lista-proveedores", help="lista privada de la administración en JSON (opcional)")
     a = ap.parse_args()
 
-    res = procesar(a.carpeta, a.cliente, a.hoy)
+    res = procesar(a.carpeta, a.cliente, a.hoy, a.lista_proveedores)
     ruta_pegar = escribir_para_pegar(res, a.carpeta)
     destino = quitadas = None
     if a.sheet:

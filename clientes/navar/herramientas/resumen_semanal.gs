@@ -213,6 +213,9 @@ function _calcularFotoSemanal_(listas, dia) {
     var c = _columnasSemanal_(tabla[0], [b.columnaNombre, "Empresa", "Fecha Vencimiento", "Saldo Pendiente"], b.hoja);
     var por = {}, orden = [];
     tabla.slice(1).forEach(function (r) {
+      // Estas deudas quedan visibles en la lista, pero no son pagos a reclamar.
+      var obs = String(r[tabla[0].indexOf("Observaciones")] || "");
+      if (b.hoja === "Cuentas a Pagar" && /^REVISAR: (deuda no real|fuera de la lista)/.test(obs)) return;
       var nombre = r[c[b.columnaNombre]];
       if (nombre === "" || nombre == null || String(r[c.Empresa]).trim() !== b.empresa) return;
       nombre = String(nombre);

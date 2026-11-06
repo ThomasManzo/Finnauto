@@ -117,6 +117,10 @@ def leer(ruta, hoy):
     bloques = []
     for tipo, hoja, quien, emp in BLOQUES:
         filas = [f for f in listas[hoja] if f.get("Empresa") == emp and f.get(quien)]
+        # Se conservan los otros REVISAR: solo la lista de administración excluye estos saldos.
+        if hoja == "Cuentas a Pagar":
+            filas = [f for f in filas if not str(f.get("Observaciones") or "").startswith(
+                ("REVISAR: deuda no real", "REVISAR: fuera de la lista"))]
         por = defaultdict(lambda: {"saldo": 0.0, "vencido": 0.0, "viejo": None, "anterior": 0.0})
         for f in filas:
             s = float(f.get("Saldo Pendiente") or 0)
