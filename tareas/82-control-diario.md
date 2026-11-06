@@ -1,5 +1,5 @@
 # Tarea 82 — Control diario de saldos contra movimientos
-Estado: lista para revisión
+Estado: aprobada
 Rama: tarea/control-diario
 
 ## Objetivo

@@ -1213,9 +1213,9 @@ function verCobrar(){
   });
   out.push(k);
 
-  // GRUPO ya reúne a las empresas; si no viene, juntamos las listas identificando su origen.
-  var grupo=D.datos.GRUPO, separadas=!(grupo&&grupo.a_cobrar);
-  var filas=separadas?Object.keys(D.datos).reduce(function(a,u){return a.concat(((D.datos[u].a_cobrar||{}).filas||[]).map(function(f){return Object.assign({},f,{empresa:u});}));},[]):grupo.a_cobrar.filas.slice();
+  // La lista sale de la vista elegida, igual que los indicadores de arriba: A muestra solo a sus
+  // clientes, AA solo a los suyos y el consolidado (GRUPO) ya trae los dos juntos, sumados por cliente.
+  var filas=(c.filas||[]).slice();
   filas.sort(function(a,b){return b.total-a.total;});
   out.push(el('h2', null, 'Quién nos debe'));
   var cc=el('div','card'),buscar=el('input'),w=el('div','envuelve'),boton=el('button','mini'),todos=false;
@@ -1223,9 +1223,8 @@ function verCobrar(){
   function pintarClientes(){
     var texto=normalizarCliente(buscar.value),coinciden=filas.filter(function(f){return normalizarCliente(f.nombre).includes(texto);});
     w.replaceChildren();var t=el('table');
-    t.innerHTML='<tr><th>Contraparte</th>'+(separadas?'<th>Empresa</th>':'')+'<th>Vencido</th><th>Por vencer</th><th>Total</th></tr>';
+    t.innerHTML='<tr><th>Contraparte</th><th>Vencido</th><th>Por vencer</th><th>Total</th></tr>';
     (texto||todos?coinciden:coinciden.slice(0,10)).forEach(function(f){var tr=el('tr'),nombre=el('td');nombre.textContent=f.nombre;tr.append(nombre);
-      if(separadas){var empresa=el('td');empresa.textContent=f.empresa;tr.append(empresa);}
       tr.append(el('td',f.vencido?'neg':'',pesos(f.vencido)),el('td',null,pesos(f.por_vencer)),el('td',null,pesos(f.total)));t.append(tr);
     });
     if(!coinciden.length)w.append(el('p',null,'No hay clientes con ese nombre'));else w.append(t);
