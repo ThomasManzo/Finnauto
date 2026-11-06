@@ -568,6 +568,11 @@ function _armarPeriodica_(ss, nombre, periodo) {
   h.getRange(fila, 2).setFormula("=SUM(B" + primeraAtr + ":B" + (fila - 2) + ")").setFontWeight("bold");
   _lineaTotal_(h, fila, colFuente);
   var filaTotalAtr = fila;
+  // Es un recordatorio: queda afuera del stock a pagar y de su reparto por fechas.
+  fila++;
+  h.getRange(fila, 1).setValue("Deuda no real de proveedores (no suma)");
+  h.getRange(fila, 2).setFormula('=SUMIFS(' + R.pagPend + ',' + R.pagObs + ',"REVISAR: deuda no real*")');
+  h.getRange(fila, 1, 1, 2).setFontStyle("italic").setFontColor("#808080");
   fila += 2;
   h.getRange(fila++, 1).setValue("Detalle del stock por vencimiento original · no mueve la caja").setFontWeight("bold");
   // Repetimos las fechas acá: los totales de arriba están en B, pero no son del primer día.
@@ -1018,6 +1023,7 @@ function armarInstrucciones() {
     ["SALDO AL CIERRE pagando solo lo que sale sí o sí", "Escenario 1: si no se paga nada por decisión. Es el saldo 'de mínima'."],
     ["5 · Deuda que se paga por decisión", "Cuotas por transferencia, impuestos por VEP, planes nuevos, regularización de atrasado. Alguien tiene que decidir pagarlo."],
     ["SALDO AL CIERRE pagando toda la deuda", "Escenario 2: pagando todo lo que vence. Es el que arrastra al período siguiente como saldo inicial."],
+    ["Deuda no real de proveedores (no suma)", "Saldo informado por la administración: se muestra en Atrasado hoy como recordatorio, sin sumarlo al pago ni al control del reparto."],
     ["Deuda pospuesta acumulada", "Si se elige el escenario 1: cuánto se fue dejando de pagar, sumado período a período. Es lo que se acumula como atrasado nuevo."],
     ["Resultado después de la deuda", "Resultado de la operación menos toda la deuda. Negativo = la deuda se come más de lo que la operación deja."],
     ["Venció en el período y no se pagó", "Facturas de proveedores e impuestos con vencimiento en ese período que siguen impagos (solo en lo real). Es la parte de la operación que se financió NO pagando."],

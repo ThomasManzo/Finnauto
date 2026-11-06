@@ -323,13 +323,15 @@ def fuentes(hoy):
     F.append({"nombre": "bancos", "archivos": archivos_de(bancos),
               "cmd": lambda: [PYTHON, os.path.join(BASE_REPO, "lector", "extractos.py"), "--carpeta", bancos] + H,
               "salidas": lambda: bancos})
+    lista_proveedores = os.path.join(DRIVE, "Proveedores", "lista_administracion.json")
     tango = tango_ultimos()
     # Solo vale si hay cobranzas Y pagos: si falta una, el lector dejaría esa lista vacía
     # y el importador borraría lo que hay en la Sheet.
     listas = {lista_tango(r)[1] for r, _ in tango}
     tango_ok = {"cobranzas", "pagos"} <= listas
     F.append({"nombre": "tango", "archivos": tango if tango_ok else [],
-              "cmd": lambda: [PYTHON, os.path.join(BASE_REPO, "lector", "tango.py"), "--carpeta", preparar_staging_tango(tango)] + H,
+              "cmd": lambda: [PYTHON, os.path.join(BASE_REPO, "lector", "tango.py"), "--carpeta", preparar_staging_tango(tango)] + H
+                             + (["--lista-proveedores", lista_proveedores] if os.path.isfile(lista_proveedores) else []),
               "salidas": lambda: STAGING_TANGO})
     mapa = os.path.join(DRIVE, "Deuda bancaria", "Bancos_Navar.xlsx")
     # la tabla de cuotas reales (tarea 50) también dispara la deuda: si cambia, se rearma el cronograma
