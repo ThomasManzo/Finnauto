@@ -121,12 +121,13 @@ function armarCash() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   R = _rangos_(ss);
   if (!ss.getSheetByName("Plan")) armarPlan();
+  _armarControlDiario_(ss);
   _armarPeriodica_(ss, "Cash", "dia");
   _armarPeriodica_(ss, "Cash Semanal", "semana");
   _armarPeriodica_(ss, "Cash Mensual", "mes");
   armarInstrucciones();
-  ["Cash", "Cash Semanal", "Cash Mensual"].forEach(function (n) { _separadorLocal_(ss, ss.getSheetByName(n)); });
-  try { ss.toast("Cash, Cash Semanal, Cash Mensual e Instrucciones armados", "finauto", 8); } catch (e) {}
+  ["Control diario", "Cash", "Cash Semanal", "Cash Mensual"].forEach(function (n) { _separadorLocal_(ss, ss.getSheetByName(n)); });
+  try { ss.toast("Cash, controles e Instrucciones armados", "finauto", 8); } catch (e) {}
 }
 
 
@@ -615,10 +616,125 @@ function _armarPeriodica_(ss, nombre, periodo) {
   h.hideColumns(colAcuerdo);          // auxiliar: acuerdo de descubierto por banco
   // El detalle nuevo sólo muestra datos: ninguna fórmula de cierre lo toma como base.
   _colorearBancos_(h, bancos, primeraMargen, primeraBanco, colAcuerdo, nCols, D, L);
-  if (mensual) _controlDeCierre_(h, fila + 2, { bancos: bancos, primeraBanco: primeraBanco, filaSaldoReal: filaSaldoReal,
-    totIng: totIng, totOpe: totOpe, totAuto: totAuto, totDec: totDec, nCols: nCols, colFuente: colFuente, D: D, F: F, L: L, fx: fx });
+  if (mensual || periodo === "dia") _controlDeCierre_(h, fila + 2, { bancos: bancos, primeraBanco: primeraBanco, filaSaldoReal: filaSaldoReal,
+    totIng: totIng, totOpe: totOpe, totAuto: totAuto, totDec: totDec, nCols: nCols, colFuente: colFuente, D: D, F: F, L: L, fx: fx,
+    diario: periodo === "dia", tolerancia: mensual ? TOLERANCIA_CONTROL : TOLERANCIA_DIARIA,
+    titulo: mensual ? undefined : "7 · Control del día: ¿los movimientos explican el saldo?",
+    textos: mensual ? {} : { ini: "Saldo real al cierre del día anterior", flujo: "Lo que dicen los renglones del día (ingresos − egresos − deuda)", real: "Saldo real al cierre del día" } });
   h.setFrozenRows(filaFechas + 1);
   h.setFrozenColumns(1);
+}
+
+// ---- Control diario: mide las listas sin cambiar los saldos del cash.
+var CONTROL_DIAS = 120;           // ventana que avanza sola con Hoy
+var CONTROL_AVISO_DIAS = 30;      // días recientes que se cuentan en el aviso
+var CONTROL_ATRASO_DIAS = 7;      // después de esto falta renovar el extracto
+var TOLERANCIA_DIARIA = 1;        // diferencias desde un peso requieren revisión
+
+// Cada cuenta mira su día completo y solo movimientos reales de su propia fuente.
+function _movCuentaDelDia_(b, fecha) {
+  return "SUMIFS(" + R.movImp + "," + R.movFecha + ',">="&' + fecha + "," + R.movFecha + ',"<"&(' + fecha + '+1),' +
+    R.movEstado + ',"Real",' + R.movOrigen + ',' + (b.caja ? '"Tango*",' + R.movBanco + ',' + _criterioBanco_(b.caja) : _criterioBanco_("Extracto " + b.nombre)) + ')';
+}
+function _movTotalDelDia_(fecha, tipo) {
+  return '(' + ORIGENES_REALES.map(function (origen) {
+    return 'SUMIFS(' + R.movImp + ',' + R.movFecha + ',">="&' + fecha + ',' + R.movFecha + ',"<"&(' + fecha + '+1),' +
+      R.movEstado + ',"Real",' + R.movOrigen + ',"' + origen + '",' + R.movCat + ',"' +
+      (tipo ? '<>' : '') + 'Transferencia Interna"' + (tipo ? ',' + R.movTipo + ',"' + tipo + '"' : '') + ')';
+  }).join('+') + ')';
+}
+function _diferenciaCuentaDia_(hoy, ayer, movimientos, fecha, ultimo) {
+  var dif = 'ROUND(N(' + hoy + ')-N(' + ayer + ')-(' + movimientos + '),0)';
+  return 'IF(AND(' + fecha + '>' + ultimo + ',' + dif + '=0),"",' + dif + ')';
+}
+// Las cajas se restan del residuo, pero no participan del semáforo de bancos.
+function _estadoDia_(fecha, ultimo, ingresos, egresos, pases, diferencia, bancos, cuentas) {
+  var n = function (x) { return 'N(' + x + ')'; };
+  var residuo = n(diferencia) + (cuentas.length ? '-(' + cuentas.map(n).join('+') + ')' : '');
+  var revisar = bancos.map(n).concat([n(pases)]).map(function (x) { return 'ABS(' + x + ')'; });
+  // Cada cuenta está redondeada al peso, así que su suma puede errarle un peso por cuenta:
+  // el resto solo marca si supera eso. Es para movimientos de una cuenta que no tiene saldo.
+  return 'IF(' + fecha + '>' + ultimo + ',"sin extracto",IF(OR(MAX(' + revisar.join(',') + ')>=' + TOLERANCIA_DIARIA +
+    ',ABS(' + residuo + ')>' + cuentas.length + '),"REVISAR",IF(AND(' + [ingresos, egresos, pases, diferencia].map(function (x) { return n(x) + '=0'; }).join(',') + '),"sin mov.","OK")))';
+}
+function _avisoDiario_(extra) {
+  var dias = 'COUNTIFS(\'Control diario\'!A10:A' + (9 + CONTROL_DIAS) + ',">"&TODAY()-' + CONTROL_AVISO_DIAS +
+    ',\'Control diario\'!B10:B' + (9 + CONTROL_DIAS) + ',"REVISAR")';
+  var atrasos = "'Control diario'!$B$8", seccion = extra || '0';
+  return 'IF((' + dias + '+' + atrasos + '+' + seccion + ')=0,"Control diario: OK","Control diario: "&' + dias +
+    '&" día(s) para revisar · "&' + atrasos + '&" banco(s) en ATRASADO"' +
+    (extra ? '&" · "&' + seccion + '&" REVISAR en sección 7"' : '') + ')';
+}
+function _colorAvisoControl_(h) {
+  var rango = h.getRange(2, 3), reglas = h.getConditionalFormatRules();
+  // Se agregan a las reglas existentes para conservar el semáforo de bancos.
+  reglas.push(SpreadsheetApp.newConditionalFormatRule().whenTextContains(': OK').setFontColor('#137333').setBackground('#e6f4ea').setRanges([rango]).build());
+  reglas.push(SpreadsheetApp.newConditionalFormatRule().whenTextDoesNotContain(': OK').setFontColor('#a50e0e').setBackground('#fce8e6').setRanges([rango]).build());
+  h.setConditionalFormatRules(reglas);
+}
+function _armarControlDiario_(ss) {
+  var cuentas = _bancos_(ss).sort(function (a, b) { return Number(!!a.caja) - Number(!!b.caja); });
+  var n = cuentas.length, aux = 10 + n, ancho = 9 + 2 * n, fin = 9 + CONTROL_DIAS;
+  var h = _hojaLimpia_(ss, 'Control diario', ancho);
+  h.setConditionalFormatRules([]);
+  if (h.getMaxRows() < fin + 1) h.insertRowsAfter(h.getMaxRows(), fin + 1 - h.getMaxRows());
+  h.showRows(1, h.getMaxRows()); h.showColumns(1, h.getMaxColumns());
+  _titulo_(h, 'CONTROL DIARIO · ' + _cliente_(ss), ancho);
+  h.getRange(2, 1).setValue('Hoy'); h.getRange(2, 2).setFormula('=TODAY()');
+  h.getRange(3, 1).setValue('Último día con extracto');
+  h.getRange(3, 2).setFormula('=MAXIFS(' + R.movFecha + ',' + R.movOrigen + ',"Extracto*")');
+  h.getRange(2, 2, 2, 1).setNumberFormat('dd/mm/yyyy');
+  h.getRange(4, 1).setValue('Saldo anterior + ingresos − egresos + pases = saldo del día. Vacío después del último extracto no confirma cierre.');
+  h.getRange(6, 1).setValue('Último extracto (cajas: arqueo)');
+  h.getRange(7, 1).setValue('Días sin extracto (cajas: arqueo)');
+  h.getRange(8, 1).setValue('Bancos en ATRASADO');
+  var titulos = ['Fecha', 'Estado', 'Saldo del día anterior', 'Ingresos', 'Egresos', 'Pases entre cuentas', 'Saldo que debería haber', 'Saldo del día', 'DIFERENCIA'];
+  cuentas.forEach(function (b) { titulos.push(b.etiqueta); });
+  h.getRange(9, 1, 1, titulos.length).setValues([titulos]).setFontWeight('bold').setWrap(true);
+  if (n) {
+    h.getRange(5, 10, 1, n).setValues([cuentas.map(function (b) { return b.etiqueta; })]);
+    h.getRange(6, 10, 3, n).setFormulas([
+      cuentas.map(function (b) { return '=MAXIFS(' + R.salFecha + ',' + R.salBanco + ',' + _criterioBanco_(b.nombre) + ')'; }),
+      cuentas.map(function (b, i) { return '=$B$2-' + _colLetra_(10 + i) + '6'; }),
+      cuentas.map(function (b, i) { return b.caja ? '=""' : '=IF(' + _colLetra_(10 + i) + '7>' + CONTROL_ATRASO_DIAS + ',"ATRASADO","")'; })
+    ]);
+    h.getRange(6, 10, 1, n).setNumberFormat('dd/mm/yyyy');
+  }
+  h.getRange(8, 2).setFormula(n ? '=COUNTIF(J8:' + _colLetra_(9 + n) + '8,"ATRASADO")' : '=0');
+  var tabla = [], saldos = [];
+  for (var i = 0; i <= CONTROL_DIAS; i++) {
+    var fila = 10 + i, fecha = '$A' + fila;
+    saldos.push(cuentas.map(function (b) { return '=' + _saldoBancoAl_(b, fecha); }));
+    if (i === CONTROL_DIAS) break;
+    var refs = cuentas.map(function (b, j) { return _colLetra_(10 + j) + fila; });
+    var bancos = refs.filter(function (v, j) { return !cuentas[j].caja; });
+    var sumaSaldo = function (f) { return n ? 'SUM(' + _colLetra_(aux) + f + ':' + _colLetra_(ancho) + f + ')' : '0'; };
+    tabla.push(['=$B$2-' + i, '=' + _estadoDia_(fecha, '$B$3', 'D' + fila, 'E' + fila, 'F' + fila, 'I' + fila, bancos, refs),
+      '=' + sumaSaldo(fila + 1), '=' + _movTotalDelDia_(fecha, 'Ingreso'), '=-' + _movTotalDelDia_(fecha, 'Egreso'),
+      '=' + _movTotalDelDia_(fecha), '=C' + fila + '+D' + fila + '-E' + fila + '+F' + fila, '=' + sumaSaldo(fila),
+      '=ROUND(H' + fila + '-G' + fila + ',0)'].concat(cuentas.map(function (b, j) {
+        var col = _colLetra_(aux + j);
+        return '=' + _diferenciaCuentaDia_(col + fila, col + (fila + 1), _movCuentaDelDia_(b, fecha), fecha, _colLetra_(10 + j) + '$6');
+      })));
+  }
+  h.getRange(10, 1, CONTROL_DIAS, 9 + n).setFormulas(tabla);
+  h.getRange(fin + 1, 1).setFormula('=$B$2-' + CONTROL_DIAS);
+  if (n) { h.getRange(10, aux, CONTROL_DIAS + 1, n).setFormulas(saldos); h.hideColumns(aux, n); }
+  h.hideRows(fin + 1);
+  h.getRange(10, 1, CONTROL_DIAS, 1).setNumberFormat('ddd dd/mm/yyyy');
+  h.getRange(10, 3, CONTROL_DIAS, ancho - 2).setNumberFormat('#,##0;[Red]-#,##0;0');
+  cuentas.forEach(function (b, j) {
+    if (b.caja) h.getRange(5, 10 + j, fin - 4, 1).setFontColor('#5f6368').setBackground('#f1f3f4');
+    if (b.caja) h.getRange(9, 10 + j).setNote('Último arqueo, no extracto. La caja se calcula con sus movimientos; solo el arqueo aporta una diferencia independiente. Nunca marca REVISAR ni ATRASADO.');
+  });
+  var estados = h.getRange(10, 2, CONTROL_DIAS, 1);
+  h.setConditionalFormatRules(['OK', 'REVISAR', 'sin extracto', 'sin mov.'].map(function (texto, i) {
+    return SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo(texto).setBackground(['#e6f4ea', '#fce8e6', '#f1f3f4', '#f1f3f4'][i]).setRanges([estados]).build();
+  }));
+  h.getRange(2, 3).setFormula('=' + _avisoDiario_()).setFontWeight('bold');
+  _colorAvisoControl_(h);
+  h.setColumnWidths(1, 9 + n, 140); h.setColumnWidth(1, 230);
+  h.setFrozenRows(9); h.setFrozenColumns(1);
 }
 
 // ---- Control de cierre (Cash Mensual, solo meses cerrados).
@@ -642,9 +758,10 @@ function _movDelMes_(origenes, cat) {
       R.movOrigen + ",\"" + o + "\"" + (cat ? "," + R.movCat + ",\"" + cat + "\"" : "") + ")";
   }).join("+") + ")";
 }
-function _estadoControl_(interna, bancos, sinExplicar) {
+function _estadoControl_(interna, bancos, sinExplicar, tolerancia) {
+  if (tolerancia === undefined) tolerancia = TOLERANCIA_CONTROL;
   var abs = function (x) { return "ABS(" + x + ")"; };
-  return "IF(MAX(" + [interna, bancos, sinExplicar].map(abs).join(",") + ")>=" + TOLERANCIA_CONTROL + ",\"REVISAR\",\"OK\")";
+  return "IF(MAX(" + [interna, bancos, sinExplicar].map(abs).join(",") + ")>=" + tolerancia + ",\"REVISAR\",\"OK\")";
 }
 function _controlDeCierre_(h, fila, o) {
   var L = o.L, D = o.D, F = o.F;
@@ -662,10 +779,10 @@ function _controlDeCierre_(h, fila, o) {
     "Estado",
     "Bancos al inicio (auxiliar)", "Cajas al inicio (auxiliar)", "Bancos al cierre (auxiliar)", "Cajas al cierre (auxiliar)"
   ];
-  _seccion_(h, fila++, "7 · Control de cierre: ¿los movimientos explican el saldo? (meses cerrados)", "#e8f0fe", "#174ea6", o.colFuente);
+  _seccion_(h, fila++, o.titulo || "7 · Control de cierre: ¿los movimientos explican el saldo? (meses cerrados)", "#e8f0fe", "#174ea6", o.colFuente);
   var f0 = fila, r = {};
   ["ini", "flujo", "debe", "real", "dif", "titulo", "interna", "bancos", "sin", "efectivo", "estado", "bIni", "cIni", "bFin", "cFin"]
-    .forEach(function (k, i) { r[k] = f0 + i; h.getRange(f0 + i, 1).setValue(nombres[i]); });
+    .forEach(function (k, i) { r[k] = f0 + i; h.getRange(f0 + i, 1).setValue((o.textos || {})[k] || nombres[i]); });
   var deBancos = o.bancos.filter(function (b) { return !b.caja; }), deCajas = o.bancos.filter(function (b) { return b.caja; });
   var fila0 = function (b) { return o.primeraBanco + o.bancos.indexOf(b); };
 
@@ -692,7 +809,7 @@ function _controlDeCierre_(h, fila, o) {
     h.getRange(r.bancos, 2 + c).setFormula(si("ROUND(" + l + r.bFin + "-" + l + r.bIni + "-" + o.fx(_movDelMes_(ORIGENES_BANCO), c) + ",0)"));
     h.getRange(r.efectivo, 2 + c).setFormula(si("ROUND(" + l + r.cFin + "-" + l + r.cIni + "-" + o.fx(_movDelMes_(ORIGENES_CAJA), c) + ",0)"));
     h.getRange(r.sin, 2 + c).setFormula(si("ROUND(" + l + r.dif + "-" + l + r.interna + "-" + l + r.bancos + "-" + l + r.efectivo + ",-1)"));
-    h.getRange(r.estado, 2 + c).setFormula(si(_estadoControl_(l + r.interna, l + r.bancos, l + r.sin))).setFontWeight("bold").setHorizontalAlignment("right");
+    h.getRange(r.estado, 2 + c).setFormula(si(_estadoControl_(l + r.interna, l + r.bancos, l + r.sin, o.tolerancia))).setFontWeight("bold").setHorizontalAlignment("right");
   }
   h.getRange(f0, 2, r.cFin - f0 + 1, o.nCols).setNumberFormat("#,##0;[Red]-#,##0;0");
   h.getRange(r.dif, 1).setFontWeight("bold");
@@ -700,7 +817,7 @@ function _controlDeCierre_(h, fila, o) {
   h.getRange(r.efectivo, 1).setFontColor("#5f6368");
   h.getRange(r.estado, 1).setFontWeight("bold");
   h.getRange(r.interna, 1).setNote("Un pase entre cuentas propias tiene dos patas y suma cero. Si no da cero, una pata está clasificada como otra cosa, o la otra cuenta no tiene extracto.");
-  h.getRange(r.efectivo, 1).setNote("No marca el mes para revisar: los préstamos entre la caja de A y la de AA no se registran y un arqueo puede traer plata que Tango no tiene. Antes de su primer arqueo, la caja se muestra con el saldo de ese arqueo: la diferencia de esos meses no es un faltante.");
+  h.getRange(r.efectivo, 1).setNote("No marca " + (o.diario ? "el día" : "el mes") + " para revisar: los préstamos entre la caja de A y la de AA no se registran y un arqueo puede traer plata que Tango no tiene. Antes de su primer arqueo, la caja se muestra con el saldo de ese arqueo: la diferencia de esos meses no es un faltante.");
   h.hideRows(r.bIni, 4);
 
   // Colores y aviso arriba de todo, para que se vea sin bajar hasta esta sección.
@@ -712,6 +829,8 @@ function _controlDeCierre_(h, fila, o) {
   var rango = "$B$" + r.estado + ":$" + L(o.nCols - 1) + "$" + r.estado;
   h.getRange(2, 3).setFormula("=IF(COUNTIF(" + rango + ",\"REVISAR\")>0,\"Control de cierre: \"&COUNTIF(" + rango + ",\"REVISAR\")&\" mes(es) para revisar, ver sección 7\",\"Control de cierre: OK\")")
     .setFontWeight("bold").setFontColor("#a50e0e");
+  if (o.diario) h.getRange(2, 3).setFormula("=" + _avisoDiario_("COUNTIF(" + rango + ",\"REVISAR\")"));
+  _colorAvisoControl_(h);
   return r;
 }
 
@@ -875,6 +994,7 @@ function armarInstrucciones() {
     ["Cash", "Día por día: 7 días de extracto (real) + 28 días adelante (estimado)", "fórmula sobre las listas", "nadie"],
     ["Cash Semanal", "Semana por semana, lunes a domingo: 4 cerradas (real) + la actual + 12 adelante", "fórmula sobre las listas", "nadie"],
     ["Cash Mensual", "Mes por mes: 3 cerrados (real) + el actual + 6 adelante, con inflación editable (B4)", "fórmula sobre las listas + solapa Plan", "solo la celda de inflación"],
+    ["Control diario", "Control por día y por cuenta; muestra diferencias y atraso de extractos. Las cajas son informativas", "fórmula sobre las listas", "nadie"],
     ["Plan", "Una fila por deuda: pagar como está / refinanciar / posponer. Cash Mensual toma las cuotas de acá", "Deuda Bancaria + Deuda Impositiva + lo vencido", "la dirección: Decisión, gracia, cuotas, tasa, prioridad"],
     ["Movimientos", "LISTA: cada movimiento real, clasificado: los de banco (Origen Extracto) y los de las cajas en efectivo (Origen Tango caja A / Tango AA), con la cuenta de Tango de la que sale y la leyenda", "extractos + tesorería de Tango (detalle de A y AA) → lectores → importación automática", "el sistema"],
     ["Saldos Bancarios", "LISTA: saldo al cierre de cada día, por cuenta. Las cajas en efectivo (Caja A y Caja AA) se cargan a mano, una fila por arqueo; el cash les suma solo los movimientos posteriores", "extractos → lector → importación automática · cajas: a mano", "el sistema · las cajas: quien hace el arqueo"],
@@ -902,7 +1022,7 @@ function armarInstrucciones() {
     ["Resultado después de la deuda", "Resultado de la operación menos toda la deuda. Negativo = la deuda se come más de lo que la operación deja."],
     ["Venció en el período y no se pagó", "Facturas de proveedores e impuestos con vencimiento en ese período que siguen impagos (solo en lo real). Es la parte de la operación que se financió NO pagando."],
     ["Resultado de la operación pagando lo que vencía", "Lo que hubiera quedado pagando todo lo que venció. Es el número honesto de la operación."],
-    ["7 · Control de cierre (solo Cash Mensual)", "En los meses cerrados compara el saldo real con el saldo anterior más los movimientos y dice de dónde sale la diferencia. REVISAR = hay una diferencia de $ 1 M o más en bancos, transferencias internas o movimientos sin renglón. El efectivo se muestra aparte y no marca el mes: los préstamos entre cajas no se registran y no cierra al peso."],
+    ["7 · Control del día (Cash) / Control de cierre (Cash Mensual)", "En días con extracto y meses cerrados compara el saldo real con el saldo anterior más los movimientos y dice de dónde sale la diferencia. REVISAR = hay una diferencia de $ 1 o más en Cash, o $ 1 M o más en Cash Mensual en bancos, transferencias internas o movimientos sin renglón. El efectivo se muestra aparte y no marca el mes: los préstamos entre cajas no se registran y no cierra al peso."],
     ["Descubierto acordado · usado · disponible", "Acordado: lo que cada banco autorizó. Usado: los saldos en negativo. Disponible: acordado − usado, banco por banco (un banco excedido no se compensa con otro en positivo). Hacia adelante, sobre el total."],
     ["Saldo disponible", "Saldos en positivo + descubierto disponible, en los dos escenarios. Negativo = no se cubre lo comprometido ni usando todo el descubierto: hay que elegir."],
     ["6 · Atrasado hoy", "Stock por concepto y detalle por vencimiento original: cada importe va al día, semana o mes en que venció. Fuera de la curva; no cambia cierres. Antes/después de las fechas visibles se muestra aparte. Total menos repartido debe dar 0; si no, revisar fechas. Excluye vencido a cobrar y conserva los filtros del stock. Baja cuando la lista actualizada registra el pago; no basta el extracto. Se paga por decisión, en Plan."],
