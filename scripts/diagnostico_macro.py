@@ -139,7 +139,13 @@ JS_FOTO = r"""
   }
   const cuerpo = (document.body && document.body.innerText) || '';
   const alertas = [];
-  const buscar = (re, nombre) => { const m = cuerpo.match(re); if (m) alertas.push(nombre + ': "' + m[0] + '"'); };
+  // Con la frase de alrededor, para saber si es un pedido de verdad o publicidad del banco.
+  const buscar = (re, nombre) => {
+    const m = cuerpo.match(re);
+    if (!m) return;
+    const alrededor = limpio(cuerpo.slice(Math.max(0, m.index - 70), m.index + m[0].length + 70));
+    alertas.push(nombre + ': "' + m[0] + '" (… ' + alrededor + ' …)');
+  };
   buscar(/no soy un robot|captcha/i, 'CAPTCHA');
   buscar(/token|segundo factor|c[oó]digo de (seguridad|verificaci[oó]n)|\bsms\b|clave din[aá]mica|coordenadas|validar (tu|su) identidad/i, 'SEGUNDO FACTOR');
   buscar(/bloquead|suspendid|intentos? (fallidos|restantes)/i, 'BLOQUEO');
@@ -198,7 +204,24 @@ def tapar_todo(dato):
 
 def foto_de_pagina(page):
     """Lee la página y TODOS sus marcos (los bancos viejos suelen usar frames). Devuelve una lista,
-    un elemento por marco, ya con los números tapados."""
+    un elemento por marco, ya con los números tapados.
+
+    09/11/2026: la primera foto falló porque la página todavía estaba cambiando de dirección
+    (macro.com.ar/biempresas -> /biempresas/). Por eso se espera que termine de cargar y, si la
+    página principal no se pudo leer, se reintenta hasta 3 veces."""
+    for intento in range(3):
+        try:
+            page.wait_for_load_state("domcontentloaded", timeout=15000)
+        except Exception:
+            pass
+        fotos = _leer_marcos(page)
+        if fotos and "error" not in fotos[0]:
+            return fotos
+        page.wait_for_timeout(2000)
+    return fotos
+
+
+def _leer_marcos(page):
     fotos = []
     for i, marco in enumerate(page.frames):
         try:
