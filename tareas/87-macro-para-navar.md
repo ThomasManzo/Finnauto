@@ -1,5 +1,5 @@
 # Tarea 87 — bot de Macro para NAVAR
-Estado: pendiente
+Estado: lista para revisión (revisada por Claude; falta prueba real y OK de Thomas)
 Rama: tarea/macro-para-navar
 
 ## Objetivo
@@ -180,4 +180,62 @@ Del más nuevo al más viejo; unos 25-30 días. `lector/extractos.py:leer_planil
 
 ## Qué hice
 
+- Agregué `bots/macro/__init__.py`, `navar.py` y `test_navar.py`: login en tres pasos,
+  confirmación de empresa y cuenta, pedido del XLS, selección del pedido reciente en bandeja,
+  validación antes de publicar y salida del banco al terminar la descarga.
+- Las credenciales se cargan desde el llavero; ambas claves se piden con `getpass`.
+  No se sacan capturas durante el login. Ante un error se cierra la pestaña antes de que el
+  núcleo intente su captura automática y se devuelve un motivo sin el detalle de Playwright
+  (ese detalle puede incluir valores tipeados). Desde el envío de contraseña se agrega la marca
+  de clave sin confirmar para que el orquestador limite los reintentos.
+- El validador no escribe archivos: controla identidad, moneda, antigüedad del pedido,
+  fechas y cadena de saldos; devuelve filas aprobadas y avisos. La descarga conserva el XLS
+  original si no hay futuros; de haberlos genera un XLSX con encabezado, columnas y pie originales.
+  Sin movimientos publicables devuelve None, no publica y avisa "Sin novedades" como Nación
+  (el núcleo compartido cuenta la empresa como OK). El saldo numérico se vacía si no coincide
+  con el último renglón publicable, conservando su texto de pantalla.
+- Actualicé solo el bloque `bancos.macro` del perfil; queda `activo: false` y sin cuenta fija.
+  Agregué la elección de Macro y su dato extra en `orquestador/correr.py`, y el instalador con
+  las seis horas pedidas, `--si-falta`, log y opción `quitar`.
+- En `nucleo/loop.py` y `nucleo/salidas.py` solo agregué la recolección y escritura de avisos.
+  La línea de éxito que usa el mail conserva exactamente su texto.
+- Pruebas con `/Users/thomasmanzo/Documents/Finnauto/.venv/bin/python`:
+  `-m unittest bots.macro.test_navar`: 11 pruebas OK (incluyen publicación simulada,
+  futuros, vacíos, lector, saldos, bandeja, estado, claves ocultas y errores del login).
+  `-m unittest bots.macro.test_navar bots.nacion.test_navar bots.bbva.test_navar bots.galicia.test_navar`:
+  87 OK antes de sumar las dos últimas pruebas de Macro; las 78 de los otros bancos pasaron.
+  `-m unittest discover tests`: 82 OK. `git diff --check`: OK.
+- Todos los archivos de prueba y secretos simulados son inventados; el CUIT permitido se
+  sustituye por uno inventado en las pruebas. Sin dependencias nuevas ni acceso a datos privados.
+  El LEEME y manual privados de NAVAR no están en este worktree; usé el contexto de la consigna,
+  como indica `tareas/LEEME.md`.
+- Pendiente de validación real con Thomas: estructura de Número y saldos en el detalle,
+  cierre de carteles, controles de recarga y flecha de la bandeja. Se buscan por estructura
+  y texto; si falta un control único, se corta. No se abrió el banco ni se instaló la tarea
+  de Windows desde esta Mac.
+- No pude commitear: `git add` falló al crear
+  `Finnauto/.git/worktrees/finauto-tarea-87/index.lock` con `Operation not permitted`.
+  Los cambios quedan en este worktree para que Thomas haga el commit.
+
+
 ## Revisión
+Claude, 09/11/2026.
+- Probado con dos exports reales de Macro (fuera del repo): el del 06/11 valida con 171 movimientos y
+  sin futuros; el del 09/11 trae uno con fecha 11/11: se aparta con aviso, la copia limpia .xlsx la lee
+  `leer_planilla_macro` (171 movimientos hasta el 05/11, la cadena cierra) y el saldo de pantalla, que
+  incluía ese movimiento, queda vacío con aviso. Lo esperado.
+- **Corregido (Claude):** el freno por segundo factor saltaba con el cartel fijo del login "NO INGRESES
+  TOKEN" (`ingres[aáe]…token`): el bot habría parado todos los días en la contraseña. Ahora
+  `PATRON_DESAFIO` pide "ingresá/introducí/escribí (el/tu) código o token" o "te enviamos … código";
+  prueba nueva con el texto real del cartel.
+- **Corregido (Claude):** el error del login no decía nada útil. Sigue sin copiar el texto de errores de
+  Playwright (pueden traer lo tipeado), pero ahora dice qué se estaba haciendo ("buscando el campo
+  Usuario y su botón", "esperando el campo de la clave empresa"…) y muestra los motivos propios del bot
+  (clase `MotivoMacro`: captcha, empresa no confirmada…).
+- **Corregido (Claude):** `setup_credenciales.py` pedía la clave empresa antes que el usuario; ahora va en
+  el orden de la página: usuario, contraseña, clave empresa (las dos claves ocultas).
+- Sin datos reales en el diff (solo números inventados). 91 pruebas de bancos y 82 generales OK.
+- **A confirmar en la prueba real** (no relevado): campo y botón del usuario; la cruz del cartel FAL
+  (si el selector no la encuentra, el clic en la cuenta va a fallar y se ve en la captura); el número y los
+  saldos del detalle de la cuenta (`following-sibling` puede no ser la estructura real: si "Saldo
+  disponible" no se lee, usa el Disponible del inicio); botón de recargar y flechita de la bandeja.

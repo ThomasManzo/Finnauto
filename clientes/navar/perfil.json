@@ -64,12 +64,17 @@
     },
     "macro": {
       "activo": false,
-      "empresas_excluir": [],
-      "solo_estas_empresas": [],
-      "solo_empresa_activa": false,
-      "nombre_archivo": "empresa",
-      "prefijo_archivo": "Macro",
-      "_nota": "Sin ficha todavia."
+      "solo_estas_empresas": ["NAVAR SA"],
+      "solo_empresa_activa": true,
+      "nombre_archivo": "excel_navar",
+      "prefijo_archivo": "Movimientos Macro",
+      "modo_visible": true,
+      "carpeta_drive_destino": "",
+      "carpeta_drive_relativa": "Bancos/macro",
+      "incluir_hoy": false,
+      "dias_atras_tolerados": 45,
+      "limite_segundos": 600,
+      "_nota": "Usuario, contraseña y clave empresa viven en el llavero. Se controla el Excel antes de publicarlo y se apartan movimientos futuros con aviso. Sigue apagado hasta validar la prueba manual."
     },
     "bbva": {
       "activo": false,

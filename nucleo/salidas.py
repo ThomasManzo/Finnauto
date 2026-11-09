@@ -52,6 +52,8 @@ def escribir_estado_drive(carpeta_drive, banco, hoy, resultado):
         lineas.append("")
         lineas.append("Bajadas OK (%d): %s" % (len(resultado["ok"]), ", ".join(resultado["ok"]) or "-"))
         lineas.append("Sin novedades (%d): %s" % (len(resultado["sin_novedades"]), ", ".join(resultado["sin_novedades"]) or "-"))
+        for aviso in resultado.get("avisos", []):
+            lineas.append("AVISO: %s" % aviso)
         destino = os.path.join(carpeta_drive, nombre)
         with open(destino, "w", encoding="utf-8") as f:
             f.write("\n".join(lineas))

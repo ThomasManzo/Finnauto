@@ -43,9 +43,9 @@ REGISTRO_BANCOS = {
 
 # Bancos con un recorrido propio para NAVAR (se importan recién cuando se usan).
 # BBVA solo existe en su variante NAVAR, por eso no está en el registro general.
-VARIANTES_NAVAR = ("galicia", "bbva", "nacion")
+VARIANTES_NAVAR = ("galicia", "bbva", "nacion", "macro")
 # Dato de más que algunos bancos piden para entrar; vive en el llavero junto con usuario y clave.
-EXTRA_LLAVERO = {"bbva": "codigo_empresa", "nacion": "dni"}
+EXTRA_LLAVERO = {"bbva": "codigo_empresa", "nacion": "dni", "macro": "clave_empresa"}
 
 
 # ---- reintentos (tarea 51) -------------------------------------------------------------
@@ -152,6 +152,9 @@ def correr_banco(cliente, banco, modo_forzado=None, navegador=None, si_falta=Fal
         elif banco == "bbva":
             from bots.bbva.navar import BotBbvaNavar
             bot = BotBbvaNavar(cfg_banco)
+        elif banco == "macro":
+            from bots.macro.navar import BotMacroNavar
+            bot = BotMacroNavar(cfg_banco)
         else:
             from bots.nacion.navar import BotNacionNavar
             bot = BotNacionNavar(cfg_banco)
@@ -197,6 +200,8 @@ def correr_banco(cliente, banco, modo_forzado=None, navegador=None, si_falta=Fal
         # BBVA pide el código de empresa y Nación el DNI: se leen del llavero, nunca del perfil.
         campo = EXTRA_LLAVERO[banco]
         setattr(bot, campo, _cred.dato_extra(cliente, banco, campo))
+        if banco == "macro" and not bot.clave_empresa:
+            raise RuntimeError("Falta clave empresa: ejecutar setup_credenciales.py --cliente navar --banco macro")
 
     log("=== finauto :: cliente=%s banco=%s modo=%s ===" % (
         ctx.cliente_nombre, bot.nombre, "visible" if ctx.modo_visible else "invisible"))
