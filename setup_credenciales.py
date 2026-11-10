@@ -29,7 +29,7 @@ def main():
     ap = argparse.ArgumentParser(
         description="Cargar credenciales de banco en el llavero del sistema")
     ap.add_argument("--cliente", required=True, help="carpeta del cliente (ej: maga)")
-    ap.add_argument("--banco", required=True, help="banco (galicia/bbva/nacion/comafi/santander)")
+    ap.add_argument("--banco", required=True, help="banco (galicia/bbva/nacion/macro/comafi/santander)")
     args = ap.parse_args()
 
     print("Cargando credenciales de %s para el cliente %s." % (args.banco, args.cliente))
@@ -51,6 +51,13 @@ def main():
     if not usuario or not clave:
         print("Usuario o clave vacios. Cancelado.")
         sys.exit(1)
+
+    # Macro pide un tercer dato, la clave empresa. También es secreta: se pide al final, en el mismo
+    # orden que en la página del banco (usuario, contraseña, clave empresa), y no se ve al tipear.
+    if args.banco.lower() == "macro":
+        extra["clave_empresa"] = getpass.getpass("Clave empresa (no se ve al tipear): ").strip()
+        if not extra["clave_empresa"]:
+            raise SystemExit("Clave empresa vacía. Cancelado.")
 
     destino = _cred.guardar(BASE_REPO, args.cliente, args.banco, usuario, clave, extra)
     print("\nListo. Credenciales guardadas en:\n  %s" % destino)

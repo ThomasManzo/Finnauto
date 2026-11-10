@@ -144,6 +144,10 @@ def correr(bot, ctx, usuario, clave):
                 # seguimos con la próxima; el día queda pendiente y se reintenta mañana.
                 continue
 
+    # Cada banco puede dejar aclaraciones sin convertir una bajada buena en falla.
+    if getattr(bot, "avisos", None):
+        resultado["avisos"] = list(bot.avisos)
+
     # 4) Salidas a Drive
     escribir_estado_drive(ctx.carpeta_drive, ctx.banco_nombre, hoy, resultado)
     escribir_saldos_drive(ctx.carpeta_drive, ctx.banco_nombre, hoy, saldos_lista)
