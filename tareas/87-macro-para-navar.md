@@ -153,7 +153,7 @@ Del más nuevo al más viejo; unos 25-30 días. `lector/extractos.py:leer_planil
    `carpeta_drive_destino: ""`, `carpeta_drive_relativa: "Bancos/macro"`, `incluir_hoy: false`,
    `dias_atras_tolerados: 45`, `limite_segundos: 600`, y una `_nota` en criollo. Sin número de cuenta.
 8. **`instalar_macro.ps1`**, copia de `instalar_nacion.ps1`: tarea `finauto NAVAR Macro`, log
-   `clientes\navar\privado\macro.log`, `--si-falta`, horas `06:25, 06:30, 07:05, 09:05, 12:05, 16:05`, y
+   `clientes\navar\privado\macro.log`, `--si-falta`, horas `06:25, 06:45, 07:30, 09:05, 12:05, 16:05` (cambiadas el 10/11: Macro no deja reentrar antes de ~10 min), y
    la opción `quitar`.
 9. Comentarios en criollo en todo (Thomas no programa): qué hace cada paso y por qué.
 

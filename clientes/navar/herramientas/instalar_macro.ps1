@@ -23,8 +23,10 @@ New-Item -ItemType Directory -Path (Split-Path $log) -Force | Out-Null
 # se conserva tanto el resumen de Macro como el motivo del error.
 $argumentos = '/d /c ""{0}" "{1}" --cliente navar --banco macro --si-falta >> "{2}" 2>&1"' -f $python, $script, $log
 $accionTarea = New-ScheduledTaskAction -Execute "cmd.exe" -Argument $argumentos -WorkingDirectory $repo
-# Reintenta solo si falta; el orquestador frena tras dos claves sin confirmar.
-$horas = @("06:25", "06:30", "07:05", "09:05", "12:05", "16:05")
+# Reintenta solo si falta; el orquestador frena tras dos claves sin confirmar. Las horas quedan
+# separadas 15 minutos o más: Macro no deja volver a entrar hasta pasados unos 10 minutos (Thomas,
+# 10/11/2026), y un reintento antes de eso fallaría y gastaría uno de los dos intentos del día.
+$horas = @("06:25", "06:45", "07:30", "09:05", "12:05", "16:05")
 $disparadores = @($horas | ForEach-Object { New-ScheduledTaskTrigger -Daily -At $_ })
 $opciones = New-ScheduledTaskSettingsSet -StartWhenAvailable `
     -ExecutionTimeLimit (New-TimeSpan -Hours 1) -MultipleInstances IgnoreNew

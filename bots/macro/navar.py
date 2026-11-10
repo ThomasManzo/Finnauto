@@ -179,9 +179,14 @@ class BotMacroNavar(BotBanco):
             page.goto(self.url, timeout=timeout)
             self.frenar_desafio(page)
             accion = 'buscando el campo Usuario y su botón'
-            campo = _esperar_unico(page, [lambda m: m.get_by_label(re.compile('Usuario', re.I)).and_(m.locator('input:not([type=password])')),
-                lambda m: m.get_by_placeholder(re.compile('Usuario', re.I)).and_(m.locator('input:not([type=password])'))], 'campo Usuario', timeout)
-            boton = _esperar_unico(page, [lambda m: m.get_by_role('button', name=re.compile(r'^\s*(Continuar|Ingres[aá]|Siguiente|Ingresar)\s*$', re.I))], 'botón de avance', timeout)
+            # Relevado el 10/11/2026: el usuario se tipea OCULTO (campo de tipo clave, como en BBVA):
+            # input#textField1, placeholder "Usuario Banca Empresas", etiqueta "Ingresá tu usuario",
+            # y el botón es "CONTINUAR" (button#processCustomerLogin). Al lado del campo hay un botón
+            # de ojito sin texto ("show-pass") que NO hay que tocar.
+            campo = _esperar_unico(page, [lambda m: m.locator('input#textField1'),
+                lambda m: m.locator('input[placeholder="Usuario Banca Empresas"]')], 'campo Usuario', timeout)
+            boton = _esperar_unico(page, [lambda m: m.locator('button#processCustomerLogin'),
+                lambda m: m.get_by_role('button', name=re.compile(r'^\s*Continuar\s*$', re.I))], 'botón Continuar', timeout)
             accion = 'cargando el usuario'
             campo.fill(usuario, timeout=timeout)
             boton.click(timeout=timeout)
