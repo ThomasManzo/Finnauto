@@ -144,6 +144,14 @@ def correr(bot, ctx, usuario, clave):
                 # seguimos con la próxima; el día queda pendiente y se reintenta mañana.
                 continue
 
+    # Si el banco sabe cerrar la sesión (Macro), se la cierra también cuando algo falló: una sesión
+    # abierta puede trabar el próximo ingreso.
+    if hasattr(bot, "salir"):
+        try:
+            bot.salir(page)
+        except Exception as e:
+            log("Aviso: no pude cerrar la sesión del banco: %s" % type(e).__name__)
+
     # Cada banco puede dejar aclaraciones sin convertir una bajada buena en falla.
     if getattr(bot, "avisos", None):
         resultado["avisos"] = list(bot.avisos)

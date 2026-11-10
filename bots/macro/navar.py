@@ -149,7 +149,8 @@ class BotMacroNavar(BotBanco):
 
     @staticmethod
     def unico(page, selector, timeout):
-        return _esperar_unico(page, [lambda m: m.locator(selector)], 'el elemento esperado de Macro', timeout)
+        # La descripción lleva el selector (es nuestro, no trae datos): así el log dice QUÉ no encontró.
+        return _esperar_unico(page, [lambda m: m.locator(selector)], 'el elemento %s' % selector[:70], timeout)
 
     @staticmethod
     def frenar_desafio(page):
@@ -248,21 +249,36 @@ class BotMacroNavar(BotBanco):
             raise RuntimeError('Hay más de un cierre de cartel.')
         if cierres:
             cierres[0].click(timeout=timeout)
-        fila = self.unico(page, 'table#collectionTableCuentas tr:has-text("CUENTA CORRIENTE BANCARIA")', timeout)
-        celdas = fila.locator('td').all_inner_texts()
-        if len(celdas) < 3 or not digitos(celdas[1]):
-            raise RuntimeError('No pude leer Número en el inicio.')
-        self.cuenta, self.saldo_inicio = digitos(celdas[1]), celdas[2]
-        self.unico(page, 'td#collectionTableCuentas_ON-REGISTER', timeout).click(timeout=timeout)
+        # 10/11/2026: buscar la FILA por su texto encontró 3 (la tabla tiene filas adentro de filas).
+        # Se busca la celda de la cuenta, que es una sola, y de ahí su propia fila (el tr que la contiene).
+        celda = self.unico(page, 'td#collectionTableCuentas_ON-REGISTER', timeout)
+        self.cuenta, self.saldo_inicio = None, None
+        try:
+            textos = celda.locator('xpath=ancestor::tr[1]/td').all_inner_texts()
+            numeros = [digitos(t) for t in textos if re.fullmatch(r'[\d\s-]{8,}', t.strip())]
+            montos = [t.strip() for t in textos if '$' in t]
+            if len(numeros) == 1:
+                self.cuenta = numeros[0]
+            if len(montos) == 1:
+                self.saldo_inicio = montos[0]
+        except Exception as e:
+            log('   Aviso: no pude leer la fila de la cuenta en el inicio (%s); sigo con el detalle.' % type(e).__name__)
+        celda.click(timeout=timeout)
         self.confirmar_cuenta(page, timeout)
 
     def confirmar_cuenta(self, page, timeout):
+        """Confirma que se está adentro de la cuenta corriente. El Número del detalle es el que vale
+        (se compara después con el del Excel); si también se leyó en el inicio, tienen que coincidir."""
         self.unico(page, 'p[role=heading]:text-is("CUENTA CORRIENTE BANCARIA")', timeout)
         self.unico(page, 'button#logMov', timeout)
         self.unico(page, 'table#collectionTableMovimientos', timeout)
-        numero = self.unico(page, 'xpath=//*[normalize-space(text())="Número"]/following-sibling::*[1]', timeout).inner_text()
-        if digitos(numero) != self.cuenta:
-            raise RuntimeError('La cuenta abierta no coincide con el inicio.')
+        numero = digitos(self.unico(page, 'xpath=//*[normalize-space(text())="Número"]/following-sibling::*[1]', timeout).inner_text())
+        if len(numero) < 8:
+            raise MotivoMacro('No pude leer el Número de la cuenta en el detalle.')
+        if self.cuenta is None:
+            self.cuenta = numero
+        elif numero != self.cuenta:
+            raise MotivoMacro('La cuenta abierta no coincide con la del inicio.')
 
     def capturar_saldos(self, page):
         self.saldos = dict(actual=None, actual_texto=self.saldo_inicio, disponible=None, disponible_texto=None)
@@ -351,10 +367,21 @@ class BotMacroNavar(BotBanco):
                 original.unlink()
             return destino
         finally:
-            try:
-                self.unico(page, 'a#widgetLogoutBtn', 3000).click(timeout=3000)
-            except Exception:
-                log('   Aviso: no pude confirmar la salida de Macro.')
+            self.salir(page)
+
+    def salir(self, page):
+        """Aprieta "Salir" una sola vez. La llama la descarga al terminar y también el núcleo al final
+        de la corrida, aunque haya fallado antes (10/11/2026): si la sesión queda abierta, Macro no
+        deja volver a entrar por unos 10 minutos."""
+        if getattr(self, 'salio', False) or not self.intento_login or page.is_closed():
+            return
+        self.salio = True
+        try:
+            self.unico(page, 'a#widgetLogoutBtn', 3000).click(timeout=3000)
+            page.wait_for_timeout(1500)
+            log('   Salí de Macro.')
+        except Exception:
+            log('   Aviso: no pude confirmar la salida de Macro.')
 
     def extraer_cuenta_id(self, archivo_csv):
         return numero_excel(_filas_planilla(archivo_csv)) if archivo_csv else self.cuenta
