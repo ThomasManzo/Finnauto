@@ -1,5 +1,5 @@
 # Tarea 87 — bot de Macro para NAVAR
-Estado: lista para revisión (revisada por Claude; falta prueba real y OK de Thomas)
+Estado: aprobada (OK de Thomas 10/11/2026; falta la prueba real en la notebook)
 Rama: tarea/macro-para-navar
 
 ## Objetivo
