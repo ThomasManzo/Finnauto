@@ -1,5 +1,5 @@
 # Tarea 89 — Planilla "Plan": ventas proyectadas, contenedores, stock y caja por semana
-Estado: pendiente
+Estado: lista para revisión
 Rama: tarea/89-plan-de-caja
 
 ## Objetivo
@@ -195,5 +195,18 @@ No se puede probar acá: la escritura real en Google Sheets, el disparador ni lo
 Anotar en "Qué hice" qué partes de `plan_planilla.gs` quedaron sin prueba.
 
 ## Qué hice
+Lo escribió Claude: Codex estaba sin cupo y su modelo saturado (decisión de Thomas, 11/11).
+- `planillas/plan/plan_calculo.gs`: todas las cuentas en `calcularPlan(entrada)`, sin Google. Revisa las columnas por nombre;
+  si falta una solapa o columna, la parte que la usa (proyección, stock, contenedores, caja, real) queda en null y se avisa.
+  Stock: cierre del día anterior al inicio y después día por día (llegadas estimadas − ventas proyectadas repartidas parejo).
+  En la caja, la publicidad y la Flex se calculan sobre el mes entero proyectado y se pagan el mes siguiente. Las de meses
+  anteriores al inicio se suponen cargadas en Deudas.
+- `planillas/plan/plan_planilla.gs`: `armarPlan`, `recalcularPlan` (con lock; calcula todo antes de escribir),
+  `instalarDisparador` y `quitarDisparador`. En Ventas proyectadas solo escribe `producto` y `sugerido` (de las filas del mes
+  del inicio en adelante) y agrega abajo las filas que faltan. En Config solo escribe las columnas C y D.
+- `planillas/plan/probar_plan.cjs`: 85 comprobaciones con datos inventados, los 8 puntos de la consigna. `TODO BIEN`.
+- `planillas/plan/LEEME.md`.
+- Sin probar (necesita Google): todo `plan_planilla.gs` salvo que compile, es decir escritura, formatos, colores,
+  protección, disparador y tiempos. Se prueba al instalar.
 
 ## Revisión
