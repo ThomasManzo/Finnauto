@@ -35,7 +35,7 @@ class ExtractosTolerantes(unittest.TestCase):
             enc.pop(2)
             fila.pop(2)
         enc += ["Saldo Parcial", "Nro de cheque"] if nueva else ["Detalle", "Número Documento"]
-        fila += [110 if nueva else "Saldo Disponible: 110,00", "123"]
+        fila += [100 if nueva else "Saldo Disponible: 110,00", "123"]
         return self.excel(nombre, cab + [enc, fila])
 
     def test_dos_formatos_y_columna_imprescindible_ausente(self):
