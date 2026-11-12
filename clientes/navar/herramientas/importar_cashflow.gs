@@ -156,6 +156,7 @@ function onOpen() {
     .addItem("Quitar cruce semanal", "quitarCruceSemanal")
     .addSeparator()
     .addItem("Armar solapa Cash (Cash, Semanal, Mensual)", "armarCash")
+    .addItem("Armar solapa Cash histórico", "armarCashHistorico")
     .addItem("Armar solapa Plan (pisa las decisiones cargadas)", "armarPlan")
     .addItem("Armar solapa Cash compra canchada (escenario)", "armarCompraCanchada")   // crear_cash.gs (tarea 62)
     .addItem("Arreglar los desplegables (Origen, Banco, Categoria)", "arreglarValidaciones")   // crear_cash.gs
@@ -198,6 +199,9 @@ function importarLoNuevo() {
   if (!hubo) Logger.log("importarLoNuevo: nada nuevo");
   // Tarea 52: si entró algo, copia en Excel para que la notebook rearme el tablero. Si falla, la
   // importación ya quedó hecha: el tablero se rearma con la próxima (y la página avisa si queda viejo).
+  if (hubo && typeof _extenderHistorico_ === "function") {
+    try { _extenderHistorico_(); } catch (e) { Logger.log("Cash histórico: " + (e && e.message || e)); }
+  }
   if (hubo && typeof exportarParaTablero === "function") {
     try { exportarParaTablero(); } catch (e) { Logger.log("copia para el tablero: " + (e && e.message || e)); }
   }
