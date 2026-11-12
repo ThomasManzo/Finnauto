@@ -1,5 +1,5 @@
 # Tarea 89 — Planilla "Plan": ventas proyectadas, contenedores, stock y caja por semana
-Estado: lista para revisión
+Estado: aprobada
 Rama: tarea/89-plan-de-caja
 
 ## Objetivo
