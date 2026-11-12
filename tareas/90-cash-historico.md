@@ -1,5 +1,5 @@
 # Tarea 90 — Solapa "Cash histórico": los días que salen del Cash
-Estado: pendiente
+Estado: aprobada
 Rama: tarea/cash-historico
 
 ## Objetivo
@@ -73,5 +73,20 @@ pasa solo a la histórica, sin que nadie toque nada.
 - No se puede probar en la Sheet real desde el worktree: lo instala y lo prueba Claude.
 
 ## Qué hice
+Codex arrancó y quedó cortado por saturación (sin "Qué hice" ni commit); Claude terminó y revisó.
+- `crear_cash.gs`: `armarCashHistorico()` duplica el Cash, saca la sección 6 (foto de hoy armada solo
+  en la columna B), fija con $ las referencias a la auxiliar de acuerdos, deja la columna B como modelo
+  y llama a `_extenderHistorico_()`. Esta busca el primer día con extracto (si B6 está vacía), calcula
+  cuántos días faltan hasta B3 − 7 (`_cuantasColumnasHistorico_`, función pura) y copia la última
+  columna una sola vez hacia la derecha; las fechas nuevas son "columna de la izquierda + 1". Las
+  filas y columnas inmovilizadas vienen del Cash. `armarCash()` la rehace al final. Renglón en
+  Instrucciones.
+- `importar_cashflow.gs`: ítem de menú y llamado a `_extenderHistorico_()` en `importarLoNuevo` (si
+  entró algo, antes de la copia para el tablero, en try/catch: nunca frena la importación).
+- `lector/pruebas/probar_cash_historico.cjs`: días que faltan, copia única, sin solapa no hace nada,
+  sin historia oculta la columna modelo, y el error de la histórica no frena la importación.
+- Pasan las 16 pruebas `.cjs`. Nada recorre todas las solapas (`getSheets()`), así que la solapa
+  nueva no le cambia nada a otros scripts.
 
 ## Revisión
+Claude, 11/11/2026: revisado; Thomas pidió hacerla sin Codex y sin pedir permiso. Se instala y se prueba en la Sheet.

@@ -127,9 +127,99 @@ function armarCash() {
   _armarPeriodica_(ss, "Cash Mensual", "mes");
   armarInstrucciones();
   ["Control diario", "Cash", "Cash Semanal", "Cash Mensual"].forEach(function (n) { _separadorLocal_(ss, ss.getSheetByName(n)); });
+  armarCashHistorico();
   try { ss.toast("Cash, controles e Instrucciones armados", "finauto", 8); } catch (e) {}
 }
 
+
+// La histórica conserva una sola columna modelo y la auxiliar oculta de acuerdos.
+// Borrarla rompería los márgenes; al agregar días la auxiliar se corre al final.
+function armarCashHistorico() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet(), cash = ss.getSheetByName("Cash");
+  if (!cash) throw new Error("Primero hay que armar la solapa Cash");
+  var vieja = ss.getSheetByName("Cash histórico");
+  if (vieja) ss.deleteSheet(vieja);
+  var h = cash.copyTo(ss).setName("Cash histórico");
+  // La sección 6 ("Atrasado hoy") es una foto de HOY armada solo en la columna B. Copiada hacia
+  // los días pasados repetiría números sin sentido: en la histórica no va.
+  var etiquetas = h.getRange(1, 1, h.getLastRow(), 1).getValues(), ini6 = 0, ini7 = 0;
+  for (var e = 0; e < etiquetas.length; e++) {
+    var txt = String(etiquetas[e][0]);
+    if (!ini6 && /^6 · /.test(txt)) ini6 = e + 1;
+    else if (ini6 && /^7 · /.test(txt)) { ini7 = e + 1; break; }
+  }
+  if (ini6) h.deleteRows(ini6, (ini7 ? ini7 : h.getLastRow() + 1) - ini6);
+  var auxiliar = 3 + DIAS_ATRAS + DIAS_ADELANTE;
+  // En el Cash algunos totales apuntan a la auxiliar sin $. La fijamos antes
+  // de arrastrar, para que todos los días sigan leyendo el mismo acuerdo.
+  var letra = _colLetra_(auxiliar), rango = h.getRange(6, 2, h.getLastRow() - 5, 1);
+  var formulas = rango.getFormulas();
+  formulas.forEach(function (fila, i) {
+    if (fila[0]) {
+      var fija = fila[0].replace(new RegExp("(\\$?)\\b" + letra + "(\\$?[0-9]+)", "g"), "$" + letra + "$2");
+      if (fija !== fila[0]) h.getRange(i + 6, 2).setFormula(fija);
+    }
+  });
+  if (h.getMaxColumns() > auxiliar) h.deleteColumns(auxiliar + 1, h.getMaxColumns() - auxiliar);
+  h.deleteColumns(3, auxiliar - 3); // días sobrantes y Fuente; queda la auxiliar en C
+  h.getRange(6, 2).clearContent();
+  h.getRange(1, 1).setValue("CASH · " + _cliente_(ss) + " · histórico día por día (los días que ya salieron del Cash)");
+  // Las filas y la columna inmovilizadas vienen del Cash (fechas arriba, renglones a la izquierda).
+  ss.setActiveSheet(h); ss.moveActiveSheet(cash.getIndex() + 1);
+  _extenderHistorico_();
+}
+
+// Fechas expresadas como días de Sheets: la cuenta no depende del horario de verano.
+function _cuantasColumnasHistorico_(ultima, extracto, atras) {
+  if (!Number.isFinite(ultima) || !Number.isFinite(extracto) || ultima <= 0 || extracto <= 0) return 0;
+  return Math.max(0, Math.floor(extracto) - atras - Math.floor(ultima));
+}
+
+function _diaHistorico_(valor, zona) {
+  if (valor instanceof Date && !isNaN(valor.getTime())) {
+    return Math.round((Date.parse(Utilities.formatDate(valor, zona, "yyyy-MM-dd") + "T00:00:00Z") - Date.UTC(1899, 11, 30)) / 86400000);
+  }
+  return typeof valor === "number" && isFinite(valor) ? Math.floor(valor) : 0;
+}
+
+function _extenderHistorico_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet(), h = ss.getSheetByName("Cash histórico");
+  if (!h) return; // importar nunca crea una pantalla por su cuenta
+  SpreadsheetApp.flush();
+  var zona = ss.getSpreadsheetTimeZone();
+  var corte = _diaHistorico_(h.getRange(3, 2).getValue(), zona);
+  var fechas = h.getRange(6, 2, 1, h.getLastColumn() - 1).getValues()[0];
+  var ultimaCol = 2, ultima = _diaHistorico_(fechas[0], zona);
+  if (!ultima) {
+    // Sin extractos viejos dejamos B oculta como modelo, sin mostrar un día falso.
+    var mov = ss.getSheetByName("Movimientos");
+    var datos = mov.getDataRange().getValues(), enc = datos.shift();
+    var fechaCol = _colPorNombre_(enc, "Fecha"), origenCol = _colPorNombre_(enc, "Origen");
+    if (fechaCol < 0 || origenCol < 0) throw new Error("Movimientos necesita Fecha y Origen");
+    datos.forEach(function (fila) {
+      var dia = _diaHistorico_(fila[fechaCol], zona);
+      if (/^Extracto/i.test(String(fila[origenCol])) && dia > 0 && (!ultima || dia < ultima)) ultima = dia;
+    });
+    if (!ultima || ultima > corte - DIAS_ATRAS) { h.hideColumns(2); return; }
+    h.getRange(6, 2).setValue(ultima).setNumberFormat("ddd dd/mm");
+    h.showColumns(2);
+  } else {
+    for (var i = 1; i < fechas.length; i++) {
+      var dia = _diaHistorico_(fechas[i], zona);
+      if (!dia) break;
+      ultima = dia; ultimaCol = i + 2;
+    }
+  }
+  var faltan = _cuantasColumnasHistorico_(ultima, corte, DIAS_ATRAS);
+  if (!faltan) return;
+  // Insertar antes de la auxiliar conserva sus referencias y deja espacio para todos los días.
+  h.insertColumnsAfter(ultimaCol, faltan);
+  h.getRange(6, ultimaCol, h.getLastRow() - 5, 1)
+    .copyTo(h.getRange(6, ultimaCol + 1, h.getLastRow() - 5, faltan));
+  h.getRange(6, ultimaCol + 1, 1, faltan).setFormulasR1C1([Array(faltan).fill("=RC[-1]+1")]);
+  h.setColumnWidths(ultimaCol + 1, faltan, h.getColumnWidth(ultimaCol));
+  h.showColumns(ultimaCol + 1, faltan);
+}
 
 // ================================================================== fórmulas base
 // {D} = celda con la fecha de inicio de la columna; {F} = fin (exclusivo).
@@ -997,6 +1087,7 @@ function armarInstrucciones() {
   seccion("1 · Las solapas");
   tabla(["Solapa", "Qué es", "De dónde sale", "Quién la toca"], [
     ["Cash", "Día por día: 7 días de extracto (real) + 28 días adelante (estimado)", "fórmula sobre las listas", "nadie"],
+    ["Cash histórico", "Día por día, desde el primer extracto hasta el día anterior al Cash", "fórmula sobre las listas, copia del Cash", "nadie"],
     ["Cash Semanal", "Semana por semana, lunes a domingo: 4 cerradas (real) + la actual + 12 adelante", "fórmula sobre las listas", "nadie"],
     ["Cash Mensual", "Mes por mes: 3 cerrados (real) + el actual + 6 adelante, con inflación editable (B4)", "fórmula sobre las listas + solapa Plan", "solo la celda de inflación"],
     ["Control diario", "Control por día y por cuenta; muestra diferencias y atraso de extractos. Las cajas son informativas", "fórmula sobre las listas", "nadie"],
