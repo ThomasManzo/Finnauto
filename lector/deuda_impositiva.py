@@ -17,6 +17,18 @@ Las notas del contador sobre planes de pago posibles ("contado X + N cuotas de Y
 van en Observaciones, no como cuotas: son propuestas, no compromisos. Cuando se
 firme un plan, se carga el plan (sus cuotas) y se da de baja la deuda original.
 
+PLANES FIRMADOS (tarea 91, planilla del 12/11/2026)
+La solapa Vencimientos trae solo la cuota del mes de los planes (ARCA: un renglón con todas
+juntas; Rentas: la próxima cuota). Desde noviembre la planilla trae también:
+  · "PLANES VIGENTE ARCA ..." : un renglón por plan con "cuota X de N", importe al 1er vto y
+    fecha de ingreso. Se proyectan las cuotas X..N, una por mes, el mismo día de la fecha de
+    ingreso y con el mismo importe (estimado: ARCA ajusta un poco el interés cada mes).
+    Si dice solo "N" (planes recién firmados) se toma como cuota 1 de N y se avisa.
+  · "PLAN DE PAGO RENTAS": "CUOTA k · importe · fecha" (lo que dice PAGADO no se carga).
+Cuando están esas solapas, los renglones de planes de Vencimientos desde la primera cuota
+proyectada se reemplazan por las cuotas del plan (si no, se sumarían dos veces). Lo anterior
+que haya quedado impago en Vencimientos se conserva.
+
 Uso:
     python lector/deuda_impositiva.py --archivo "clientes/navar/privado/impuestos/Control Vencimiento Impuestos.xlsx" --cliente navar --hoy 2026-09-18
     python lector/deuda_impositiva.py ... --sheet "clientes/navar/privado/NAVAR - Cash Flow (con deuda 2026-09-18).xlsx"
@@ -110,13 +122,117 @@ def leer(ruta):
             "cancelado": str(col(f, "CANCELADO") or "").strip(),
             "plan": str(col(f, "COLUMNA1") or "").strip(),      # la nota del contador ("PLAN: CONTADO ... Y N CUOTAS DE ...")
         })
-    return {"archivo": os.path.basename(ruta), "deudas": deudas}
+    return {"archivo": os.path.basename(ruta), "deudas": deudas,
+            "planes_arca": _leer_planes_arca(wb), "plan_rentas": _leer_plan_rentas(wb)}
+
+
+def _sumar_meses(fecha, n):
+    """Misma fecha n meses después; si ese mes no tiene el día (31/02), el último día del mes."""
+    a, m = divmod(fecha.month - 1 + n, 12)
+    a, m = fecha.year + a, m + 1
+    for dia in (fecha.day, 30, 29, 28):
+        try:
+            return datetime.date(a, m, dia)
+        except ValueError:
+            continue
+
+
+def _leer_planes_arca(wb):
+    """Solapa 'PLANES VIGENTE ARCA ...': [{plan, desde, hasta, importe, fecha, supuesto}].
+    Sin esa solapa, lista vacía (la planilla vieja no la tenía)."""
+    nombre = next((n for n in wb.sheetnames if "PLANES VIGENTE ARCA" in _norm(n)), None)
+    if not nombre:
+        return []
+    filas = list(wb[nombre].iter_rows(values_only=True))
+    enc_i = next((i for i, f in enumerate(filas) if f and any(_norm(c) == "1ER VTO" for c in f)), None)
+    if enc_i is None:
+        return []
+    enc = [_norm(c) for c in filas[enc_i]]
+    i_cuota, i_imp, i_fecha = enc.index("CUOTAS"), enc.index("1ER VTO"), enc.index("FECHA INGRESO")
+    planes = []
+    for f in filas[enc_i + 1:]:
+        nombre_plan = str(f[1] or "").strip() if len(f) > 1 else ""
+        importe, fecha = f[i_imp], _fecha(f[i_fecha])
+        if not nombre_plan or not isinstance(importe, (int, float)) or not fecha:
+            continue
+        texto = _norm(f[i_cuota])
+        m = re.match(r"^(\d+)\s*DE\s*(\d+)$", texto)
+        if m:
+            desde, hasta, supuesto = int(m.group(1)), int(m.group(2)), False
+        elif re.match(r"^\d+$", texto):
+            desde, hasta, supuesto = 1, int(texto), True     # plan nuevo: dice solo cuántas cuotas
+        else:
+            desde, hasta, supuesto = 1, 1, True               # sin dato: solo la de este mes
+        planes.append({"plan": nombre_plan, "desde": desde, "hasta": max(desde, hasta),
+                       "importe": float(importe), "fecha": fecha, "supuesto": supuesto})
+    return planes
+
+
+def _leer_plan_rentas(wb):
+    """Solapa 'PLAN DE PAGO RENTAS': [{cuota, importe, fecha}] de las cuotas con fecha (no las PAGADAS)."""
+    nombre = next((n for n in wb.sheetnames if "PLAN DE PAGO RENTAS" in _norm(n)), None)
+    if not nombre:
+        return []
+    cuotas = []
+    for f in wb[nombre].iter_rows(values_only=True):
+        m = re.match(r"^CUOTA\s*(\d+)$", _norm(f[0] if f else ""))
+        if not m or len(f) < 3 or not isinstance(f[1], (int, float)) or not _fecha(f[2]):
+            continue
+        cuotas.append({"cuota": int(m.group(1)), "importe": float(f[1]), "fecha": _fecha(f[2])})
+    return cuotas
+
+
+def _es_plan_arca(impuesto):
+    return bool(re.search(r"PLAN(ES)? DE PAGOS? ARCA", _norm(impuesto)))
+
+
+def _es_plan_rentas(impuesto):
+    return bool(re.search(r"PLAN(ES)? DE PAGOS? (DGR|RENTAS)", _norm(impuesto)))
+
+
+def _cuotas_de_planes(mapa, empresa, origen, excepciones_auto, avisos):
+    """Una fila por cuota proyectada de los planes firmados (ARCA y Rentas)."""
+    filas = []
+    for p in mapa.get("planes_arca") or []:
+        if p["supuesto"]:
+            avisos.append("PLAN ARCA %s: la planilla dice solo '%d' cuotas; se tomó como cuota 1 de %d desde %s (confirmar)"
+                          % (p["plan"], p["hasta"], p["hasta"], p["fecha"].strftime("%d/%m/%Y")))
+        for k, n in enumerate(range(p["desde"], p["hasta"] + 1)):
+            obs = [origen, "plan ARCA firmado: cuota %d de %d proyectada con el importe del 1er vto (estimado)" % (n, p["hasta"])]
+            if p["supuesto"]:
+                obs.append("SUPUESTO: la planilla dice solo la cantidad de cuotas; se tomó la de %s como la 1" % p["fecha"].strftime("%m/%Y"))
+            filas.append(OrderedDict([
+                ("Impuesto", "PLANES DE PAGO ARCA"), ("Empresa", empresa), ("Periodo", p["plan"]),
+                ("Fecha Vencimiento", _sumar_meses(p["fecha"], k)), ("Importe", round(p["importe"], 2)), ("Estado", "Pendiente"),
+                ("Nro Cuota (si aplica)", "%d de %d" % (n, p["hasta"])),
+                ("Debito Automatico", _debito_automatico("PLANES DE PAGO ARCA", p["plan"], excepciones_auto)),
+                ("Observaciones", " · ".join(obs)),
+            ]))
+    rentas = mapa.get("plan_rentas") or []
+    total = max((c["cuota"] for c in rentas), default=0)
+    for c in rentas:
+        filas.append(OrderedDict([
+            ("Impuesto", "PLAN DE PAGO DGR CTES"), ("Empresa", empresa), ("Periodo", "Plan Rentas Corrientes"),
+            ("Fecha Vencimiento", c["fecha"]), ("Importe", round(c["importe"], 2)), ("Estado", "Pendiente"),
+            ("Nro Cuota (si aplica)", "%d de %d" % (c["cuota"], total)),
+            ("Debito Automatico", _debito_automatico("PLAN DE PAGO DGR CTES", "", excepciones_auto)),
+            ("Observaciones", origen + " · plan de Rentas firmado: cuota %d de %d (solapa PLAN DE PAGO RENTAS)" % (c["cuota"], total)),
+        ]))
+    return filas
 
 
 def armar(mapa, hoy, empresa="A", excepciones_auto=None):
     filas, avisos = [], []
     origen = "%s · %s" % (MARCA, mapa["archivo"])
+    # Con las solapas de planes, la cuota del mes que trae Vencimientos ya está en el plan:
+    # se saltean los renglones de planes desde la primera cuota proyectada (lo anterior impago queda).
+    desde_arca = min((p["fecha"] for p in mapa.get("planes_arca") or []), default=None)
+    desde_rentas = min((c["fecha"] for c in mapa.get("plan_rentas") or []), default=None)
     for d in mapa["deudas"]:
+        venc0 = d["vencimiento"] or hoy
+        if (desde_arca and _es_plan_arca(d["impuesto"]) and venc0 >= desde_arca) or \
+           (desde_rentas and _es_plan_rentas(d["impuesto"]) and venc0 >= desde_rentas):
+            continue
         # "Cancelado" dice Pendiente pero la nota de al lado dice "pagada": se pagó después
         # de armar la planilla (16/09). Vale la nota.
         if _norm(d["plan"]) in ("PAGADA", "PAGADO"):
@@ -147,6 +263,7 @@ def armar(mapa, hoy, empresa="A", excepciones_auto=None):
             ("Nro Cuota (si aplica)", None), ("Debito Automatico", _debito_automatico(d["impuesto"] or "", d["concepto"], excepciones_auto)),
             ("Observaciones", " · ".join(obs)),
         ]))
+    filas += _cuotas_de_planes(mapa, empresa, origen, excepciones_auto, avisos)
     filas.sort(key=lambda x: (x["Fecha Vencimiento"], x["Impuesto"]))
     return {"filas": filas, "avisos": avisos}
 
