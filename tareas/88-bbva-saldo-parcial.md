@@ -1,5 +1,5 @@
 # Tarea 88 — BBVA: publicar el saldo del archivo diario ("Saldo Parcial")
-Estado: pendiente
+Estado: aprobada
 Rama: tarea/bbva-saldo-parcial
 
 ## Objetivo
@@ -64,5 +64,33 @@ saldo viejo de BBVA. Queremos que ese saldo se publique solo cuando el archivo c
   y el resto de `lector/pruebas/test_*.py` que ya pasaban, siguen pasando.
 
 ## Qué hice
+- `lector/extractos.py`: el formato diario valida la cadena usando el saldo anterior al
+  movimiento y calcula los cierres sumando el importe. Publica solamente si la cadena y el
+  encabezado cierran (tolerancia de un centavo). Las notas de revisión indican qué falló y
+  los números involucrados; un parcial ausente también impide publicar. Se conserva el
+  tratamiento del formato viejo y de los movimientos con saldo de PDF.
+- En el paso 2 de `procesar`, para cada cuenta y fecha gana la lectura con más movimientos
+  de ese día, contados antes de quitar duplicados; en empate gana la última lectura.
+- `lector/pruebas/test_bbva_saldo_parcial.py`: ocho pruebas con datos inventados para cadena
+  correcta, encabezado incorrecto, cadena rota, dos días, cierre cero de la lectura más
+  completa, empate, parcial ausente y tolerancia de un centavo.
+- `lector/pruebas/test_extractos_tolerantes.py`: corregí el parcial del ejemplo diario para
+  que represente el saldo antes del movimiento.
+- Desde este worktree, con `/Users/thomasmanzo/Documents/Finnauto/.venv/bin/python`:
+  - `-m unittest lector.pruebas.test_bbva_saldo_parcial lector.pruebas.test_extractos_tolerantes`:
+    18 pruebas, OK.
+  - `-m unittest discover -s lector/pruebas -p 'test_*.py'`: 172 pruebas, OK.
+  - La suite mostró avisos por el PDF inválido de prueba y archivos sin cerrar en
+    `vigilante.py`; no hubo fallas. `git diff --check` pasó.
+- Intenté `git add` y `git commit` en `tarea/bbva-saldo-parcial`, pero el sandbox
+  impidió crear `Finnauto/.git/worktrees/finauto-tarea-88/index.lock`
+  (`Operation not permitted`). Los cambios quedan sin commit para que Claude los commitee.
+- No usé datos reales ni archivos privados, ni instalé dependencias. Sin dudas pendientes.
 
 ## Revisión
+Claude, 11/11/2026: revisé el diff, corrí las 172 pruebas (OK) y corrí `procesar` con los archivos
+reales de BBVA (solo en esta Mac, fuera del repo): la cuenta principal queda con un cierre por día que
+coincide con el banco y la secundaria cierra en cero, sin errores. Thomas dio el OK general para
+subirla. Al actualizar la notebook hay que borrar el saldo de BBVA que se cargó a mano en Saldos
+Bancarios para el 11/11 (si no, ese día se suma dos veces).
+

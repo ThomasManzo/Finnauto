@@ -227,7 +227,7 @@ def leer_planilla_bbva(ruta):
     cuenta = cuenta.group(1) if cuenta else "?"
     encabezado = cab.get("SALDO")
     saldo_encabezado = _numero(encabezado) if encabezado not in (None, "") else None
-    movs, disp, parciales = [], OrderedDict(), OrderedDict()
+    movs, disp, parciales = [], OrderedDict(), []
     for r in filas[n + 1:]:
         valor_fecha = _celda(r, ix, "Fecha")
         if valor_fecha in (None, ""):
@@ -243,20 +243,34 @@ def leer_planilla_bbva(ruta):
             if m:
                 disp.setdefault(fecha, _ar(m.group(1)))
         parcial = _celda(r, ix, "Saldo Parcial")
-        if parcial not in (None, ""):
-            parciales.setdefault(fecha, _numero(parcial))
+        if ix["Saldo Parcial"] is not None:
+            parciales.append((fecha, _numero(parcial) if parcial not in (None, "") else None, importe))
         movs.append(_mov(fecha, _celda(r, ix, "Concepto"), importe, None, cuenta, "xls",
                          ref=str(_celda(r, ix, "Documento") or _celda(r, ix, "Codigo") or "") or None))
     notas = []
     if parciales:
-        cierre = parciales[max(parciales)]
-        # El formato nuevo no demuestra qué saldo es contable. Ante duda entran
-        # los movimientos, pero el saldo anterior sigue siendo la última foto válida.
-        if saldo_encabezado is None or abs(cierre - saldo_encabezado) >= 0.01:
-            notas.append("REVISAR saldo: Saldo Parcial %s; encabezado %s. No se publica el saldo parcial: "
-                         "no se puede confirmar el cierre" % (cierre, saldo_encabezado))
-        else:
-            for fecha, saldo in parciales.items():
+        cierres = OrderedDict()
+        for fecha, parcial, importe in parciales:
+            if parcial is None:
+                notas.append("REVISAR saldo: cadena incompleta el %s; parcial %s, importe %s" %
+                             (fecha, parcial, importe))
+            else:
+                # BBVA muestra el saldo ANTES del movimiento. La primera fila
+                # de cada día es la más nueva: al sumarle el importe da el cierre.
+                cierres.setdefault(fecha, parcial + importe)
+        for nueva, vieja in zip(parciales, parciales[1:]):
+            if nueva[1] is None or vieja[1] is None:
+                continue
+            esperado = vieja[1] + vieja[2]
+            if abs(esperado - nueva[1]) > 0.01 + 1e-9:
+                notas.append("REVISAR saldo: cadena rota; parcial anterior %s + importe %s = %s; "
+                             "parcial siguiente %s" % (vieja[1], vieja[2], esperado, nueva[1]))
+        cierre = cierres.get(max(f for f, _, _ in parciales))
+        if cierre is None or saldo_encabezado is None or abs(cierre - saldo_encabezado) > 0.01 + 1e-9:
+            notas.append("REVISAR saldo: encabezado distinto o ausente; cierre calculado %s; encabezado %s" %
+                         (cierre, saldo_encabezado))
+        if not notas:
+            for fecha, saldo in cierres.items():
                 disp.setdefault(fecha, saldo)
     if not disp:
         notas.append("REVISAR: sin saldo diario confirmado; se conservan los movimientos")
@@ -1126,9 +1140,19 @@ def procesar(carpeta, empresa="A"):
         for m in propios:
             if m["saldo"] is not None:
                 por_dia[(m["cuenta"], m["fecha"])] = m["saldo"]
+        cantidades = {}
         for l in b["lecturas"]:
+            # Una bajada más completa del día manda sobre una de la mañana,
+            # aunque el nombre la haga leer primero. En empate gana la última.
+            movimientos_del_dia = defaultdict(int)
+            for m in l["movimientos"]:
+                movimientos_del_dia[(m["cuenta"], m["fecha"])] += 1
             for f, s in (l.get("saldos_por_dia") or {}).items():
-                por_dia[(l["cuenta"], f)] = s
+                clave = (l["cuenta"], f)
+                cantidad = movimientos_del_dia[clave]
+                if cantidad >= cantidades.get(clave, -1):
+                    por_dia[clave] = s
+                    cantidades[clave] = cantidad
         # 3. Una cuenta sin movimientos no tiene que parecer atrasada (tarea 59): si el saldo que el
         # bot leyó en la pantalla del banco al bajar coincide con el último saldo de los extractos,
         # ese saldo vale también para el cierre del día anterior a la bajada.
