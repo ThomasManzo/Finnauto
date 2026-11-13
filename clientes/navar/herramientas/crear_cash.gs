@@ -132,8 +132,13 @@ function armarCash() {
 }
 
 
-// La histórica conserva una sola columna modelo y la auxiliar oculta de acuerdos.
-// Borrarla rompería los márgenes; al agregar días la auxiliar se corre al final.
+// CASH HISTÓRICO (tarea 90; tarea 92: con VALORES, no fórmulas).
+// El 12/11 la histórica con fórmulas (160 columnas que se recalculaban en cada importación) puso la
+// carga de bancos al borde del límite de 6 minutos. Ahora cada día se calcula UNA vez y queda como
+// número fijo. La planilla guarda una sola columna "modelo" con las fórmulas (oculta, a la derecha
+// de los días) y la auxiliar de acuerdos (oculta, al final):
+//   A renglones · B..X días (valores) · modelo (fórmulas, fila 6 vacía) · auxiliar
+// Para corregir algo viejo (llegó un extracto atrasado), se rearma desde el menú.
 function armarCashHistorico() {
   var ss = SpreadsheetApp.getActiveSpreadsheet(), cash = ss.getSheetByName("Cash");
   if (!cash) throw new Error("Primero hay que armar la solapa Cash");
@@ -150,23 +155,70 @@ function armarCashHistorico() {
   }
   if (ini6) h.deleteRows(ini6, (ini7 ? ini7 : h.getLastRow() + 1) - ini6);
   var auxiliar = 3 + DIAS_ATRAS + DIAS_ADELANTE;
-  // En el Cash algunos totales apuntan a la auxiliar sin $. La fijamos antes
-  // de arrastrar, para que todos los días sigan leyendo el mismo acuerdo.
+  // En el Cash algunos totales apuntan a la auxiliar sin $. La fijamos antes de copiar,
+  // para que todos los días sigan leyendo el mismo acuerdo.
   var letra = _colLetra_(auxiliar), rango = h.getRange(6, 2, h.getLastRow() - 5, 1);
-  var formulas = rango.getFormulas();
-  formulas.forEach(function (fila, i) {
+  rango.getFormulas().forEach(function (fila, i) {
     if (fila[0]) {
       var fija = fila[0].replace(new RegExp("(\\$?)\\b" + letra + "(\\$?[0-9]+)", "g"), "$" + letra + "$2");
       if (fija !== fila[0]) h.getRange(i + 6, 2).setFormula(fija);
     }
   });
   if (h.getMaxColumns() > auxiliar) h.deleteColumns(auxiliar + 1, h.getMaxColumns() - auxiliar);
-  h.deleteColumns(3, auxiliar - 3); // días sobrantes y Fuente; queda la auxiliar en C
-  h.getRange(6, 2).clearContent();
+  h.deleteColumns(3, auxiliar - 3);                       // queda A · B (fórmulas del 1er día) · C auxiliar
+  // B queda para el primer día (y para Hoy / último extracto arriba). Su copia en C es el modelo.
+  h.insertColumnsAfter(2, 1);
+  var alto = h.getLastRow() - 5;
+  h.getRange(6, 2, alto, 1).copyTo(h.getRange(6, 3, alto, 1));
+  h.getRange(6, 3).clearContent();
   h.getRange(1, 1).setValue("CASH · " + _cliente_(ss) + " · histórico día por día (los días que ya salieron del Cash)");
   // Las filas y la columna inmovilizadas vienen del Cash (fechas arriba, renglones a la izquierda).
   ss.setActiveSheet(h); ss.moveActiveSheet(cash.getIndex() + 1);
-  _extenderHistorico_();
+  h.hideColumns(3, 2);                                     // modelo y auxiliar, ocultas
+
+  var zona = ss.getSpreadsheetTimeZone();
+  SpreadsheetApp.flush();
+  var corte = _diaHistorico_(h.getRange(3, 2).getValue(), zona);
+  var primero = _primerDiaConExtracto_(ss, zona);
+  var n = primero ? _cuantasColumnasHistorico_(primero - 1, corte, DIAS_ATRAS) : 0;
+  if (!n) { h.hideColumns(2); return; }                   // todavía no salió ningún día del Cash
+  // Primer día en B; los demás se agregan copiando el modelo.
+  h.getRange(6, 2).setValue(primero).setNumberFormat("ddd dd/mm");
+  if (n > 1) _agregarDiasHistorico_(h, 3, primero + 1, n - 1);
+  SpreadsheetApp.flush();
+  var b = h.getRange(6, 2, alto, 1);
+  b.copyTo(b, SpreadsheetApp.CopyPasteType.PASTE_VALUES, false);
+}
+
+// El día más viejo con extracto (Movimientos con Origen "Extracto ..."), como número de día de Sheets.
+function _primerDiaConExtracto_(ss, zona) {
+  var mov = ss.getSheetByName("Movimientos");
+  var datos = mov.getDataRange().getValues(), enc = datos.shift();
+  var fechaCol = _colPorNombre_(enc, "Fecha"), origenCol = _colPorNombre_(enc, "Origen");
+  if (fechaCol < 0 || origenCol < 0) throw new Error("Movimientos necesita Fecha y Origen");
+  var primero = 0;
+  datos.forEach(function (fila) {
+    var dia = _diaHistorico_(fila[fechaCol], zona);
+    if (/^Extracto/i.test(String(fila[origenCol])) && dia > 0 && (!primero || dia < primero)) primero = dia;
+  });
+  return primero;
+}
+
+// Inserta `cuantos` días antes del modelo (columna colModelo), copiando sus fórmulas en UNA sola
+// copia; la fila 6 lleva las fechas. Después de calcular, esas columnas quedan como valores.
+function _agregarDiasHistorico_(h, colModelo, desde, cuantos) {
+  var alto = h.getLastRow() - 5;
+  h.insertColumnsBefore(colModelo, cuantos);              // el modelo y la auxiliar se corren a la derecha
+  var modelo = colModelo + cuantos;
+  h.getRange(6, modelo, alto, 1).copyTo(h.getRange(6, colModelo, alto, cuantos));
+  var fechas = [];
+  for (var i = 0; i < cuantos; i++) fechas.push(desde + i);
+  h.getRange(6, colModelo, 1, cuantos).setValues([fechas]).setNumberFormat("ddd dd/mm");
+  h.showColumns(colModelo, cuantos);
+  h.setColumnWidths(colModelo, cuantos, h.getColumnWidth(2));
+  SpreadsheetApp.flush();
+  var nuevas = h.getRange(6, colModelo, alto, cuantos);
+  nuevas.copyTo(nuevas, SpreadsheetApp.CopyPasteType.PASTE_VALUES, false);
 }
 
 // Fechas expresadas como días de Sheets: la cuenta no depende del horario de verano.
@@ -182,6 +234,8 @@ function _diaHistorico_(valor, zona) {
   return typeof valor === "number" && isFinite(valor) ? Math.floor(valor) : 0;
 }
 
+// Lo llama importarLoNuevo cuando entró algo: agrega como valores los días que salieron del Cash.
+// El modelo es la primera columna (desde B) con la fila 6 vacía; los días son las de antes.
 function _extenderHistorico_() {
   var ss = SpreadsheetApp.getActiveSpreadsheet(), h = ss.getSheetByName("Cash histórico");
   if (!h) return; // importar nunca crea una pantalla por su cuenta
@@ -189,36 +243,16 @@ function _extenderHistorico_() {
   var zona = ss.getSpreadsheetTimeZone();
   var corte = _diaHistorico_(h.getRange(3, 2).getValue(), zona);
   var fechas = h.getRange(6, 2, 1, h.getLastColumn() - 1).getValues()[0];
-  var ultimaCol = 2, ultima = _diaHistorico_(fechas[0], zona);
-  if (!ultima) {
-    // Sin extractos viejos dejamos B oculta como modelo, sin mostrar un día falso.
-    var mov = ss.getSheetByName("Movimientos");
-    var datos = mov.getDataRange().getValues(), enc = datos.shift();
-    var fechaCol = _colPorNombre_(enc, "Fecha"), origenCol = _colPorNombre_(enc, "Origen");
-    if (fechaCol < 0 || origenCol < 0) throw new Error("Movimientos necesita Fecha y Origen");
-    datos.forEach(function (fila) {
-      var dia = _diaHistorico_(fila[fechaCol], zona);
-      if (/^Extracto/i.test(String(fila[origenCol])) && dia > 0 && (!ultima || dia < ultima)) ultima = dia;
-    });
-    if (!ultima || ultima > corte - DIAS_ATRAS) { h.hideColumns(2); return; }
-    h.getRange(6, 2).setValue(ultima).setNumberFormat("ddd dd/mm");
-    h.showColumns(2);
-  } else {
-    for (var i = 1; i < fechas.length; i++) {
-      var dia = _diaHistorico_(fechas[i], zona);
-      if (!dia) break;
-      ultima = dia; ultimaCol = i + 2;
-    }
+  var ultima = 0, colModelo = 0;
+  for (var i = 0; i < fechas.length; i++) {
+    var dia = _diaHistorico_(fechas[i], zona);
+    if (!dia) { colModelo = i + 2; break; }
+    ultima = dia;
   }
+  if (!colModelo) throw new Error("Cash histórico: no encuentro la columna modelo; rearmala desde el menú.");
+  if (!ultima) return;          // armada sin días todavía: se completa al rearmarla
   var faltan = _cuantasColumnasHistorico_(ultima, corte, DIAS_ATRAS);
-  if (!faltan) return;
-  // Insertar antes de la auxiliar conserva sus referencias y deja espacio para todos los días.
-  h.insertColumnsAfter(ultimaCol, faltan);
-  h.getRange(6, ultimaCol, h.getLastRow() - 5, 1)
-    .copyTo(h.getRange(6, ultimaCol + 1, h.getLastRow() - 5, faltan));
-  h.getRange(6, ultimaCol + 1, 1, faltan).setFormulasR1C1([Array(faltan).fill("=RC[-1]+1")]);
-  h.setColumnWidths(ultimaCol + 1, faltan, h.getColumnWidth(ultimaCol));
-  h.showColumns(ultimaCol + 1, faltan);
+  if (faltan) _agregarDiasHistorico_(h, colModelo, ultima + 1, faltan);
 }
 
 // ================================================================== fórmulas base
