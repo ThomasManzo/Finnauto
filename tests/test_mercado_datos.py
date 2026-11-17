@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 from ingestas import mercado_datos as C
-from ingestas.dolar import bajar as bajar_dolar
+from ingestas.dolar import bajar as bajar_dolar, bajar_tipos
 
 
 class Reloj(dt.datetime):
@@ -28,6 +28,7 @@ def preparar(tmp_path, parches):
     parches.setattr(C.galicia, 'configuracion', Mock(return_value=None))
     for modulo, resultado in ((C.ml, ([], 0)), (C.mp, ([], '')), (C.mp_saldo, ([], '')), (C.ads, []), (C.dolar, [])):
         parches.setattr(modulo, 'bajar', Mock(return_value=resultado))
+    parches.setattr(C.dolar, 'bajar_tipos', Mock(return_value=[]))
     estado = tmp_path / 'clientes/ejemplo/.run/mercado_datos_estado.json'
     control = tmp_path / 'control.json'
 
@@ -99,6 +100,34 @@ class CorridaTests(unittest.TestCase):
         assert not resumen['ok'] and resumen['motivo']
         assert not estado.exists()
 
+    def test_tipos_control_estado_y_falla_conserva_csv(self):
+        correr, estado, control = self.corrida
+        datos = [dict(fecha=fecha, casa=casa, compra=4, venta=5)
+                 for fecha in ('2026-01-13', '2026-01-14', '2026-01-15')
+                 for casa in ('blue', 'oficial', 'bolsa')]
+        http = Mock(return_value=(200, json.dumps(datos).encode()))
+        C.dolar.bajar_tipos.side_effect = lambda *args: bajar_tipos(*args, http=http)
+        assert correr('--solo', 'dolar_tipos') == 0
+        assert json.loads(control.read_text())['fuentes']['dolar_tipos'] == dict(
+            ok=True, filas=6, desde='2026-01-13', hasta='2026-01-14', motivo='')
+        assert json.loads(estado.read_text()) == {'dolar_tipos': '2026-01-15'}
+        C.dolar.bajar_tipos.reset_mock()
+        assert correr('--solo', 'dolar_tipos', '--solo-pendientes') == 0
+        C.dolar.bajar_tipos.assert_not_called()
+        C.meli_oauth.access_token.assert_not_called()
+        C.galicia.configuracion.assert_not_called()
+        ruta = self.tmp_path / 'dolar_tipos.csv'
+        anterior = ruta.read_bytes()
+        estado.unlink()
+        http.return_value = (200, b'[{"casa":"blue","fecha":"2026-01-14","compra":0,"venta":5}]')
+        assert correr('--solo', 'dolar_tipos', '--solo-pendientes') == 1
+        assert ruta.read_bytes() == anterior
+        assert not json.loads(control.read_text())['fuentes']['dolar_tipos']['ok']
+        assert not estado.exists()
+        http.return_value = (200, json.dumps(datos).encode())
+        assert correr('--solo', 'dolar_tipos', '--solo-pendientes') == 0
+        assert ruta.read_bytes() == anterior
+
     def test_fallo_de_bajada(self):
         self.comprobar_fallo(False)
 
@@ -122,7 +151,7 @@ class CorridaTests(unittest.TestCase):
 
     def test_todo_listo_no_toca_control_ni_permisos(self):
         correr, estado, control = self.corrida
-        fuentes = ['mercadolibre', 'mercadopago', 'mercadopago_saldo', 'mercadolibre_publicidad', 'tiendanube', 'galicia', 'dolar']
+        fuentes = ['mercadolibre', 'mercadopago', 'mercadopago_saldo', 'mercadolibre_publicidad', 'tiendanube', 'galicia', 'dolar', 'dolar_tipos']
         C.ml.guardar_json(estado, dict.fromkeys(fuentes, '2026-01-15'))
         control.write_text('{"corrida": "anterior", "fuentes": {}}')
         antes = control.stat().st_mtime_ns

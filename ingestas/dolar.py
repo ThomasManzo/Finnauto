@@ -12,6 +12,9 @@ import urllib.request
 from ingestas import meli_ventas as ml
 
 COLUMNAS = ['fecha', 'compra', 'venta', 'fuente']
+COLUMNAS_TIPOS = ['fecha', 'tipo', 'compra', 'venta', 'fuente']
+TIPOS = {'oficial': 'oficial', 'bolsa': 'mep', 'blue': 'blue'}
+URL_TIPOS = 'https://api.argentinadatos.com/v1/cotizaciones/dolares/'
 URL = 'https://api.argentinadatos.com/v1/cotizaciones/dolares/oficial'
 ERROR_CONEXION = 'no se pudo consultar el dólar; revisar la conexión y volver a intentar'
 
@@ -21,13 +24,13 @@ def _http(pedido):
         return respuesta.status, respuesta.read()
 
 
-def _consultar(http):
-    pedido = urllib.request.Request(URL, headers={'User-Agent': 'finauto'})
+def _consultar(http, url=URL):
+    pedido = urllib.request.Request(url, headers={'User-Agent': 'finauto'})
     for intento in range(3):
         try:
             codigo, cuerpo = http(pedido)
             if codigo != 200:
-                raise urllib.error.HTTPError(URL, codigo, '', None, None)
+                raise urllib.error.HTTPError(url, codigo, '', None, None)
             return cuerpo
         except urllib.error.HTTPError as exc:
             if exc.code != 429 and not 500 <= exc.code <= 599:
@@ -80,3 +83,43 @@ def bajar(salida, desde, hasta, http=_http):
     guardadas = {fila['fecha'] for fila in anteriores}
     return sorted(anteriores + [fila for fecha, fila in nuevas.items() if fecha not in guardadas],
                   key=lambda fila: fila['fecha'])
+
+
+def bajar_tipos(salida, desde, hasta, http=_http):
+    """Devuelve el historial para dolar_tipos.csv sin escribir ni pisar lo guardado."""
+    cuerpo = _consultar(http, URL_TIPOS)
+    try:
+        datos = json.loads(cuerpo, parse_float=Decimal, parse_constant=Decimal)
+        if not isinstance(datos, list):
+            raise ValueError()
+        nuevas = {}
+        for fila in datos:
+            if not isinstance(fila, dict):
+                raise ValueError()
+            casa = fila.get('casa')
+            if casa not in ('oficial', 'bolsa', 'blue'):
+                continue
+            if not isinstance(fila.get('fecha'), str):
+                raise ValueError()
+            fecha = dt.date.fromisoformat(fila['fecha'])
+            if fecha.isoformat() != fila['fecha']:
+                raise ValueError()
+            # Validamos las casas elegidas incluso fuera del período pedido.
+            compra, venta = _monto(fila.get('compra')), _monto(fila.get('venta'))
+            if desde <= fecha <= hasta:
+                tipo = TIPOS[casa]
+                nuevas[(fecha.isoformat(), tipo)] = dict(fecha=fecha.isoformat(),
+                    tipo=tipo, compra=compra, venta=venta, fuente='argentinadatos')
+    except (ValueError, TypeError, InvalidOperation):
+        raise ml.ErrorDatos('la respuesta del dólar tiene datos inválidos; revisar la fuente y volver a intentar') from None
+
+    ruta = Path(salida) / 'dolar_tipos.csv'
+    anteriores = []
+    if ruta.exists():
+        with ruta.open(encoding='utf-8', newline='') as archivo:
+            anteriores = list(csv.DictReader(archivo))
+    # Cada tipo tiene su propio historial: una fecha de oficial no reemplaza al MEP.
+    guardadas = {(fila['fecha'], fila['tipo']) for fila in anteriores}
+    orden = {tipo: indice for indice, tipo in enumerate(TIPOS.values())}
+    return sorted(anteriores + [fila for clave, fila in nuevas.items() if clave not in guardadas],
+                  key=lambda fila: (fila['fecha'], orden[fila['tipo']]))
