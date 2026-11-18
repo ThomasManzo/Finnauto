@@ -58,7 +58,7 @@ class CorridaTests(unittest.TestCase):
         assert correr('--solo', 'mercadopago_saldo') == 0
         assert C.mp_saldo.bajar.call_args.args[-1] == dt.date(2026, 1, 14)
         resumen = json.loads(control.read_text())['fuentes']['mercadopago_saldo']
-        assert resumen == dict(ok=True, filas=1, desde='2026-01-14', hasta='2026-01-14', motivo='')
+        assert resumen == dict(ok=True, filas=1, desde='2026-01-14', hasta='2026-01-14', motivo='', actualizado='2026-01-15 23:30')
         assert json.loads(estado.read_text())['mercadopago_saldo'] == '2026-01-15'
         C.mp_saldo.bajar.reset_mock()
         assert correr('--solo', 'mercadopago_saldo', '--solo-pendientes') == 0
@@ -78,7 +78,7 @@ class CorridaTests(unittest.TestCase):
         assert correr('--solo', 'dolar') == 0
         C.dolar.bajar.assert_called_once_with(self.tmp_path, dt.date(2025, 10, 1), dt.date(2026, 1, 14))
         assert json.loads(control.read_text())['fuentes']['dolar'] == dict(
-            ok=True, filas=1, desde='2026-01-14', hasta='2026-01-14', motivo='')
+            ok=True, filas=1, desde='2026-01-14', hasta='2026-01-14', motivo='', actualizado='2026-01-15 23:30')
         assert json.loads(estado.read_text()) == {'dolar': '2026-01-15'}
         C.dolar.bajar.reset_mock()
         assert correr('--solo', 'dolar', '--solo-pendientes') == 0
@@ -138,6 +138,68 @@ class CorridaTests(unittest.TestCase):
         C.dolar.bajar.assert_not_called()
         assert 'Nada pendiente: todo se bajó bien hoy.' in self.salida.getvalue()
 
+
+    def habilitar_tn(self):
+        self.setattr(C.tn, 'tiene_aplicacion', Mock(return_value=True))
+        self.setattr(C.tn, 'estado', Mock(return_value={'hay_token': True}))
+        self.setattr(C.tn, 'Sesion', Mock(return_value=Mock(permiso={'store_id': 123})))
+        self.setattr(C.tn, 'bajar', Mock(return_value=([], 0)))
+
+    def test_rapida_ignora_estado_y_conserva_pasada_diaria(self):
+        correr, estado, control = self.corrida
+        self.habilitar_tn()
+        estado.parent.mkdir(parents=True)
+        estado.write_text('no es json: la rápida ni lo lee')
+        antes = estado.stat().st_mtime_ns
+        assert correr('--rapida', '--solo-pendientes') == 0
+        assert estado.read_text() == 'no es json: la rápida ni lo lee'
+        assert estado.stat().st_mtime_ns == antes
+        assert C.ml.bajar.call_args.kwargs == {'rapida': True}
+        C.tn.bajar.assert_called_once()
+        for modulo in (C.mp, C.mp_saldo, C.ads, C.dolar):
+            modulo.bajar.assert_not_called()
+        assert set(json.loads(control.read_text())['fuentes']) == {'mercadolibre', 'tiendanube'}
+        assert (estado.parent / 'mercadopago/liquidaciones/ultima-mercadolibre.json').exists()
+        assert (estado.parent / 'tiendanube/cache/ultima.json').exists()
+        estado.unlink()
+        assert correr('--rapida', '--solo', 'mercadolibre') == 0
+        assert not estado.exists()
+        assert correr('--solo-pendientes') == 0
+        C.mp.bajar.assert_called_once()
+
+    def test_fechas_y_actualizado(self):
+        correr, _, control = self.corrida
+        self.habilitar_tn()
+        C.ml.bajar.return_value = ([dict(fecha_venta='2026-01-15 23:00')], 0)
+        assert correr() == 0
+        for modulo in (C.ml, C.tn):
+            assert modulo.bajar.call_args.args[3] == dt.date(2026, 1, 15)
+        assert C.mp.bajar.call_args.args[3] == dt.date(2026, 1, 14)
+        for resumen in json.loads(control.read_text())['fuentes'].values():
+            assert resumen['actualizado'] == '2026-01-15 23:30'
+        assert json.loads(control.read_text())['fuentes']['mercadolibre']['hasta'] == '2026-01-15'
+
+    @unittest.skipIf(C.fcntl is None, 'Windows no usa flock')
+    def test_candado_ocupado_no_escribe_y_normal_agota_espera(self):
+        correr, _, _ = self.corrida
+        with C.candado('ejemplo', False):
+            archivos = {p: p.read_bytes() for p in self.tmp_path.rglob('*') if p.is_file()}
+            assert correr('--rapida') == 0
+            assert archivos == {p: p.read_bytes() for p in self.tmp_path.rglob('*') if p.is_file()}
+            with patch.object(C.time, 'monotonic', side_effect=[0, 1200]):
+                assert correr() == 1
+        assert 'Hay otra bajada en curso; esta se saltea.' in self.salida.getvalue()
+        C.ml.bajar.assert_not_called()
+        assert correr('--solo', 'mercadolibre') == 0
+
+    def test_aviso_drive_se_guarda_y_se_borra_aun_sin_pendientes(self):
+        correr, _, control = self.corrida
+        with patch.object(C, 'revisar_drive_escritorio', return_value='Drive cerrado'):
+            assert correr('--solo', 'dolar') == 0
+        assert json.loads(control.read_text())['aviso_drive'] == 'Drive cerrado'
+        with patch.object(C, 'revisar_drive_escritorio', return_value=''):
+            assert correr('--solo', 'dolar', '--solo-pendientes') == 0
+        assert 'aviso_drive' not in json.loads(control.read_text())
 
     def comprobar_fallo(self, falla_csv):
         correr, estado, control = self.corrida
@@ -199,3 +261,25 @@ class CorridaTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class DriveTests(unittest.TestCase):
+    def test_revision_sin_procesos_reales(self):
+        from ingestas.drive_local import revisar_drive_escritorio
+        ruta = Path.home() / 'Library/CloudStorage/GoogleDrive-inventado/My Drive/datos'
+        with patch('sys.platform', 'darwin'), patch('subprocess.run') as ejecutar:
+            assert revisar_drive_escritorio('/tmp/datos') == ''
+            ejecutar.assert_not_called()
+            ejecutar.return_value.returncode = 0
+            assert revisar_drive_escritorio(ruta) == ''
+            assert ejecutar.call_args.args[0] == ['pgrep', '-x', 'Google Drive']
+            ejecutar.side_effect = [Mock(returncode=1), Mock(returncode=0)]
+            assert 'se volvió a abrir' in revisar_drive_escritorio(ruta)
+            assert ejecutar.call_args.args[0] == ['open', '-a', 'Google Drive']
+            ejecutar.side_effect = [Mock(returncode=1), Mock(returncode=1)]
+            assert 'no se pudo abrir' in revisar_drive_escritorio(ruta)
+            ejecutar.side_effect = OSError('fallo inventado')
+            assert revisar_drive_escritorio(ruta)
+        with patch('sys.platform', 'win32'), patch('subprocess.run') as ejecutar:
+            assert revisar_drive_escritorio(ruta) == ''
+            ejecutar.assert_not_called()
