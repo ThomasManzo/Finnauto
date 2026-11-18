@@ -221,7 +221,7 @@ class TiendanubeTests(unittest.TestCase):
             csv = (ruta/'tn_ordenes.csv').read_bytes()
             self.assertEqual(csv.decode().splitlines()[0], ','.join(T.COLUMNAS))
             resumen = json.loads((ruta/'control.json').read_text())['fuentes']['tiendanube']
-            self.assertEqual(resumen, dict(ok=True, filas=2, desde='2026-09-10', hasta='2026-09-10', motivo='', raras=1))
+            self.assertEqual(resumen, dict(ok=True, filas=2, desde='2026-09-10', hasta='2026-09-10', motivo='', raras=1, actualizado='2026-11-01 12:00'))
             marca = ruta/'clientes/ejemplo/.run/tiendanube/cache/ultima.json'
             anterior = marca.read_bytes()
             for falla in (error(401), error(402), ValueError('token-inventado')):

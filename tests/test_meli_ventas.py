@@ -157,6 +157,38 @@ class VentasTests(unittest.TestCase):
                     self.assertEqual(filas[0]['id_pago_mp'], '90000000001|90000000009')
                     self.assertEqual(des, 0)
 
+    def test_rapida_detalles_selectivos_e_historial_completo(self):
+        for caso in ('vieja', 'reciente', 'camino', 'nueva', 'cambio', 'incompleta'):
+            with self.subTest(caso=caso), tempfile.TemporaryDirectory() as tmp:
+                carpeta = Path(tmp)
+                o, p, e, c = ejemplo(True)
+                if caso == 'reciente': o['date_closed'] = dt.datetime.now(M.HORA_BA).isoformat()
+                if caso == 'camino': e['status'] = 'shipped'
+                for tipo, ident, dato in [('orden', o['id'], o), ('pago', p['id'], p), ('envio', 70001, e), ('costos', 70001, c)]:
+                    if caso != 'nueva': M.guardar_json(carpeta / f'{tipo}-{ident}.json', dato)
+                # Una orden histórica que no aparece en las búsquedas debe seguir en el CSV.
+                vieja = dict(o, id=333, date_closed='2026-09-01T12:00:00-03:00')
+                M.guardar_json(carpeta / 'orden-333.json', vieja)
+                if caso == 'cambio': o['date_last_updated'] = '2026-11-17T12:00:00Z'
+                if caso == 'incompleta': (carpeta / 'costos-70001.json').unlink()
+                consultas, detalles = [], []
+                def http(req):
+                    url = urllib.parse.urlsplit(req.full_url)
+                    if url.path == '/orders/search':
+                        consultas.append(urllib.parse.parse_qs(url.query))
+                        dato = dict(results=[o], paging={'total': 1})
+                    else:
+                        detalles.append(url.path)
+                        dato = p if '/payments/' in url.path else c if url.path.endswith('/costs') else e
+                    return 200, json.dumps(dato).encode()
+                hoy = dt.datetime.now(M.HORA_BA).date()
+                with patch.object(O, 'estado', return_value={'user_id': 123}), patch.object(O, 'access_token', return_value='inventado'), patch.object(M, '_http', side_effect=http):
+                    filas, _ = M.bajar(M.Sesion('ejemplo'), carpeta, dt.date(2026, 9, 1), hoy, '2026-11-16T12:00:00-03:00', rapida=True)
+                assert len(detalles) == (3 if caso in ('nueva', 'cambio', 'incompleta') else 0)
+                assert {f['id_venta'] for f in filas} == {'333', str(o['id'])}
+                assert consultas[0]['order.date_created.from'][0][:10] == (hoy - dt.timedelta(days=1)).isoformat()
+                assert consultas[-1]['order.date_last_updated.from'][0][:10] == '2026-11-14'
+
     def test_http_reintentos_y_token(self):
         error = lambda codigo, headers={}: urllib.error.HTTPError('https://example.org', codigo, '', headers, io.BytesIO())
         with patch.object(O, 'access_token', return_value='inventado') as token, patch.object(M.time, 'sleep') as dormir:

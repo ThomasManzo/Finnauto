@@ -224,7 +224,7 @@ def refrescar(orden, guardada, pagos, envio, completo, hoy):
             not final or any(p.get('status') in {'in_mediation', 'charged_back'} for p in pagos))
 
 
-def bajar(sesion, carpeta, desde, hasta, ultima=None):
+def bajar(sesion, carpeta, desde, hasta, ultima=None, rapida=False):
     carpeta = Path(carpeta)
     carpeta.mkdir(parents=True, exist_ok=True)
     def pedir(ruta, fuente='mercadolibre'):
@@ -239,8 +239,13 @@ def bajar(sesion, carpeta, desde, hasta, ultima=None):
     for _ in range(2):
         ventana = (ventana - dt.timedelta(days=1)).replace(day=1)
     inicio = max(desde, ventana) if ultima and ordenes else desde
-    consultas = [('date_created', *limites(a, b)) for a, b in meses(inicio, hasta)]
-    if ultima and ordenes:
+    # Cada media hora buscamos desde ayer; el historial sigue saliendo de la caché.
+    if rapida:
+        inicio = max(desde, dt.datetime.now(HORA_BA).date() - dt.timedelta(days=1))
+    # La búsqueda mensual redondea al día 1; en la rápida respetamos ayer exacto.
+    periodos = [(inicio, hasta)] if rapida and inicio <= hasta else ([] if rapida else meses(inicio, hasta))
+    consultas = [('date_created', *limites(a, b)) for a, b in periodos]
+    if ultima and (ordenes or rapida):
         consultas.append(('date_last_updated', instante(ultima) - dt.timedelta(days=2), dt.datetime.now(HORA_BA)))
     nuevas = {}
     for filtro, a, b in consultas:
@@ -260,7 +265,10 @@ def bajar(sesion, carpeta, desde, hasta, ultima=None):
         return json.loads(ruta.read_text()) if ident and ruta.exists() else {}
     hoy = hasta + dt.timedelta(days=1)
     bajados = set()
-    for ident, orden in nuevas.items():
+    # También completamos órdenes guardadas que quedaron a medias, aunque no
+    # aparezcan en la búsqueda reciente. Las completas no generan pedidos extra.
+    candidatas = {**ordenes, **nuevas} if rapida else nuevas
+    for ident, orden in candidatas.items():
         recursos = [('pago', p['id'], '/v1/payments/', 'mercadopago') for p in orden.get('payments', [])]
         envio = (orden.get('shipping') or {}).get('id')
         if envio:
@@ -272,7 +280,10 @@ def bajar(sesion, carpeta, desde, hasta, ultima=None):
         if necesita:
             completo = (carpeta / f'envio_pagos-{envio}.json').exists()
         aparte = pagos_envio_validos(leer('envio_pagos', envio).get('results', []))
-        if not refrescar(orden, guardada, pagos + aparte, leer('envio', envio), completo, hoy):
+        # La diaria repasa lo reciente y pendiente; la rápida solo novedades o faltantes.
+        cambiar = (not guardada or not completo or
+                   guardada.get('date_last_updated') != orden.get('date_last_updated'))
+        if not (cambiar if rapida else refrescar(orden, guardada, pagos + aparte, leer('envio', envio), completo, hoy)):
             continue
         for tipo, ident_recurso, prefijo, fuente in recursos:
             clave = f'{tipo}-{ident_recurso}'
