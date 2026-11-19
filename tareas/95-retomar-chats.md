@@ -41,5 +41,26 @@ carpeta con cada versión. No hay `claude` en el PATH.
 - `herramientas/claude.sh --version` muestra la versión.
 
 ## Qué hice
+Estado: lista para revisión
+Rama: tarea/95-retomar-chats
+
+- Agregué `herramientas/retomar_chat.py`: lista los 20 chats más recientes, busca por
+  prefijo de id o título (sin distinguir mayúsculas), muestra los últimos mensajes y
+  antepone el último resumen. Lee por renglones y conserva solo los mensajes pedidos,
+  recortados; excluye herramientas, imágenes y razonamiento.
+- `--proyecto` recibe la carpeta que contiene los `.jsonl`. Sin ese argumento usa la
+  carpeta de Claude correspondiente a `~/Documents/Finnauto`, también desde el worktree.
+  Avisa si falta la carpeta, no encuentra el chat o hay varias coincidencias.
+- Agregué `herramientas/claude.sh`, ejecutable: encuentra el binario más reciente por
+  fecha de modificación y conserva todos los argumentos. Si falta, explica qué hacer.
+- Agregué `pruebas/test_retomar_chat.py`, con datos inventados: listado y límite de 20,
+  búsqueda por título e id, últimos N, resumen primero, exclusión de herramientas,
+  recortes, renglón incompleto y errores de búsqueda/cantidad.
+- Verificado: `.venv/bin/python -m unittest pruebas.test_retomar_chat` (5 pruebas OK);
+  `herramientas/claude.sh --version` (2.1.325). También probé el wrapper con binarios
+  ficticios: ausencia, elección del más reciente y argumentos con espacios.
+- Sin dependencias nuevas, sin leer chats reales ni datos privados. No cambié el enlace
+  `.venv` que ya estaba sin versionar. Sin dudas pendientes.
+
 
 ## Revisión
