@@ -10,6 +10,15 @@ import io
 import json
 from pathlib import Path
 import sys
+import time
+from contextlib import contextmanager
+from ingestas.drive_local import revisar_drive_escritorio
+
+try:
+    import fcntl
+except ImportError:
+    # Windows no trae flock: allí seguimos con la bajada sin candado.
+    fcntl = None
 from ingestas import mp_saldo, dolar, galicia_datos as galicia
 from ingestas import meli_oauth, meli_ventas as ml, mp_liquidaciones as mp, meli_publicidad as ads, tiendanube as tn
 
@@ -29,6 +38,32 @@ def leer_csv(ruta):
         return list(csv.DictReader(archivo))
 
 
+@contextmanager
+def candado(cliente, rapida):
+    """Una sola bajada escribe los CSV y la caché de este cliente a la vez."""
+    if fcntl is None:
+        yield True
+        return
+    ruta = meli_oauth.BASE_REPO / 'clientes' / cliente / '.run/mercado_datos.lock'
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+    # No borrar el archivo al salir: otro proceso puede estar esperando sobre él.
+    with ruta.open('a') as archivo:
+        limite = time.monotonic() + 20 * 60
+        while True:
+            try:
+                fcntl.flock(archivo, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if rapida or time.monotonic() >= limite:
+                    yield False
+                    return
+                time.sleep(1)
+        try:
+            yield True
+        finally:
+            fcntl.flock(archivo, fcntl.LOCK_UN)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description='Ventas y liquidaciones a CSV')
     parser.add_argument('--cliente', required=True)
@@ -36,28 +71,62 @@ def main(argv=None):
     parser.add_argument('--desde', type=dt.date.fromisoformat, default=dt.date(2025, 10, 1))
     parser.add_argument('--solo', choices=['mercadolibre', 'mercadopago', 'mercadopago_saldo', 'mercadolibre_publicidad', 'tiendanube', 'galicia', 'dolar', 'dolar_tipos'])
     parser.add_argument('--solo-pendientes', action='store_true')
+    parser.add_argument('--rapida', action='store_true', help='Actualizar solo ventas recientes')
     args = parser.parse_args(argv)
+    if args.rapida and args.solo and args.solo not in ('mercadolibre', 'tiendanube'):
+        parser.error('--rapida solo permite mercadolibre o tiendanube')
+    try:
+        # Validar antes de usar el nombre del cliente para armar la ruta del candado.
+        meli_oauth._validar(args.cliente, 'mercadolibre')
+        with candado(args.cliente, args.rapida) as tomado:
+            if not tomado:
+                if args.rapida:
+                    print('Hay otra bajada en curso; esta se saltea.')
+                    return 0
+                print('Hay otra bajada en curso; se agotó la espera de 20 minutos.', file=sys.stderr)
+                return 1
+            return correr(args)
+    except (OSError, meli_oauth.ErrorAutorizacion):
+        print('No se pudo preparar la corrida: revisar el cliente y el candado.', file=sys.stderr)
+        return 1
+
+
+def correr(args):
     ahora = dt.datetime.now(ml.HORA_BA)
-    hasta = ahora.date() - dt.timedelta(days=1)
     try:
         sesion = ml.Sesion(args.cliente)
         control_ruta = args.salida / 'control.json'
         control = json.loads(control_ruta.read_text(encoding='utf-8')) if control_ruta.exists() else {}
         control.setdefault('fuentes', {})
         estado_ruta = meli_oauth.BASE_REPO / 'clientes' / args.cliente / '.run/mercado_datos_estado.json'
-        estado = json.loads(estado_ruta.read_text(encoding='utf-8')) if estado_ruta.exists() else {}
+        # La rápida no lee ni marca pendientes: la pasada diaria sigue siendo completa.
+        estado = {} if args.rapida else (json.loads(estado_ruta.read_text(encoding='utf-8')) if estado_ruta.exists() else {})
         if not isinstance(estado, dict):
             raise ValueError('estado inválido')
     except Exception:
         print('No se pudo preparar la corrida: revisar el cliente, control.json y el estado de las bajadas.', file=sys.stderr)
         return 1
     intentadas = 0
-    control_cambio = False
+    # Un problema del sincronizador se avisa, pero nunca frena las ventas.
+    try:
+        aviso = revisar_drive_escritorio(args.salida)
+    except Exception:
+        aviso = 'No se pudo revisar Google Drive para escritorio.'
+    control_cambio = control.get('aviso_drive', '') != aviso
+    if aviso:
+        print(aviso)
+        control['aviso_drive'] = aviso
+    else:
+        control_cambio |= 'aviso_drive' in control
+        control.pop('aviso_drive', None)
     ventas = None
     fallo = False
     for fuente in ('mercadolibre', 'mercadopago', 'mercadopago_saldo', 'mercadolibre_publicidad', 'tiendanube', 'galicia', 'dolar', 'dolar_tipos'):
+        if args.rapida and fuente not in ('mercadolibre', 'tiendanube'): continue
         if args.solo and fuente != args.solo: continue
-        if args.solo_pendientes and estado.get(fuente) == ahora.date().isoformat():
+        # Las ventas muestran hoy; las demás fuentes siguen con días cerrados.
+        hasta = ahora.date() if fuente in ('mercadolibre', 'tiendanube') else ahora.date() - dt.timedelta(days=1)
+        if not args.rapida and args.solo_pendientes and estado.get(fuente) == ahora.date().isoformat():
             # Mercado Pago vincula sus pagos con ml_ventas.csv. Si Mercado Libre se acaba de bajar bien
             # en esta corrida, se rehace Mercado Pago para que las ventas nuevas no queden sin vincular.
             if not (fuente == 'mercadopago' and ventas is not None):
@@ -91,7 +160,7 @@ def main(argv=None):
                     anterior = json.loads(marca.read_text()) if marca.exists() else {}
                     # Si se amplía el período, volver a buscar lo que antes no se había pedido.
                     ultima = anterior.get('corrida') if anterior.get('desde', '9999') <= args.desde.isoformat() else None
-                    filas, resumen['descuadradas'] = ml.bajar(sesion, carpeta / 'cache', args.desde, hasta, ultima)
+                    filas, resumen['descuadradas'] = ml.bajar(sesion, carpeta / 'cache', args.desde, hasta, ultima, **({'rapida': True} if args.rapida else {}))
                     columnas, campo_fecha = ml.COLUMNAS, 'fecha_venta'
                 elif fuente == 'mercadopago_saldo':
                     filas, motivo = mp_saldo.bajar(sesion, carpeta / 'reportes', ruta, args.desde, hasta)
@@ -140,6 +209,9 @@ def main(argv=None):
             resumen['motivo'] = 'no se pudo completar la fuente; revisar los archivos, el formato y la conexión'
         intentadas += 1
         if resumen['ok'] and not resumen['motivo']:
+            # El tablero puede mostrar la hora de cada fuente por separado.
+            resumen['actualizado'] = dt.datetime.now(ml.HORA_BA).strftime('%Y-%m-%d %H:%M')
+        if resumen['ok'] and not resumen['motivo'] and not args.rapida:
             # Recién con los CSV escritos damos el día por terminado para esta fuente.
             estado[fuente] = ahora.date().isoformat()
             try:
@@ -153,7 +225,7 @@ def main(argv=None):
         print(f"{fuente}: {resumen['filas']} filas" + (f", {resumen['descuadradas']} descuadradas" if fuente == 'mercadolibre' else '') + (f"; {resumen['motivo']}" if resumen['motivo'] else ''))
     if intentadas:
         control['corrida'] = ml.fecha(ahora.isoformat())
-    elif args.solo_pendientes and not control_cambio:
+    elif not args.rapida and args.solo_pendientes and not control_cambio:
         print('Nada pendiente: todo se bajó bien hoy.')
         return 0
     try:

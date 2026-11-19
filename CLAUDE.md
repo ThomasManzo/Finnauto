@@ -74,7 +74,7 @@ la sección "Dónde estamos" más nueva. Ahí está el estado real; esta secció
   (menos `.venv`, `.run`, `privado`). Por eso lo que depende de la máquina no va en archivos del repo.
 - Thomas está conectado a la notebook por Chrome Remote Desktop: **los comandos de allá los corre
   él, de a uno**, y pega la salida.
-- Datos reales en `clientes/navar/privado/` (gitignored) y en Drive. Nunca a Codex ni a GitHub.
+- Datos reales en `clientes/navar/privado/` (gitignored) y en Drive. Nunca a GitHub. Codex SÍ puede verlos (decisión de Thomas, 19/11/2026).
 - Tango: 8 consultas personalizadas de Live ("Finauto ...", customQuery 10-18) de las que depende
   la bajada. **No borrarlas ni editarlas.** Detalle en el LEEME.
 
@@ -105,3 +105,15 @@ la sección "Dónde estamos" más nueva. Ahí está el estado real; esta secció
 ## Preferencia de Thomas
 Consultarle antes de cambios grandes; dejar todo lo más limpio y comentado posible. Thomas no
 programa: los comentarios tienen que explicar el "qué/por qué" en criollo.
+
+## Codex = espejo de Claude (desde 19/11/2026)
+Thomas paga los dos y no puede quedarse sin cupo en la mitad de una reunión o de un proyecto. Codex tiene
+acceso total (datos reales, Drive, la Mac) y tiene que poder seguir cualquier tema donde lo dejó Claude, y
+al revés. Es un control cruzado: cada uno puede revisar lo del otro y pedirle cosas.
+- **El contexto vive en archivos, no en los chats.** Cada chat, al cerrar un paso importante, deja el estado
+  en el LEEME de su tema (sección "Dónde estamos" con fecha) o en su `estado_*.md`. Sin eso no hay traspaso.
+- Para retomar un chat desde su último mensaje: `python herramientas/retomar_chat.py --lista` y
+  `--chat <id o título>` (tarea 95). Las copias de chats que Codex importa solas quedan congeladas: no usarlas.
+- Codex le pide cosas a Claude con `herramientas/claude.sh -p "..."`; Claude a Codex con `codex exec`.
+- **Modelo según la tarea:** los chats corren en Sonnet por defecto. Consultas y estados: Sonnet (o Haiku
+  vía subagente). Validar números difíciles o diseñar algo grande: subagente `validador` (Opus). Código: Codex.

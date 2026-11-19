@@ -40,3 +40,35 @@ def carpeta_datos(nombre="NAVAR - Datos"):
         if os.path.isdir(c):
             return c
     return None
+
+
+def revisar_drive_escritorio(ruta_salida):
+    """Avisar si los CSV quedan sin sincronizar e intentar despertar Drive en la Mac."""
+    import datetime as dt
+    from pathlib import Path
+    import subprocess
+    import sys
+
+    if sys.platform != 'darwin':
+        return ''
+    try:
+        # Solo intervenir en el montaje de Drive de este usuario, no en otras carpetas.
+        relativa = Path(ruta_salida).expanduser().absolute().relative_to(
+            Path.home() / 'Library/CloudStorage')
+        if not relativa.parts or not relativa.parts[0].startswith('GoogleDrive-'):
+            return ''
+    except (ValueError, OSError):
+        return ''
+    try:
+        proceso = subprocess.run(['pgrep', '-x', 'Google Drive'], capture_output=True, timeout=10)
+        if proceso.returncode == 0:
+            return ''
+        if proceso.returncode != 1:
+            return 'No se pudo revisar Google Drive para escritorio.'
+        abierto = subprocess.run(['open', '-a', 'Google Drive'], capture_output=True, timeout=10)
+        if abierto.returncode == 0:
+            return 'Google Drive estaba cerrado; se volvió a abrir a las ' + dt.datetime.now().strftime('%H:%M')
+    except (OSError, subprocess.SubprocessError):
+        # Una falla del sistema no debe cortar la bajada ni ocultar que falta sincronizar.
+        return 'No se pudo revisar o abrir Google Drive para escritorio.'
+    return 'Google Drive estaba cerrado y no se pudo abrir.'
